@@ -1,0 +1,6 @@
+## Main KVS module
+
+# Export all types and core functionality
+export types
+export storage/record
+export storage/datafile
