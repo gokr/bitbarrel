@@ -1,7 +1,7 @@
 ## Key Directory (KeyDir) - In-memory hash index for Bitcask
 
-import std/[tables, locks]
-import kvs/types
+import std/[tables, locks, options]
+import ../kvs/types
 
 type
   KeyDir* = object
@@ -36,7 +36,11 @@ proc get*(keyDir: var KeyDir, key: string): Option[KeyDirEntry] =
 proc delete*(keyDir: var KeyDir, key: string): bool =
   ## Delete a key from the KeyDir
   withLock(keyDir.lock):
-    result = keyDir.table.del(key)
+    if keyDir.table.contains(key):
+      keyDir.table.del(key)
+      result = true
+    else:
+      result = false
 
 proc clear*(keyDir: var KeyDir) =
   ## Clear all entries from the KeyDir
@@ -59,7 +63,7 @@ proc newerEntry*(keyDir: var KeyDir, key: string, entry: KeyDirEntry): bool =
   ## Check if the new entry is newer than the existing one
   ## Returns true if the entry should be added (either key doesn't exist or is newer)
   withLock(keyDir.lock):
-    if key not in keyDir.table:
+    if not keyDir.table.contains(key):
       return true
 
     let existing = keyDir.table[key]
@@ -69,7 +73,7 @@ proc addIfNewer*(keyDir: var KeyDir, key: string, entry: KeyDirEntry): bool =
   ## Add entry only if it's newer than existing entry
   ## Returns true if entry was added
   withLock(keyDir.lock):
-    if key not in keyDir.table or entry.timestamp > keyDir.table[key].timestamp:
+    if not keyDir.table.contains(key) or entry.timestamp > keyDir.table[key].timestamp:
       keyDir.table[key] = entry
       result = true
     else:

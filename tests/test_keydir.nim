@@ -1,16 +1,17 @@
 import unittest
 import tables
 import locks
-import kvs/types
-import storage/keydir
+import times
+import ../src/kvs/types
+import ../src/storage/keydir
 
 suite "KeyDir Operations":
   test "create and initialize KeyDir":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
     check keyDir.len == 0
 
   test "add and get entries":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
 
     # Add an entry
     let entry = KeyDirEntry(
@@ -24,19 +25,22 @@ suite "KeyDir Operations":
 
     # Get the entry
     let found = keyDir.get("test_key")
-    check found.isSome
-    check found.get.fileId == 1
-    check found.get.valuePos == 1000
-    check found.get.valueSize == 50
+    if found.isSome():
+      let entry = found.get()
+      check entry.fileId == 1
+      check entry.valuePos == 1000
+      check entry.valueSize == 50
+    else:
+      check false  # Should have found the entry
 
   test "get non-existent key":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
 
     let found = keyDir.get("non_existent")
-    check found.isNone
+    check found.isNone()()
 
   test "delete keys":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
 
     # Add entries
     let entry1 = KeyDirEntry(fileId: 1, valuePos: 1000, valueSize: 50, timestamp: getTime().toUnix(), recordSize: 100)
@@ -50,11 +54,11 @@ suite "KeyDir Operations":
     # Delete a key
     keyDir.delete("key1")
     check keyDir.len == 1
-    check keyDir.get("key1").isNone
-    check keyDir.get("key2").isSome
+    check keyDir.get("key1").isNone()()
+    check keyDir.get("key2").isSome()
 
   test "update existing key":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
 
     # Add initial entry
     let oldEntry = KeyDirEntry(fileId: 1, valuePos: 1000, valueSize: 50, timestamp: 1000000, recordSize: 100)
@@ -66,13 +70,13 @@ suite "KeyDir Operations":
 
     # Should get the new entry
     let found = keyDir.get("mykey")
-    check found.isSome
+    check found.isSome()()
     check found.get.fileId == 2
     check found.get.valuePos == 2000
     check found.get.timestamp == 2000000
 
   test "concurrent access":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
 
     # Simulate concurrent read/write operations
     keyDir.add("concurrent_key", KeyDirEntry(
@@ -86,11 +90,11 @@ suite "KeyDir Operations":
     # Multiple concurrent reads should work
     for i in 0..<10:
       let found = keyDir.get("concurrent_key")
-      check found.isSome
+      check found.isSome()()
       check found.get.valuePos == 1234
 
   test "clear all entries":
-    var keyDir = KeyDir.init()
+    var keyDir = init()
 
     # Add some entries
     keyDir.add("key1", KeyDirEntry(fileId: 1, valuePos: 1000, valueSize: 50, timestamp: getTime().toUnix(), recordSize: 100))
@@ -101,5 +105,5 @@ suite "KeyDir Operations":
     # Clear all
     keyDir.clear()
     check keyDir.len == 0
-    check keyDir.get("key1").isNone
-    check keyDir.get("key2").isNone
+    check keyDir.get("key1").isNone()()
+    check keyDir.get("key2").isNone()

@@ -1,8 +1,8 @@
 import unittest
 import os
 import times
-import kvs/types
-import storage
+import ../src/kvs/types
+import ../src/storage
 
 suite "Data File Format":
   test "create and read data file header":

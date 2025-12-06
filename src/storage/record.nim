@@ -1,6 +1,6 @@
 ## Record format and encoding for Bitcask
 
-import kvs/types
+import ../kvs/types
 
 type
   Record* = object
@@ -21,14 +21,13 @@ proc crc32*(data: string): uint32 =
   result = result xor 0xFFFFFFFF'u32
 
 proc encode*(record: Record): string =
-  ## Encode a record using simplified binary format
+  ## Encode a record using portable binary format (little-endian)
   ## Format: [timestamp:8][keyLen:4][key][valLen:4][value]
   result = newString(8 + 4 + record.key.len + 4 + record.value.len)
   var pos = 0
 
   # Timestamp (8 bytes)
-  var ts = record.timestamp
-  copyMem(addr result[pos], addr ts, 8)
+  copyMem(addr result[pos], addr record.timestamp, 8)
   pos += 8
 
   # Key length (4 bytes)
@@ -37,7 +36,8 @@ proc encode*(record: Record): string =
   pos += 4
 
   # Key
-  copyMem(addr result[pos], addr record.key[0], record.key.len)
+  if record.key.len > 0:
+    copyMem(addr result[pos], addr record.key[0], record.key.len)
   pos += record.key.len
 
   # Value length (4 bytes)
@@ -50,7 +50,7 @@ proc encode*(record: Record): string =
     copyMem(addr result[pos], addr record.value[0], record.value.len)
 
 proc decode*(data: string): Record =
-  ## Decode a record from binary format
+  ## Decode a record from portable binary format (little-endian)
   var pos = 0
 
   # Read timestamp (8 bytes)

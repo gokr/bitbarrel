@@ -1,8 +1,8 @@
 ## Data file implementation for Bitcask storage model
 
 import std/[os, streams, strutils, times]
-import kvs/types
-from storage/record import crc32, Record, encode, decode
+import ../kvs/types
+from record import crc32, Record, encode, decode
 
 type
   DataFile* = object
@@ -32,6 +32,7 @@ proc open*(path: string, fileId: uint32): DataFile =
     let bytesWritten = file.writeBuffer(addr header, HEADER_SIZE)
     if bytesWritten != HEADER_SIZE:
       raise newException(IOError, "Failed to write file header")
+    file.flushFile()
     file.setFilePos(0, fspEnd)
   else:
     file.setFilePos(0, fspEnd)
@@ -104,15 +105,26 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
 
 proc readRecord*(df: DataFile, recordInfo: RecordInfo): (string, string, int64) =
   ## Read a record using the recorded position information
-  df.file.setFilePos(recordInfo.recordPos.int)
+  df.file.setFilePos(recordInfo.recordPos.int - 4)  # Position of CRC32
 
-  # Read the record data (without CRC32)
+  # Read CRC32 first
+  var storedCrc: uint32
+  let crcBytesRead = df.file.readBuffer(addr storedCrc, 4)
+  if crcBytesRead != 4:
+    raise newException(IOError, "Failed to read CRC32")
+
+  # Read the record data
   let recordDataLen = recordInfo.recordSize.int - 4  # Subtract CRC32
   var recordData = newString(recordDataLen)
   let bytesRead = df.file.readBuffer(addr recordData[0], recordDataLen)
 
   if bytesRead != recordDataLen:
     raise newException(IOError, "Failed to read record data")
+
+  # Verify CRC32
+  let computedCrc = crc32(recordData)
+  if storedCrc != computedCrc:
+    raise newException(IOError, "CRC32 mismatch: data corruption detected")
 
   # Decode the record
   let record = decode(recordData)
