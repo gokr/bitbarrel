@@ -17,6 +17,7 @@ type
 
   KeyDirEntry* = object
     fileId*: uint32      # Which data file contains the record
+    recordPos*: uint64   # Position of record in file (after CRC)
     valuePos*: uint64    # Position of value within file
     valueSize*: uint32   # Size of value
     timestamp*: int64    # For conflict resolution and TTL

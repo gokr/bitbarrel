@@ -2,6 +2,7 @@ import unittest
 import tables
 import locks
 import times
+import options
 import ../src/kvs/types
 import ../src/storage/keydir
 
@@ -37,7 +38,7 @@ suite "KeyDir Operations":
     var keyDir = init()
 
     let found = keyDir.get("non_existent")
-    check found.isNone()()
+    check found.isNone()
 
   test "delete keys":
     var keyDir = init()
@@ -52,9 +53,9 @@ suite "KeyDir Operations":
     check keyDir.len == 2
 
     # Delete a key
-    keyDir.delete("key1")
+    discard keyDir.delete("key1")
     check keyDir.len == 1
-    check keyDir.get("key1").isNone()()
+    check keyDir.get("key1").isNone()
     check keyDir.get("key2").isSome()
 
   test "update existing key":
@@ -70,7 +71,7 @@ suite "KeyDir Operations":
 
     # Should get the new entry
     let found = keyDir.get("mykey")
-    check found.isSome()()
+    check found.isSome()
     check found.get.fileId == 2
     check found.get.valuePos == 2000
     check found.get.timestamp == 2000000
@@ -90,7 +91,7 @@ suite "KeyDir Operations":
     # Multiple concurrent reads should work
     for i in 0..<10:
       let found = keyDir.get("concurrent_key")
-      check found.isSome()()
+      check found.isSome()
       check found.get.valuePos == 1234
 
   test "clear all entries":
@@ -105,5 +106,5 @@ suite "KeyDir Operations":
     # Clear all
     keyDir.clear()
     check keyDir.len == 0
-    check keyDir.get("key1").isNone()()
+    check keyDir.get("key1").isNone()
     check keyDir.get("key2").isNone()
