@@ -2,6 +2,7 @@
 
 import os
 import times
+import options
 import ../src/kvs/types
 import ../src/storage
 from ../src/storage/datafile import open
@@ -99,7 +100,14 @@ proc main() =
   for (key, expectedValue) in testKeys:
     let found = keyDir.get(key)
     if found.isSome():
-      let (readKey, readValue, _) = dataFile.readRecord(found.get().recordPos)
+      let entry = found.get()
+      let recordInfo = RecordInfo(
+        recordPos: entry.recordPos,
+        valuePos: entry.valuePos,
+        valueSize: entry.valueSize,
+        recordSize: entry.recordSize
+      )
+      let (readKey, readValue, _) = dataFile.readRecord(recordInfo)
       if readValue == expectedValue:
         echo "✓", key, "=>", readValue
         inc foundCount

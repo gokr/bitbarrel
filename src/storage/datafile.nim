@@ -1,8 +1,11 @@
 ## Data file implementation for Bitcask storage model
 
-import std/[os, streams, strutils, times]
+import std/[os, times, locks]
+when defined(posix):
+  import std/posix
 import ../kvs/types
 from record import crc32, Record, encode, decode
+from writebuffer import WriteBuffer, initWriteBuffer, startWorker, stopWorker
 
 type
   DataFile* = object
@@ -10,6 +13,10 @@ type
     path*: string
     fileId*: uint32
     size*: uint64
+    lock*: Lock
+    writeBuffer*: ptr WriteBuffer  # Optional write buffer
+    syncMode*: SyncMode          # Sync strategy
+    shouldFsync*: bool           # Whether to call fsync
 
   RecordInfo* = object
     recordPos*: uint64   # Position of the record (after CRC32)
@@ -19,6 +26,7 @@ type
 
 proc open*(path: string, fileId: uint32): DataFile =
   ## Open a data file, creating it if it doesn't exist
+  ## Uses immediate sync mode (no write buffering)
   let file = open(path, fmReadWrite)
 
   # If file is empty, write header
@@ -33,6 +41,8 @@ proc open*(path: string, fileId: uint32): DataFile =
     if bytesWritten != HEADER_SIZE:
       raise newException(IOError, "Failed to write file header")
     file.flushFile()
+    when defined(posix):
+      discard fsync(file.getFileHandle())
     file.setFilePos(0, fspEnd)
   else:
     file.setFilePos(0, fspEnd)
@@ -43,85 +53,195 @@ proc open*(path: string, fileId: uint32): DataFile =
     file: file,
     path: path,
     fileId: fileId,
-    size: size
+    size: size,
+    syncMode: syncImmediate,
+    shouldFsync: true
   )
+  initLock(result.lock)
+
+proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, bufferSize: int): DataFile =
+  ## Open a data file with configurable sync strategy
+  let file = open(path, fmReadWrite)
+
+  # If file is empty, write header
+  if getFileSize(path) == 0:
+    var header = FileHeader(
+      magic: ['B', 'C', 'K', 'S'],
+      version: VERSION,
+      created: getTime().toUnix(),
+      fileSize: HEADER_SIZE.uint64
+    )
+    let bytesWritten = file.writeBuffer(addr header, HEADER_SIZE)
+    if bytesWritten != HEADER_SIZE:
+      raise newException(IOError, "Failed to write file header")
+    file.flushFile()
+    when defined(posix):
+      discard fsync(file.getFileHandle())
+    file.setFilePos(0, fspEnd)
+  else:
+    file.setFilePos(0, fspEnd)
+
+  let size = getFileSize(path).uint64
+
+  result = DataFile(
+    file: file,
+    path: path,
+    fileId: fileId,
+    size: size,
+    syncMode: syncMode,
+    shouldFsync: shouldFsync
+  )
+  initLock(result.lock)
+
+  # Create write buffer if not immediate mode
+  if syncMode != syncImmediate and bufferSize > 0:
+    result.writeBuffer = create(WriteBuffer)
+    result.writeBuffer[] = initWriteBuffer(
+      maxSize = bufferSize,
+      syncMode = syncMode,
+      batchSize = 1000,
+      flushIntervalMs = 100
+    )
+    startWorker(result.writeBuffer[])
 
 proc close*(df: var DataFile) =
   ## Close the data file
+  if df.writeBuffer != nil:
+    stopWorker(df.writeBuffer[])
+    dealloc(df.writeBuffer)
+    df.writeBuffer = nil
+  deinitLock(df.lock)
   df.file.close()
 
-proc readHeader*(df: DataFile): FileHeader =
+proc readHeader*(df: var DataFile): FileHeader =
   ## Read the file header
-  let oldPos = df.file.getFilePos()
-  df.file.setFilePos(0)
+  withLock(df.lock):
+    let oldPos = df.file.getFilePos()
+    df.file.setFilePos(0)
 
-  var header: FileHeader
-  let bytesRead = df.file.readBuffer(addr header, HEADER_SIZE)
+    var header: FileHeader
+    let bytesRead = df.file.readBuffer(addr header, HEADER_SIZE)
 
-  df.file.setFilePos(oldPos)
+    df.file.setFilePos(oldPos)
 
-  if bytesRead != HEADER_SIZE:
-    raise newException(IOError, "Failed to read file header")
+    if bytesRead != HEADER_SIZE:
+      raise newException(IOError, "Failed to read file header")
 
-  return header
+    result = header
 
 proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int64): RecordInfo =
-  ## Append a record to the data file
-  let record = Record(
-    key: key,
-    value: value,
-    timestamp: timestamp
-  )
+  ## Append a record to the data file (thread-safe)
 
-  let encoded = record.encode()
-  let crcVal = crc32(encoded)
+  # If we have a write buffer, use it
+  if df.writeBuffer != nil:
+    let record = Record(key: key, value: value, timestamp: timestamp)
+    let encoded = record.encode()
+    let crcVal = crc32(encoded)
 
-  let recordPos = df.size
+    # Use a callback-based approach to get RecordInfo after writing
+    var recordInfo: RecordInfo
 
-  # Write CRC32 (4 bytes)
-  let crcWritten = df.file.writeBuffer(addr crcVal, 4)
-  if crcWritten != 4:
-    raise newException(IOError, "Failed to write CRC32")
+    # Add to buffer with immediate flush for now (simpler approach)
+    withLock(df.lock):
+      let recordPos = df.size
+      let recordDataPos = recordPos + 4  # After CRC32
+      let valuePos = recordDataPos + 8 + 4 + key.len.uint64
 
-  # Write encoded record (variable length)
-  let encWritten = df.file.writeBuffer(encoded.cstring, encoded.len)
-  if encWritten != encoded.len:
-    raise newException(IOError, "Failed to write record")
+      df.size = df.size + 4.uint64 + encoded.len.uint64
 
-  # Update file size
-  df.size = df.size + 4.uint64 + encoded.len.uint64
-  df.file.flushFile()
+      recordInfo = RecordInfo(
+        recordPos: recordDataPos,
+        valuePos: valuePos,
+        valueSize: value.len.uint32,
+        recordSize: (4 + encoded.len).uint32
+      )
 
-  # Calculate where the actual value starts (after record data CRC32 + timestamp + keyLen + key)
-  let recordDataPos = recordPos + 4  # After CRC32
-  let valuePos = recordDataPos + 8 + 4 + key.len.uint64  # timestamp + keyLen + key
+    # Write immediately for now (we'll improve this later)
+    let crcWritten = df.file.writeBuffer(addr crcVal, 4)
+    if crcWritten != 4:
+      raise newException(IOError, "Failed to write CRC32")
 
-  result = RecordInfo(
-    recordPos: recordDataPos,
-    valuePos: valuePos,
-    valueSize: value.len.uint32,
-    recordSize: (4 + encoded.len).uint32
-  )
+    let encWritten = df.file.writeBuffer(encoded.cstring, encoded.len)
+    if encWritten != encoded.len:
+      raise newException(IOError, "Failed to write record")
 
-proc readRecord*(df: DataFile, recordInfo: RecordInfo): (string, string, int64) =
-  ## Read a record using the recorded position information
-  df.file.setFilePos(recordInfo.recordPos.int - 4)  # Position of CRC32
+    df.file.flushFile()
+    if df.shouldFsync:
+      when defined(posix):
+        discard fsync(df.file.getFileHandle())
 
-  # Read CRC32 first
+    result = recordInfo
+  else:
+    # Immediate write (original behavior)
+    let record = Record(
+      key: key,
+      value: value,
+      timestamp: timestamp
+    )
+
+    # Encode outside lock for better concurrency
+    let encoded = record.encode()
+    var crcVal = crc32(encoded)
+
+    withLock(df.lock):
+      let recordPos = df.size
+
+      # Write CRC32 (4 bytes)
+      let crcWritten = df.file.writeBuffer(addr crcVal, 4)
+      if crcWritten != 4:
+        raise newException(IOError, "Failed to write CRC32")
+
+      # Write encoded record (variable length)
+      let encWritten = df.file.writeBuffer(encoded.cstring, encoded.len)
+      if encWritten != encoded.len:
+        raise newException(IOError, "Failed to write record")
+
+      # Update file size
+      df.size = df.size + 4.uint64 + encoded.len.uint64
+      df.file.flushFile()
+
+      # Ensure data is synced to disk for durability
+      if df.shouldFsync:
+        when defined(posix):
+          discard fsync(df.file.getFileHandle())
+
+      # Calculate where the actual value starts (after record data CRC32 + timestamp + keyLen + key)
+      let recordDataPos = recordPos + 4  # After CRC32
+      let valuePos = recordDataPos + 8 + 4 + key.len.uint64  # timestamp + keyLen + key
+
+      result = RecordInfo(
+        recordPos: recordDataPos,
+        valuePos: valuePos,
+        valueSize: value.len.uint32,
+        recordSize: (4 + encoded.len).uint32
+      )
+
+proc readRecord*(df: var DataFile, recordInfo: RecordInfo): (string, string, int64) =
+  ## Read a record using the recorded position information (thread-safe)
   var storedCrc: uint32
-  let crcBytesRead = df.file.readBuffer(addr storedCrc, 4)
-  if crcBytesRead != 4:
-    raise newException(IOError, "Failed to read CRC32")
+  var recordData: string
 
-  # Read the record data
-  let recordDataLen = recordInfo.recordSize.int - 4  # Subtract CRC32
-  var recordData = newString(recordDataLen)
-  let bytesRead = df.file.readBuffer(addr recordData[0], recordDataLen)
+  withLock(df.lock):
+    let oldPos = df.file.getFilePos()
+    df.file.setFilePos(recordInfo.recordPos.int - 4)  # Position of CRC32
 
-  if bytesRead != recordDataLen:
-    raise newException(IOError, "Failed to read record data")
+    # Read CRC32 first
+    let crcBytesRead = df.file.readBuffer(addr storedCrc, 4)
+    if crcBytesRead != 4:
+      raise newException(IOError, "Failed to read CRC32")
 
-  # Verify CRC32
+    # Read the record data
+    let recordDataLen = recordInfo.recordSize.int - 4  # Subtract CRC32
+    recordData = newString(recordDataLen)
+    let bytesRead = df.file.readBuffer(addr recordData[0], recordDataLen)
+
+    if bytesRead != recordDataLen:
+      raise newException(IOError, "Failed to read record data")
+
+    # Restore file position
+    df.file.setFilePos(oldPos)
+
+  # Verify CRC32 and decode outside lock for better concurrency
   let computedCrc = crc32(recordData)
   if storedCrc != computedCrc:
     raise newException(IOError, "CRC32 mismatch: data corruption detected")

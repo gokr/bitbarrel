@@ -17,7 +17,7 @@ proc main() =
   echo "╚════════════════════════════════════════════╝"
   echo ""
 
-  let dbPath = "samples/demo_basic.data"
+  let dbPath = "examples/demo_basic.data"
   defer:
     if fileExists(dbPath):
       removeFile(dbPath)

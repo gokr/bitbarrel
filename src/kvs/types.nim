@@ -23,6 +23,25 @@ type
     timestamp*: int64    # For conflict resolution and TTL
     recordSize*: uint32  # Total record size for merge decisions
 
+  # Write buffering configuration
+  SyncMode* = enum
+    syncImmediate    # Sync on every write (current behavior)
+    syncBuffered    # Buffer in memory, sync periodically
+    syncBatched     # Sync every N writes
+    syncTimeBased    # Sync every X milliseconds
+
+  BufferedEntry* = object
+    key*: string
+    value*: string
+    timestamp*: int64
+    whenReady*: proc(key: string, value: string, timestamp: int64)  # Callback
+
+  WriteBufferStats* = object
+    entriesWritten*: int64
+    buffersFlushed*: int64
+    entriesDropped*: int64
+    maxBufferDepth*: int
+
   Command* = enum
     cmdGet = 0x01
     cmdSet = 0x02

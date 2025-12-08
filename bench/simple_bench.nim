@@ -7,6 +7,8 @@ import os
 import times
 import strformat
 import strutils
+import random
+import options
 import ../src/kvs/types
 import ../src/storage
 from ../src/storage/datafile import open
@@ -56,15 +58,18 @@ proc benchmarkWrites(dataFile: var DataFile, keyDir: var KeyDir, count: int) =
   let mibWritten = (valueSizeTotal.float + (count * 60).float) / (1024.0 * 1024.0)  # Approximate total size
 
   echo &"  ✓ Completed in {elapsed:.3f} seconds"
-  echo &"  ✓ Throughput: {throughput:,.0f} ops/sec"
+  echo &"  ✓ Throughput: {throughput:.0f} ops/sec"
   echo &"  ✓ Data rate: {mibWritten / elapsed:.2f} MiB/sec"
   echo &"  ✓ Avg latency: {(elapsed * 1000.0 / count.float):.3f} ms per op"
 
-proc benchmarkReads(dataFile: DataFile, keyDir: var KeyDir, count: int, random: bool = false) =
+proc benchmarkReads(dataFile: var DataFile, keyDir: var KeyDir, count: int, random: bool = false) =
   ## Benchmark read operations
   let accessType = if random: "Random" else: "Sequential"
   printHeader(&"Read Benchmark ({accessType})")
   echo &"  Records to read: {formatNumber(count.int64)}"
+
+  if random:
+    randomize()
 
   let start = getTime().toUnixFloat()
   var foundCount = 0
@@ -91,7 +96,7 @@ proc benchmarkReads(dataFile: DataFile, keyDir: var KeyDir, count: int, random: 
   let hitRate = foundCount.float / count.float * 100.0
 
   echo &"  ✓ Completed in {elapsed:.3f} seconds"
-  echo &"  ✓ Throughput: {throughput:,.0f} ops/sec"
+  echo &"  ✓ Throughput: {throughput:.0f} ops/sec"
   echo &"  ✓ Hit rate: {hitRate:.1f}%"
   echo &"  ✓ Avg latency: {(elapsed * 1000.0 / count.float):.3f} ms per op"
 
@@ -144,18 +149,18 @@ proc benchmarkMixed(dataFile: var DataFile, keyDir: var KeyDir, count: int, read
   let writeThroughput = writes.float / elapsed
 
   echo &"  ✓ Completed in {elapsed:.3f} seconds"
-  echo &"  ✓ Overall throughput: {throughput:,.0f} ops/sec"
-  echo &"  ✓ Read throughput: {readThroughput:,.0f} ops/sec ({reads} ops)"
-  echo &"  ✓ Write throughput: {writeThroughput:,.0f} ops/sec ({writes} ops)"
+  echo &"  ✓ Overall throughput: {throughput:.0f} ops/sec"
+  echo &"  ✓ Read throughput: {readThroughput:.0f} ops/sec ({reads} ops)"
+  echo &"  ✓ Write throughput: {writeThroughput:.0f} ops/sec ({writes} ops)"
 
 proc printSystemInfo() =
   ## Print system information
   printHeader("System Information")
   echo &"  Nim version: {NimVersion}"
-  echo &"  Build: {compileDate} {compileTime}"
+  echo &"  Build: {CompileDate} {CompileTime}"
   echo &"  OS: {hostOS}"
   echo &"  CPU: {hostCPU}"
-  echo &"  Optimization: {'Release' if compileOption("release") else 'Debug'}"
+  echo "  Optimization: ", if defined(release): "Release" else: "Debug"
 when defined(gcDestructors):
   echo &"  GC: ARC/ORC"
 else:
@@ -176,7 +181,7 @@ proc main() =
     removeFile(dbPath)
 
   # Create benchmark directory if needed
-  let dir = splitPath(dbPath).dir
+  let (dir, _) = splitPath(dbPath)
   if dir.len > 0 and not dirExists(dir):
     createDir(dir)
 

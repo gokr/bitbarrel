@@ -1,7 +1,7 @@
 ## Simple High-Level KVS Demo
 ##
 ## Demonstrates simplified API with automatic KeyDir management
-## Run with: nim c -r samples/simple_kv_demo.nim
+## Run with: nim c -r examples/simple_kv_demo.nim
 
 import os
 import times
@@ -110,7 +110,7 @@ proc main() =
   echo "╚════════════════════════════════════════════╝"
   echo ""
 
-  let dbPath = "samples/simple_kv.data"
+  let dbPath = "examples/simple_kv.data"
   defer:
     if fileExists(dbPath):
       removeFile(dbPath)
