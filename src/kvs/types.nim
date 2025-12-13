@@ -1,5 +1,7 @@
 ## Common types and constants for the KVS implementation
 
+import times
+
 const
   MAGIC_NUMBER* = "BCKS"
   VERSION* = 1'u32
@@ -50,8 +52,42 @@ type
     cmdScan = 0x05
     cmdStats = 0x06
 
-  Status* = enum
-    statusOK = 0x00
-    statusError = 0x01
-    statusNotFound = 0x02
-    statusServerError = 0x03
+  # Merge configuration
+  MergeConfig* = object
+    enabled*: bool
+    maxFileSize*: uint64
+    minFilesToMerge*: int
+    triggerThreshold*: float
+    maxMergeThreads*: int
+    mergeInterval*: int
+    mergeIntervalBytes*: int64
+    skipThreshold*: int
+
+  FileState* = enum
+    fsActive     # Currently writable
+    fsImmutable   # Read-only, candidate for merge
+    fsMerging    # Currently being merged
+    fsDeleted    # Marked for deletion
+
+  FileInfo* = object
+    path*: string               # Full path to file
+    id*: uint32                # File ID
+    size*: uint64                # Current file size
+    state*: FileState            # Current state
+    created*: Time               # Creation timestamp
+    lastModified*: Time           # Last modification
+    deleteCount*: int            # Number of deleted/tombstone records
+    totalRecords*: int           # Total records in file
+    duplicateCount*: int         # Superseded records
+    liveRecords*: int            # Active (non-deleted) records
+
+  MergeStats* = object
+    filesProcessed*: int
+    recordsScanned*: int
+    recordsKept*: int
+    recordsDropped*: int
+    bytesScanned*: int64
+    bytesWritten*: int64
+    timeStarted*: Time
+    timeCompleted*: Time
+

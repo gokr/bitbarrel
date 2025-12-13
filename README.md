@@ -44,35 +44,47 @@ nimble benchCrunchy
 nimble stress
 ```
 
-### Use in Your Code
+### Use as Library
+
+The KVS can be installed via nimble and used as a library in your projects:
 
 ```nim
-import ../src/kvs/types
-import ../src/storage
-from ../src/storage/datafile import open
-from ../src/storage/keydir import init
+# Install the package
+# nimble install kvs
 
-# Open a data file
-var dataFile = open("mydb.data", 1'u32)
-var keyDir = init()
+# Simple high-level API
+import kvs
 
-# SET operation
-let info = dataFile.appendRecord("key", "value", timestamp)
-keyDir.add("key", KeyDirEntry(
-  fileId: 1,
-  recordPos: info.recordPos,
-  valuePos: info.valuePos,
-  valueSize: info.valueSize,
-  timestamp: timestamp,
-  recordSize: info.recordSize
-))
+var db = openDatabase("mydb")
+db.set("key", "value")
+echo db.get("key")  # "value"
+db.close()
+```
 
-# GET operation
-let found = keyDir.get("key")
-if found.isSome():
-  let entry = found.get()
-  let (key, value, ts) = dataFile.readRecord(entry.recordPos)
-  echo value
+#### With Configuration
+
+```nim
+import kvs
+from kvs/simpleapi import UserSyncMode, defaultConfig
+
+var cfg = defaultConfig()
+cfg.syncMode = UserSyncMode.Fsync
+cfg.writeBufferSize = 1024 * 1024  # 1MB buffer
+
+var db = openDatabase("mydb", cfg)
+# ... use db
+```
+
+#### Low-Level API
+
+For advanced use cases, you can use the low-level storage API:
+
+```nim
+# For backward compatibility or fine-grained control
+import kvs/[lowlevelapi, simpleapi]
+
+var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
+# Work directly with data files
 ```
 
 See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
@@ -128,8 +140,11 @@ Memory: ~40 bytes per key overhead
 ```
 kvstore/
 ├── src/                      # Source code
-│   ├── kvs.nim              # Main module
+│   ├── kvs.nim              # Library & CLI entry point
 │   ├── kvs/types.nim        # Common types
+│   ├── kvs/simpleapi.nim    # High-level API
+│   ├── kvs/lowlevelapi.nim  # Low-level wrapper
+│   ├── kvs/config.nim       # Configuration system
 │   └── storage/             # Storage engine
 │       ├── datafile.nim     # Data file format
 │       ├── keydir.nim       # In-memory index

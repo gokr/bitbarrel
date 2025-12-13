@@ -274,14 +274,119 @@ Avg read latency:  ~0.009 ms
 3. Read-ahead buffering
 4. Async I/O for network layer
 
-## Advanced Usage
+## Library Usage
 
-### Custom Configuration
+### High-Level API (Recommended)
+
+The high-level API provides a simple interface for most use cases:
 
 ```nim
-import ../src/kvs/types
-import ../src/storage
-import ../src/storage/datafile
+import kvs
+
+# Basic usage
+var db = openDatabase("mydb")
+db.set("user:1", "Alice")
+db.set("user:2", "Bob")
+echo db.get("user:1")  # "Alice"
+echo db.count()         # 2
+db.close()
+```
+
+### Configuration Options
+
+The high-level API supports several configuration options:
+
+```nim
+import kvs
+from kvs/simpleapi import UserSyncMode, defaultConfig
+
+# Create custom configuration
+var cfg = defaultConfig()
+cfg.writeBufferSize = 1024 * 1024  # 1MB write buffer
+cfg.syncMode = UserSyncMode.Fsync   # Force fsync on writes
+cfg.autoCompact = true
+cfg.compactThreshold = 0.3  # Compact when 30% are deletions
+
+# Open database with custom config
+var db = openDatabase("mykv", cfg)
+
+# Use the database normally
+db.set("test", "value")
+db.delete("old_key")
+db.close()
+```
+
+#### Sync Modes
+
+- **UserSyncMode.None**: No explicit sync (fastest, potential data loss)
+- **UserSyncMode.Sync**: Sync to OS buffer cache (default)
+- **UserSyncMode.Fsync**: Force disk sync (safest, slowest)
+
+### Simple Operations
+
+```nim
+import kvs
+
+var db = openDatabase("mydb")
+
+# Basic CRUD
+db.set("key", "value")           # Returns bool for success
+let value = db.get("key")        # Returns "" if not found
+let exists = db.exists("key")    # Returns bool
+
+# Delete with tombstone
+db.delete("key")
+
+# Get all keys
+let allKeys = db.listKeys()
+
+# Clear all keys (in-memory only)
+db.clear()
+
+# Check if database is closed
+echo db.isClosed()  # false
+
+db.close()
+```
+
+## Advanced Usage
+
+### Low-Level API
+
+For fine-grained control, use the low-level API:
+
+```nim
+import kvs/[lowlevelapi, simpleapi]
+
+# Work directly with data files
+var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
+var kd = lowlevelapi.withKeyDir:
+  # Use KeyDir inside this block
+
+# Helper functions
+var entry = lowlevelapi.newKeyDirEntry(
+  fileId = 1,
+  recordPos = 100,
+  valuePos = 150,
+  valueSize = 20,
+  timestamp = getTime().toUnix(),
+  recordSize = 70
+)
+
+var info = lowlevelapi.newRecordInfo(
+  recordPos = 100,
+  valuePos = 150,
+  valueSize = 20,
+  recordSize = 70
+)
+```
+
+### Custom Configuration (Low-Level)
+
+```nim
+import kvs/types
+import storage/datafile
+import storage/keydir
 
 # Configure file size limits
 const
@@ -289,8 +394,11 @@ const
   MAX_KEY_SIZE = 1024                # 1KB max key
   MAX_VALUE_SIZE = 10 * 1024 * 1024  # 10MB max value
 
-# Create data file with custom file ID
-var dataFile = open("mydb_001.data", 1'u32)
+# Create data file with custom sync mode
+var dataFile = open("mydb_001.data", 1'u32,
+                   syncMode = syncBuffered,
+                   shouldFsync = true,
+                   bufferSize = 64 * 1024)
 
 # Initialize KeyDir
 var keyDir = init()
@@ -358,10 +466,55 @@ proc verifyData(dataFile: DataFile, keyDir: var KeyDir) =
 
 ### Custom Serialization
 
-While keys and values are stored as raw bytes, you can layer serialization on top:
+#### With High-Level API
 
 ```nim
 import json
+import kvs
+from kvs/simpleapi import SimpleKVS
+
+type
+  User* = object
+    name*: string
+    email*: string
+    age*: int
+
+proc saveUser(db: SimpleKVS, userId: string, user: User): bool =
+  let jsonStr = $$user  # Quick JSON conversion
+  return db.set("user:" & userId, jsonStr)
+
+proc loadUser(db: SimpleKVS, userId: string): Option[User] =
+  let jsonStr = db.get("user:" & userId)
+  if jsonStr.len > 0:
+    try:
+      let jsonNode = parseJson(jsonStr)
+      result = some(User(
+        name: jsonNode["name"].getStr(),
+        email: jsonNode["email"].getStr(),
+        age: jsonNode["age"].getInt()
+      ))
+    except:
+      result = none(User)
+
+# Usage
+var db = openDatabase("users.db")
+let user = User(name: "Alice", email: "alice@example.com", age: 30)
+discard db.saveUser("12345", user)
+
+let loaded = db.loadUser("12345")
+if loaded.isSome():
+  let u = loaded.get()
+  echo &"User: {u.name}, {u.email}"
+db.close()
+```
+
+#### With Low-Level API
+
+```nim
+import json
+import kvs/types
+import storage/datafile
+import storage/keydir
 
 type
   User* = object
