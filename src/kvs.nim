@@ -1,13 +1,8 @@
-## Main KVS module - Public API
+## KVS Main Entry Point
+##
+## This is the main binary entry point for the KVS application
 
-# Export all core types and functionality
-import kvs/types
-import storage/record
-import storage/datafile
-import storage/keydir
+import cli/main
 
-# Re-export all public symbols
-export types
-export record
-export datafile
-export keydir
+when isMainModule:
+  main()

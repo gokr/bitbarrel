@@ -29,13 +29,16 @@ A simple but extremely performant key/value store implemented in Nim using the B
 nimble install
 
 # Run basic CRUD demo
-nim c -r samples/basic_demo.nim
+nim c -r examples/basic_demo.nim
 
 # Run detailed demo with stats
-nim c -r examples/demo.nim
+nim c -r examples/simple_kv_demo.nim
 
-# Run benchmark
+# Run benchmark (default implementation)
 nimble bench
+
+# Run benchmark with crunchy CRC32
+nimble benchCrunchy
 
 # Run stress test
 nimble stress
@@ -83,6 +86,33 @@ Writes: ~90,000 ops/sec (1000 writes in ~0.011s)
 Reads:  ~110,000 ops/sec (1000 reads in ~0.009s)
 Latency: < 0.02ms per operation
 ```
+
+### CRC32 Implementation Performance
+
+Two CRC32 implementations are available, controlled at compile time:
+
+**Original (Default)**: Lookup table-based CRC32 in pure Nim
+- **Faster** for this workload: ~600 ops/sec writes, ~100K ops/sec reads
+- No external dependencies
+- Pure Nim implementation
+- Recommended for production use
+
+**Crunchy**: SIMD-optimized CRC32 from crunchy library
+- Available via `-d:useCrunchy` compile flag
+- Currently **slower** for this workload: ~559 ops/sec writes, ~49K ops/sec reads (-7% to -53% depending on operation)
+- External dependency
+- May benefit different workloads or larger data sizes in the future
+- Kept for testing and architectural flexibility
+
+```bash
+# Use original implementation (default, recommended)
+nimble bench
+
+# Use crunchy implementation (for testing/comparison only)
+nimble benchCrunchy
+```
+
+**Note**: Our benchmarks show the original lookup table implementation outperforms crunchy for the current workload. The crunchy option is maintained for potential future benefits with different access patterns or larger data sizes. See `bench/crc32_performance_summary.md` for detailed comparison.
 
 ### With Planned Optimizations
 

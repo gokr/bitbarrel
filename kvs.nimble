@@ -10,6 +10,8 @@ bin           = @["kvs"]
 # Dependencies
 
 requires "nim >= 2.2.6"
+requires "crunchy >= 0.1.0"
+requires "yaml >= 2.1.0"
 
 # Task for testing
 
@@ -41,6 +43,9 @@ task demoSample, "Run detailed demo":
 
 task bench, "Run performance benchmark":
   exec "nim c -d:release -r bench/simple_bench.nim"
+
+task benchCrunchy, "Run performance benchmark with crunchy CRC32":
+  exec "nim c -d:release -d:useCrunchy -r bench/simple_bench.nim"
 
 # Task for stress testing
 
