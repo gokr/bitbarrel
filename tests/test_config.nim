@@ -83,10 +83,10 @@ logging:
 
   test "Environment variable overrides":
     # Set some environment variables
-    putEnv("KVS_SERVER__PORT", "7777")
-    putEnv("KVS_STORAGE__DATA_DIR", "/env/data")
-    putEnv("KVS_LOGGING__LEVEL", "warn")
-    putEnv("KVS_MERGE__ENABLED", "false")
+    putEnv("KVS_SERVER_PORT", "7777")
+    putEnv("KVS_STORAGE_DATA_DIR", "/env/data")
+    putEnv("KVS_LOGGING_LEVEL", "warn")
+    putEnv("KVS_MERGE_ENABLED", "false")
 
     var config = getDefaultConfig()
 
@@ -101,10 +101,10 @@ logging:
 
     finally:
       # Clean up environment
-      delEnv("KVS_SERVER__PORT")
-      delEnv("KVS_STORAGE__DATA_DIR")
-      delEnv("KVS_LOGGING__LEVEL")
-      delEnv("KVS_MERGE__ENABLED")
+      delEnv("KVS_SERVER_PORT")
+      delEnv("KVS_STORAGE_DATA_DIR")
+      delEnv("KVS_LOGGING_LEVEL")
+      delEnv("KVS_MERGE_ENABLED")
 
   test "Configuration validation":
     var config = getDefaultConfig()
@@ -223,7 +223,7 @@ logging:
     writeFile(tempFile, yamlContent)
 
     # Set environment variable
-    putEnv("KVS_SERVER__MAX_CONNECTIONS", "2000")
+    putEnv("KVS_SERVER_MAX_CONNECTIONS", "2000")
 
     try:
       # Initialize configuration
@@ -241,4 +241,4 @@ logging:
 
     finally:
       removeFile(tempFile)
-      delEnv("KVS_SERVER__MAX_CONNECTIONS")
+      delEnv("KVS_SERVER_MAX_CONNECTIONS")

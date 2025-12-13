@@ -18,66 +18,66 @@ var gConfig*: KVSConfig
 
 proc loadFromEnvironment*(config: var KVSConfig) =
   ## Load configuration from environment variables
-  ## Pattern: KVS_SECTION__SETTING
+  ## Pattern: KVS_SECTION_SETTING
   # Server settings
-  if existsEnv("KVS_SERVER__ADDRESS"):
-    config.server.address = getEnv("KVS_SERVER__ADDRESS")
-  if existsEnv("KVS_SERVER__PORT"):
-    config.server.port = parseInt(getEnv("KVS_SERVER__PORT"))
-  if existsEnv("KVS_SERVER__MAX_CONNECTIONS"):
-    config.server.maxConnections = parseInt(getEnv("KVS_SERVER__MAX_CONNECTIONS"))
-  if existsEnv("KVS_SERVER__TIMEOUT"):
-    config.server.timeout = parseInt(getEnv("KVS_SERVER__TIMEOUT"))
+  if existsEnv("KVS_SERVER_ADDRESS"):
+    config.server.address = getEnv("KVS_SERVER_ADDRESS")
+  if existsEnv("KVS_SERVER_PORT"):
+    config.server.port = parseInt(getEnv("KVS_SERVER_PORT"))
+  if existsEnv("KVS_SERVER_MAX_CONNECTIONS"):
+    config.server.maxConnections = parseInt(getEnv("KVS_SERVER_MAX_CONNECTIONS"))
+  if existsEnv("KVS_SERVER_TIMEOUT"):
+    config.server.timeout = parseInt(getEnv("KVS_SERVER_TIMEOUT"))
 
   # Storage settings
-  if existsEnv("KVS_STORAGE__DATA_DIR"):
-    config.storage.dataDir = getEnv("KVS_STORAGE__DATA_DIR")
-  if existsEnv("KVS_STORAGE__MAX_FILE_SIZE"):
-    config.storage.maxFileSize = parseBiggestInt(getEnv("KVS_STORAGE__MAX_FILE_SIZE"))
-  if existsEnv("KVS_STORAGE__MAX_KEY_SIZE"):
-    config.storage.maxKeySize = parseInt(getEnv("KVS_STORAGE__MAX_KEY_SIZE"))
-  if existsEnv("KVS_STORAGE__MAX_VALUE_SIZE"):
-    config.storage.maxValueSize = parseBiggestInt(getEnv("KVS_STORAGE__MAX_VALUE_SIZE"))
-  if existsEnv("KVS_STORAGE__SYNC_MODE"):
-    config.storage.syncMode = parseSyncMode(getEnv("KVS_STORAGE__SYNC_MODE"))
-  if existsEnv("KVS_STORAGE__FSYNC_INTERVAL"):
-    config.storage.fsyncInterval = parseInt(getEnv("KVS_STORAGE__FSYNC_INTERVAL"))
+  if existsEnv("KVS_STORAGE_DATA_DIR"):
+    config.storage.dataDir = getEnv("KVS_STORAGE_DATA_DIR")
+  if existsEnv("KVS_STORAGE_MAX_FILE_SIZE"):
+    config.storage.maxFileSize = parseBiggestInt(getEnv("KVS_STORAGE_MAX_FILE_SIZE"))
+  if existsEnv("KVS_STORAGE_MAX_KEY_SIZE"):
+    config.storage.maxKeySize = parseInt(getEnv("KVS_STORAGE_MAX_KEY_SIZE"))
+  if existsEnv("KVS_STORAGE_MAX_VALUE_SIZE"):
+    config.storage.maxValueSize = parseBiggestInt(getEnv("KVS_STORAGE_MAX_VALUE_SIZE"))
+  if existsEnv("KVS_STORAGE_SYNC_MODE"):
+    config.storage.syncMode = parseSyncMode(getEnv("KVS_STORAGE_SYNC_MODE"))
+  if existsEnv("KVS_STORAGE_FSYNC_INTERVAL"):
+    config.storage.fsyncInterval = parseInt(getEnv("KVS_STORAGE_FSYNC_INTERVAL"))
 
   # Performance settings
-  if existsEnv("KVS_PERFORMANCE__WORKER_THREADS"):
-    config.performance.workerThreads = parseInt(getEnv("KVS_PERFORMANCE__WORKER_THREADS"))
-  if existsEnv("KVS_PERFORMANCE__WRITE_BUFFER_SIZE"):
-    config.performance.writeBufferSize = parseInt(getEnv("KVS_PERFORMANCE__WRITE_BUFFER_SIZE"))
-  if existsEnv("KVS_PERFORMANCE__WRITE_BUFFER_TIMEOUT"):
-    config.performance.writeBufferTimeout = parseInt(getEnv("KVS_PERFORMANCE__WRITE_BUFFER_TIMEOUT"))
-  if existsEnv("KVS_PERFORMANCE__READ_AHEAD_SIZE"):
-    config.performance.readAheadSize = parseInt(getEnv("KVS_PERFORMANCE__READ_AHEAD_SIZE"))
-  if existsEnv("KVS_PERFORMANCE__CACHE_SIZE"):
-    config.performance.cacheSize = parseInt(getEnv("KVS_PERFORMANCE__CACHE_SIZE"))
+  if existsEnv("KVS_PERFORMANCE_WORKER_THREADS"):
+    config.performance.workerThreads = parseInt(getEnv("KVS_PERFORMANCE_WORKER_THREADS"))
+  if existsEnv("KVS_PERFORMANCE_WRITE_BUFFER_SIZE"):
+    config.performance.writeBufferSize = parseInt(getEnv("KVS_PERFORMANCE_WRITE_BUFFER_SIZE"))
+  if existsEnv("KVS_PERFORMANCE_WRITE_BUFFER_TIMEOUT"):
+    config.performance.writeBufferTimeout = parseInt(getEnv("KVS_PERFORMANCE_WRITE_BUFFER_TIMEOUT"))
+  if existsEnv("KVS_PERFORMANCE_READ_AHEAD_SIZE"):
+    config.performance.readAheadSize = parseInt(getEnv("KVS_PERFORMANCE_READ_AHEAD_SIZE"))
+  if existsEnv("KVS_PERFORMANCE_CACHE_SIZE"):
+    config.performance.cacheSize = parseInt(getEnv("KVS_PERFORMANCE_CACHE_SIZE"))
 
   # Merge settings
-  if existsEnv("KVS_MERGE__ENABLED"):
-    config.merge.enabled = parseBool(getEnv("KVS_MERGE__ENABLED"))
-  if existsEnv("KVS_MERGE__TRIGGER_THRESHOLD"):
-    config.merge.triggerThreshold = parseFloat(getEnv("KVS_MERGE__TRIGGER_THRESHOLD"))
-  if existsEnv("KVS_MERGE__MAX_MERGE_THREADS"):
-    config.merge.maxMergeThreads = parseInt(getEnv("KVS_MERGE__MAX_MERGE_THREADS"))
-  if existsEnv("KVS_MERGE__MERGE_INTERVAL"):
-    config.merge.mergeInterval = parseInt(getEnv("KVS_MERGE__MERGE_INTERVAL"))
-  if existsEnv("KVS_MERGE__MIN_FILE_SIZE"):
-    config.merge.minFileSize = parseBiggestInt(getEnv("KVS_MERGE__MIN_FILE_SIZE"))
+  if existsEnv("KVS_MERGE_ENABLED"):
+    config.merge.enabled = parseBool(getEnv("KVS_MERGE_ENABLED"))
+  if existsEnv("KVS_MERGE_TRIGGER_THRESHOLD"):
+    config.merge.triggerThreshold = parseFloat(getEnv("KVS_MERGE_TRIGGER_THRESHOLD"))
+  if existsEnv("KVS_MERGE_MAX_MERGE_THREADS"):
+    config.merge.maxMergeThreads = parseInt(getEnv("KVS_MERGE_MAX_MERGE_THREADS"))
+  if existsEnv("KVS_MERGE_MERGE_INTERVAL"):
+    config.merge.mergeInterval = parseInt(getEnv("KVS_MERGE_MERGE_INTERVAL"))
+  if existsEnv("KVS_MERGE_MIN_FILE_SIZE"):
+    config.merge.minFileSize = parseBiggestInt(getEnv("KVS_MERGE_MIN_FILE_SIZE"))
 
   # Logging settings
-  if existsEnv("KVS_LOGGING__LEVEL"):
-    config.logging.level = getEnv("KVS_LOGGING__LEVEL")
-  if existsEnv("KVS_LOGGING__FILE"):
-    config.logging.file = getEnv("KVS_LOGGING__FILE")
-  if existsEnv("KVS_LOGGING__MAX_SIZE"):
-    config.logging.maxSize = parseBiggestInt(getEnv("KVS_LOGGING__MAX_SIZE"))
-  if existsEnv("KVS_LOGGING__MAX_BACKUPS"):
-    config.logging.maxBackups = parseInt(getEnv("KVS_LOGGING__MAX_BACKUPS"))
-  if existsEnv("KVS_LOGGING__FORMAT"):
-    config.logging.format = getEnv("KVS_LOGGING__FORMAT")
+  if existsEnv("KVS_LOGGING_LEVEL"):
+    config.logging.level = getEnv("KVS_LOGGING_LEVEL")
+  if existsEnv("KVS_LOGGING_FILE"):
+    config.logging.file = getEnv("KVS_LOGGING_FILE")
+  if existsEnv("KVS_LOGGING_MAX_SIZE"):
+    config.logging.maxSize = parseBiggestInt(getEnv("KVS_LOGGING_MAX_SIZE"))
+  if existsEnv("KVS_LOGGING_MAX_BACKUPS"):
+    config.logging.maxBackups = parseInt(getEnv("KVS_LOGGING_MAX_BACKUPS"))
+  if existsEnv("KVS_LOGGING_FORMAT"):
+    config.logging.format = getEnv("KVS_LOGGING_FORMAT")
 
 proc initConfig*(configFile: string = "kvs.yaml"): KVSConfig {.discardable.} =
   ## Initialize configuration with the specified file

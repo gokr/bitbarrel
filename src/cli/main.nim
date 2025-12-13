@@ -47,7 +47,7 @@ EXAMPLES:
   kvs server                            # Start server with default config
   kvs -c prod.yaml server               # Start server with custom config
   kvs -d /data -p 9090 server           # Override data dir and port
-  KVS_SERVER__PORT=9090 kvs server     # Override via environment variable
+  KVS_SERVER_PORT=9090 kvs server      # Override via environment variable
 """
 
 proc showVersion*() =

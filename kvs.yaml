@@ -1,5 +1,10 @@
 # KVS Configuration File
 # All values have reasonable defaults
+#
+# Values can be overridden via environment variables:
+# Pattern: KVS_SECTION_SETTING (e.g., KVS_SERVER_PORT=9090)
+# Supported env vars: KVS_SERVER_*, KVS_STORAGE_*, KVS_PERFORMANCE_*,
+#                   KVS_MERGE_*, KVS_LOGGING_*
 
 server:
   address: "0.0.0.0"
