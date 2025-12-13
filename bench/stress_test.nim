@@ -3,11 +3,7 @@
 ## Pushes the system to its limits
 ## Run with: nim c -r -d:release bench/stress_test.nim
 
-import os
-import times
-import random
-import strformat
-import strutils
+import os, times, random, strformat, strutils, times, random, options
 import ../src/kvs/types
 import ../src/storage
 from ../src/storage/datafile import open
@@ -179,7 +175,7 @@ proc testRapidWrites(count: int = 10000) =
   let throughput = count.float / elapsed
 
   echo &"\n  ✅ Completed in {elapsed:.3f} seconds"
-  echo &"  ✓ Throughput: {throughput:,.0f} writes/sec"
+  echo &"  ✓ Throughput: {throughput:.1f} writes/sec"
   echo &"  ✓ Errors: {errors}"
   echo &"  ✓ Keys stored: {keyDir.len}"
   echo &"  ✓ File size: {formatNumber(getFileSize(dbPath).int64)} bytes"
@@ -271,7 +267,7 @@ proc testRandomAccess(count: int = 5000) =
   echo &"  ✓ Total operations: {totalOps}"
   echo &"  ✓ Read ops: {reads} (errors: {readErrors})"
   echo &"  ✓ Write ops: {writes} (errors: {writeErrors})"
-  echo &"  ✓ Throughput: {throughput:,.0f} ops/sec"
+  echo &"  ✓ Throughput: {throughput:.1f} ops/sec"
   echo &"  ✓ Database size: {formatNumber(getFileSize(dbPath).int64)} bytes"
   echo &"  ✓ Keys stored: {formatNumber(keyDir.len.int64)}"
 
@@ -315,7 +311,7 @@ proc testMemoryUsage(sampleCount: int = 100000) =
   let throughput = sampleCount.float / elapsed
 
   echo &"\n  ✅ Memory test completed in {elapsed:.3f} seconds"
-  echo &"  ✓ Throughput: {throughput:,.0f} writes/sec"
+  echo &"  ✓ Throughput: {throughput:.1f} writes/sec"
   echo &"  ✓ Keys stored: {formatNumber(keyDir.len.int64)}"
   echo &"  ✓ File size: {formatNumber(getFileSize(dbPath).int64)} bytes"
   echo &"  ✓ Estimated memory overhead: ~{(getFileSize(dbPath).float * 0.05):.0f} bytes per key"

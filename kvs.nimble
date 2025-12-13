@@ -32,10 +32,10 @@ task testIntegration, "Run integration tests":
 # Tasks for running demos
 
 task demoBasic, "Run basic CRUD demo":
-  exec "nim c -r samples/basic_demo.nim"
+  exec "nim c -r examples/basic_demo.nim"
 
 task demoSample, "Run detailed demo":
-  exec "nim c -r samples/simple_kv_demo.nim"
+  exec "nim c -r examples/simple_kv_demo.nim"
 
 # Task for benchmarking
 
