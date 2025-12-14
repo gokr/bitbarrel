@@ -21,6 +21,7 @@ task test, "Run all tests":
   exec "nim c -r tests/test_integration.nim"
   exec "nim c -r tests/test_record.nim"
   exec "nim c -r tests/test_error_handling.nim"
+  exec "nim c -r tests/test_recovery.nim"
 
 task testStorage, "Run storage tests":
   exec "nim c -r tests/test_storage.nim"
@@ -30,6 +31,9 @@ task testKeydir, "Run KeyDir tests":
 
 task testIntegration, "Run integration tests":
   exec "nim c -r tests/test_integration.nim"
+
+task testRecovery, "Run recovery tests":
+  exec "nim c -r tests/test_recovery.nim"
 
 # Tasks for running demos
 
@@ -72,6 +76,7 @@ task quickTest, "Run quick test suite":
   exec "nim c -r tests/test_integration.nim"
   exec "nim c -r tests/test_record.nim"
   exec "nim c -r tests/test_error_handling.nim"
+  exec "nim c -r tests/test_recovery.nim"
 
 # Full test - tests + demos + benchmarks
 
@@ -82,6 +87,7 @@ task fullTest, "Run full test suite":
   exec "nim c -r tests/test_integration.nim"
   exec "nim c -r tests/test_record.nim"
   exec "nim c -r tests/test_error_handling.nim"
+  exec "nim c -r tests/test_recovery.nim"
   echo ""
   echo "=== Running Demos ==="
   exec "nim c -r samples/basic_demo.nim"
@@ -97,7 +103,7 @@ task clean, "Clean up generated data files":
   exec "rm -f samples/*.data"
   exec "rm -f examples/*.data"
   # Remove compiled test binaries
-  exec "rm -f tests/test_storage tests/test_keydir tests/test_integration"
+  exec "rm -f tests/test_storage tests/test_keydir tests/test_integration tests/test_recovery"
   exec "rm -f bench/simple_bench bench/stress_test"
   exec "rm -f samples/basic_demo samples/simple_kv_demo"
   echo "Cleaned up generated data files and binaries"
