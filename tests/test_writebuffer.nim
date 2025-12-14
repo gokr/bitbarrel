@@ -7,22 +7,23 @@ import ../src/kvs/types
 
 suite "Write Buffer Tests":
   test "write buffer initialization":
+    var flushedCount = 0
     var buffer = initWriteBuffer(
       maxSize = 100,
       syncMode = syncBatched,
       batchSize = 10,
       flushIntervalMs = 100,
-      whenReadyCB = proc(key: string, value: string, timestamp: int64) =
+      flushCallback = proc(entries: seq[BufferedEntry]): bool {.gcsafe.} =
         # Simple callback for testing
-        discard
+        flushedCount += entries.len
+        return true
     )
 
     check buffer.maxSize == 100
     check buffer.currentSize == 0
     check buffer.syncMode == syncBatched
     check buffer.batchSize == 10
-
-    buffer.stopWorker()
+    check buffer.flushCallback != nil
 
   test "parse size string":
     check parseSizeString("128MB") == 128 * 1024 * 1024'u64

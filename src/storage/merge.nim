@@ -3,78 +3,59 @@
 ## This module handles compaction of data files to reclaim space
 ## from deleted and duplicate records.
 
-import std/[os, times, strformat, strutils, tables, options, locks, algorithm]
+import std/[os, times, strformat, strutils, tables, options, locks, algorithm, atomics, typedthreads]
 import ../kvs/types, datafile, keydir
 
+# Re-export types from kvs/types for convenience (use qualified names to avoid os.FileInfo conflict)
+export types.FileState, types.FileInfo, types.MergeStats, types.MergeConfig
+
 type
-  FileState* = enum
-    fsActive     # Currently writable
-    fsImmutable   # Read-only, candidate for merge
-    fsMerging    # Currently being merged
-    fsDeleted    # Marked for deletion
+  MergeRequest* = object
+    ## A request to merge specific files
+    files*: seq[types.FileInfo]
+    requestTime*: Time
 
-  FileInfo* = object
-    path*: string               # Full path to file
-    id*: uint32                # File ID
-    size*: uint64                # Current file size
-    state*: FileState            # Current state
-    created*: Time               # Creation timestamp
-    lastModified*: Time           # Last modification
-    deleteCount*: int            # Number of deleted/tombstone records
-    totalRecords*: int           # Total records in file
-    duplicateCount*: int         # Superseded records
-    liveRecords*: int            # Active (non-deleted) records
-
-  MergeStats* = object
-    filesProcessed*: int
-    recordsScanned*: int
-    recordsKept*: int
-    recordsDropped*: int
-    bytesScanned*: int64
-    bytesWritten*: int64
-    timeStarted*: Time
-    timeCompleted*: Time
-
-  MergeConfig* = ref object
-    enabled*: bool
-    maxFileSize*: uint64
-    minFilesToMerge*: int
-    triggerThreshold*: float
-    maxMergeThreads*: int
-    mergeInterval*: int
-    mergeIntervalBytes*: int64
-    skipThreshold*: int
-
-  MergeController* = ref object
-    config*: MergeConfig
-    activeFiles*: seq[FileInfo]
-    completedFiles*: seq[FileInfo]
+  MergeControllerObj* = object
+    config*: types.MergeConfig
+    dataDir*: string                  # Data directory for file operations
+    activeFiles*: seq[types.FileInfo]
+    completedFiles*: seq[types.FileInfo]
     mergeInProgress*: bool
-    stats*: MergeStats
+    stats*: types.MergeStats
     mergeLock*: Lock
     keyDir*: KeyDir
+    # Background merge support
+    shutdownFlag*: Atomic[bool]       # Signal to stop background thread
+    mergeThread*: Thread[ptr MergeControllerObj]  # Background worker thread
+    hasWorker*: bool                  # Whether background thread is running
+    pendingMerge*: bool               # Whether a merge is pending
+    pendingFiles*: seq[types.FileInfo]  # Files to merge in background
+    mergeCondition*: Cond             # Condition for signaling merge
+
+  MergeController* = ref MergeControllerObj
 
   MergePriority* = object
     score*: float
-    fileInfo*: FileInfo
+    fileInfo*: types.FileInfo
     reason*: string
 
 # Forward declarations
-proc newMergeController*(config: MergeConfig, keyDir: KeyDir): MergeController
-proc calculateMergePriority*(controller: MergeController, file: FileInfo): MergePriority
-proc selectFilesForMerge*(controller: MergeController): seq[FileInfo]
-proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool
+proc newMergeController*(config: types.MergeConfig, keyDir: KeyDir, dataDir: string): MergeController
+proc calculateMergePriority*(controller: MergeController, file: types.FileInfo): MergePriority
+proc selectFilesForMerge*(controller: MergeController): seq[types.FileInfo]
+proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): bool
 
 # Implementation
 
-proc newMergeController*(config: MergeConfig, keyDir: KeyDir): MergeController =
+proc newMergeController*(config: types.MergeConfig, keyDir: KeyDir, dataDir: string): MergeController =
   result = MergeController()
   result.config = config
   result.keyDir = keyDir
+  result.dataDir = dataDir
   result.activeFiles = @[]
   result.completedFiles = @[]
   result.mergeInProgress = false
-  result.stats = MergeStats(
+  result.stats = types.MergeStats(
     filesProcessed: 0,
     recordsScanned: 0,
     recordsKept: 0,
@@ -85,8 +66,13 @@ proc newMergeController*(config: MergeConfig, keyDir: KeyDir): MergeController =
     timeCompleted: getTime()
   )
   initLock(result.mergeLock)
+  initCond(result.mergeCondition)
+  result.shutdownFlag.store(false)
+  result.hasWorker = false
+  result.pendingMerge = false
+  result.pendingFiles = @[]
 
-proc calculateMergePriority*(controller: MergeController, file: FileInfo): MergePriority =
+proc calculateMergePriority*(controller: MergeController, file: types.FileInfo): MergePriority =
   ## Calculate priority score for file to determine merge order
   ## Higher score = higher priority for merging
 
@@ -124,7 +110,7 @@ proc calculateMergePriority*(controller: MergeController, file: FileInfo): Merge
 
   MergePriority(score: score, fileInfo: file, reason: reasons.join(", "))
 
-proc selectFilesForMerge*(controller: MergeController): seq[FileInfo] =
+proc selectFilesForMerge*(controller: MergeController): seq[types.FileInfo] =
   ## Select files that should be merged based on policy
 
   if not controller.config.enabled or controller.activeFiles.len < controller.config.minFilesToMerge:
@@ -133,7 +119,7 @@ proc selectFilesForMerge*(controller: MergeController): seq[FileInfo] =
   var candidates: seq[MergePriority]
 
   for file in controller.activeFiles:
-    if file.state == fsImmutable and file.deleteCount + file.duplicateCount > 0:
+    if file.state == types.fsImmutable and file.deleteCount + file.duplicateCount > 0:
       let priority = calculateMergePriority(controller, file)
       if priority.score > 0:
         candidates.add(priority)
@@ -147,7 +133,7 @@ proc selectFilesForMerge*(controller: MergeController): seq[FileInfo] =
   for i in 0..<min(maxFiles, candidates.len):
     result.add(candidates[i].fileInfo)
 
-proc findDuplicates*(controller: MergeController, keyDir: KeyDir, file: FileInfo): tuple[
+proc findDuplicates*(controller: MergeController, keyDir: var KeyDir, file: types.FileInfo): tuple[
   duplicates: int, total: int, tombstones: int, scanTime: float
 ] =
   ## Scan a data file to find duplicate and tombstone records
@@ -157,14 +143,14 @@ proc findDuplicates*(controller: MergeController, keyDir: KeyDir, file: FileInfo
   var duplicates = 0
   var tombstones = 0
   var total = 0
-  var filePos: uint64 = 32  # Skip header
+  var filePos: uint64 = HEADER_SIZE.uint64  # Skip header
 
-  let dataFile = datafile.open(file.path, file.id)
+  var dataFile = datafile.open(file.path, file.id)
 
   try:
     while filePos < file.size:
-      let (key, value, timestamp, recordSize) = dataFile.readRecord(filePos)
-      filePos += recordSize
+      let (key, value, timestamp, recordSize) = dataFile.readRecordAt(filePos)
+      filePos += recordSize.uint64
 
       inc(total)
 
@@ -189,21 +175,22 @@ proc findDuplicates*(controller: MergeController, keyDir: KeyDir, file: FileInfo
 
   return (duplicates, total, tombstones, scanTime)
 
-proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
+proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): bool =
   ## Perform the actual merge operation
   ## Returns true if successful, false if failed
 
   if files.len == 0:
     return false
 
-  let newFileId = if files.len > 0: files[0].id + 1 else: 1
-  let dataDir = ""  # Would get from config eventually
-  let newPath = &"{dataDir}/{newFileId:06d}.data"
+  let newFileId = if files.len > 0: files[0].id + 1000 else: 1000  # Use high IDs for merged files
+  let newPath = controller.dataDir / &"{newFileId:06d}.data"
   let tempPath = newPath & ".tmp"
 
   controller.mergeInProgress = true
   controller.stats.timeStarted = getTime()
   controller.stats.filesProcessed = files.len
+
+  var newFileSize: uint64 = 0
 
   try:
     # Create new data file for merged output
@@ -217,20 +204,20 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
 
       controller.stats.recordsScanned += total
       controller.stats.recordsDropped += duplicates + tombstones
-      controller.stats.bytesScanned += file.size
+      controller.stats.bytesScanned += file.size.int64
 
       fileStats["duplicates"] = fileStats.getOrDefault("duplicates", 0) + duplicates
       fileStats["tombstones"] = fileStats.getOrDefault("tombstones", 0) + tombstones
       fileStats["total"] = fileStats.getOrDefault("total", 0) + total
 
       # Scan and copy live records to new file
-      let oldDataFile = datafile.open(file.path, file.id)
-      var filePos: uint64 = 32  # Skip header
+      var oldDataFile = datafile.open(file.path, file.id)
+      var filePos: uint64 = HEADER_SIZE.uint64  # Skip header
 
       try:
         while filePos < file.size:
-          let (key, value, timestamp, recordSize) = dataFile.readRecord(filePos)
-          filePos += recordSize
+          let (key, value, timestamp, recordSize) = oldDataFile.readRecordAt(filePos)
+          filePos += recordSize.uint64
 
           # Skip tombstones
           if value.len == 0:
@@ -254,34 +241,27 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
                 recordSize: newPos.recordSize
               ))
               controller.stats.recordsKept += 1
-              controller.stats.bytesWritten += recordSize
+              controller.stats.bytesWritten += recordSize.int64
 
-      except EOF:
-        break
+      except IOError:
+        discard  # End of file or read error
 
       finally:
         oldDataFile.close()
 
-        # Update file stats
-        file.merge(fileStats)
-        file.state = fsDeleted
-
-    finally:
-      newDataFile.close()
+    # Capture size before closing
+    newFileSize = newDataFile.size
+    newDataFile.close()
 
     # Atomic rename operations
     moveFile(tempPath, newPath)
 
-    # Update file status
-    for file in files:
-      file.state = fsDeleted
-
     # Add new file to completed list
-    let newFileInfo = FileInfo(
+    let newFileInfo = types.FileInfo(
       path: newPath,
       id: newFileId,
-      size: newDataFile.size,
-      state: fsActive,
+      size: newFileSize,
+      state: types.fsActive,
       created: getTime(),
       lastModified: getTime(),
       deleteCount: 0,
@@ -294,27 +274,37 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
 
     # Remove deleted files from active list
     for file in files:
-      let idx = controller.activeFiles.find(proc(f: FileInfo): f.id == file.id)
+      var idx = -1
+      for i, f in controller.activeFiles:
+        if f.id == file.id:
+          idx = i
+          break
       if idx >= 0:
         controller.activeFiles.delete(idx)
 
     controller.activeFiles.add(newFileInfo)
+
+    # Delete old files
+    for file in files:
+      if fileExists(file.path):
+        removeFile(file.path)
 
   except Exception as e:
     echo &"Error during merge: {e.msg}"
     # Clean up temp file if it exists
     if fileExists(tempPath):
       removeFile(tempPath)
+    controller.mergeInProgress = false
     return false
 
   controller.mergeInProgress = false
   controller.stats.timeCompleted = getTime()
 
-  echo &"✅ Merge completed successfully!"
-  echo &"   Records kept: {controller.stats.recordsKept:,}"
-  echo &"   Records dropped: {controller.stats.recordsDropped:,}"
-  echo &"   Files processed: {controller.stats.filesProcessed:,}"
-  echo &"   Time: {(getTime() - controller.stats.timeStarted).inSeconds:,} seconds"
+  echo &"Merge completed successfully!"
+  echo &"   Records kept: {controller.stats.recordsKept}"
+  echo &"   Records dropped: {controller.stats.recordsDropped}"
+  echo &"   Files processed: {controller.stats.filesProcessed}"
+  echo &"   Time: {(getTime() - controller.stats.timeStarted).inSeconds} seconds"
 
   return true
 
@@ -326,8 +316,85 @@ proc triggerMerge*(controller: MergeController) =
       if filesToMerge.len > 0:
         discard performMerge(controller, filesToMerge)
 
-proc getMergeStats*(controller: MergeController): MergeStats =
+proc getMergeStats*(controller: MergeController): types.MergeStats =
   ## Get current merge statistics
   ## Returns a copy to avoid race conditions
   withLock(controller.mergeLock):
     result = controller.stats
+
+# Background merge worker functions
+
+proc mergeWorker*(controllerPtr: ptr MergeControllerObj) {.thread.} =
+  ## Background worker thread for merge operations
+  let controller = cast[MergeController](controllerPtr)
+
+  while not controller.shutdownFlag.load():
+    var filesToMerge: seq[types.FileInfo] = @[]
+
+    withLock(controller.mergeLock):
+      if controller.shutdownFlag.load():
+        break
+
+      # Wait for merge signal
+      if not controller.pendingMerge:
+        controller.mergeCondition.wait(controller.mergeLock)
+
+      # Check again after waking
+      if controller.shutdownFlag.load():
+        break
+
+      if controller.pendingMerge:
+        filesToMerge = controller.pendingFiles
+        controller.pendingMerge = false
+        controller.pendingFiles = @[]
+
+    # Perform merge outside lock
+    if filesToMerge.len > 0:
+      discard performMerge(controller, filesToMerge)
+
+proc startMergeWorker*(controller: MergeController) =
+  ## Start the background merge worker thread
+  if not controller.hasWorker:
+    controller.shutdownFlag.store(false)
+    createThread(controller.mergeThread, mergeWorker, addr controller[])
+    controller.hasWorker = true
+
+proc stopMergeWorker*(controller: MergeController) =
+  ## Stop the background merge worker thread and wait for it to finish
+  if controller.hasWorker:
+    withLock(controller.mergeLock):
+      controller.shutdownFlag.store(true)
+      controller.mergeCondition.signal()
+    joinThread(controller.mergeThread)
+    controller.hasWorker = false
+
+proc queueMerge*(controller: MergeController, files: seq[types.FileInfo]) =
+  ## Queue files for background merge (non-blocking)
+  withLock(controller.mergeLock):
+    if not controller.pendingMerge and files.len > 0:
+      controller.pendingFiles = files
+      controller.pendingMerge = true
+      controller.mergeCondition.signal()
+
+proc triggerBackgroundMerge*(controller: MergeController) =
+  ## Trigger a background merge operation (non-blocking)
+  ## Selects files automatically and queues them for merge
+  withLock(controller.mergeLock):
+    if not controller.pendingMerge and not controller.mergeInProgress:
+      if controller.activeFiles.len >= controller.config.minFilesToMerge:
+        let filesToMerge = selectFilesForMerge(controller)
+        if filesToMerge.len > 0:
+          controller.pendingFiles = filesToMerge
+          controller.pendingMerge = true
+          controller.mergeCondition.signal()
+
+proc isMergePending*(controller: MergeController): bool =
+  ## Check if a merge is currently pending
+  withLock(controller.mergeLock):
+    result = controller.pendingMerge
+
+proc shutdown*(controller: MergeController) =
+  ## Clean shutdown - stop worker and clean up resources
+  controller.stopMergeWorker()
+  deinitLock(controller.mergeLock)
+  deinitCond(controller.mergeCondition)

@@ -9,6 +9,10 @@ import std/[locks, times, strformat, deques, typedthreads, strutils]
 import ../kvs/types
 
 type
+  ## Callback type for flushing entries to disk
+  ## Returns true on success, false on failure
+  FlushCallback* = proc(entries: seq[BufferedEntry]): bool {.gcsafe.}
+
   WriteBuffer* = object
     entries*: Deque[BufferedEntry]
     maxSize*: int
@@ -23,6 +27,9 @@ type
     running*: bool
     flushing*: bool
     lastFlush*: Time
+    flushCallback*: FlushCallback  # Buffer-level callback for flushing
+    workerThread*: Thread[ptr WriteBuffer]  # Background worker thread
+    hasWorker*: bool  # Whether worker was started
 
   FlushResult* = enum
     frSuccess,
@@ -33,25 +40,29 @@ proc parseSizeString*(sizeStr: string): uint64 =
   ## Parse size string like "128MB", "2GB" to bytes
   let s = sizeStr.toLowerAscii()
   var multiplier = 1'u64
+  var suffixLen = 0
 
   if s.endsWith("kb"):
     multiplier = 1024'u64
+    suffixLen = 2
   elif s.endsWith("mb"):
     multiplier = 1024'u64 * 1024'u64
+    suffixLen = 2
   elif s.endsWith("gb"):
     multiplier = 1024'u64 * 1024'u64 * 1024'u64
+    suffixLen = 2
   elif s.endsWith("b"):
     multiplier = 1'u64
+    suffixLen = 1
   else:
     # Assume bytes if no suffix
     multiplier = 1'u64
+    suffixLen = 0
 
-  var numStr = ""
-  if multiplier > 1:
-    # Remove suffix for numbers like "128MB" -> "128"
-    numStr = s[0..s.len-4]
+  var numStr = if suffixLen > 0:
+    s[0..<s.len - suffixLen]
   else:
-    numStr = s
+    s
 
   try:
     var num: uint64
@@ -67,9 +78,11 @@ proc initWriteBuffer*(
   maxSize: int,
   syncMode: SyncMode,
   batchSize: int = 1000,
-  flushIntervalMs: int = 100
+  flushIntervalMs: int = 100,
+  flushCallback: FlushCallback = nil
 ): WriteBuffer =
   ## Initialize a new write buffer
+  ## flushCallback: Optional callback that receives batched entries for disk writes
 
   result = WriteBuffer(
     entries: initDeque[BufferedEntry](),
@@ -84,7 +97,9 @@ proc initWriteBuffer*(
     stats: WriteBufferStats(),
     running: true,
     flushing: false,
-    lastFlush: getTime()
+    lastFlush: getTime(),
+    flushCallback: flushCallback,
+    hasWorker: false
   )
   initLock(result.lock)
   initCond(result.condition)
@@ -142,25 +157,36 @@ proc addEntry*(buffer: var WriteBuffer, key: string, value: string, timestamp: i
 
 proc flushBuffer*(buffer: var WriteBuffer): int {.discardable, gcsafe.} =
   ## Flush the buffer, returning number of entries flushed
-  ## Must be called while holding the lock
+  ## Uses buffer-level flushCallback if set, otherwise per-entry whenReady
 
   buffer.flushing = true
   result = 0
 
-  # Signal that we're flushing
+  # Collect all entries to flush
+  var batch: seq[BufferedEntry] = @[]
   while buffer.entries.len > 0 and buffer.running:
-    let entry = buffer.entries.popFirst()
+    batch.add(buffer.entries.popFirst())
     dec buffer.currentSize
 
-    # Call the callback with the buffered data
+  # Use buffer-level callback if available
+  if buffer.flushCallback != nil and batch.len > 0:
     try:
       {.gcsafe.}:
-        entry.whenReady(entry.key, entry.value, entry.timestamp)
-      inc result
+        if buffer.flushCallback(batch):
+          result = batch.len
     except:
-      # Callback failed, but continue with other entries
-      # In production, this should log the error
-      continue
+      # Callback failed
+      discard
+  else:
+    # Fall back to per-entry callbacks (legacy behavior)
+    for entry in batch:
+      try:
+        if entry.whenReady != nil:
+          {.gcsafe.}:
+            entry.whenReady(entry.key, entry.value, entry.timestamp)
+          inc result
+      except:
+        continue
 
   # Reset counters
   buffer.batchSizeCount = 0
@@ -209,14 +235,19 @@ proc workerThread*(buffer: ptr WriteBuffer) {.thread, gcsafe.} =
 
 proc startWorker*(buffer: var WriteBuffer) =
   ## Start the background worker thread
-  var thread: Thread[ptr WriteBuffer]
-  createThread(thread, workerThread, addr(buffer))
+  if not buffer.hasWorker:
+    createThread(buffer.workerThread, workerThread, addr(buffer))
+    buffer.hasWorker = true
 
 proc stopWorker*(buffer: var WriteBuffer) =
-  ## Stop the background worker thread
-  withLock(buffer.lock):
-    buffer.running = false
-    buffer.condition.signal()
+  ## Stop the background worker thread and wait for it to finish
+  if buffer.hasWorker:
+    withLock(buffer.lock):
+      buffer.running = false
+      buffer.condition.signal()
+    # Wait for worker thread to finish
+    joinThread(buffer.workerThread)
+    buffer.hasWorker = false
 
 proc getStats*(buffer: var WriteBuffer): WriteBufferStats =
   ## Get a copy of the current stats (thread-safe)

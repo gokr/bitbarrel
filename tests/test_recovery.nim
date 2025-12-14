@@ -3,8 +3,15 @@
 ## Test suite for crash recovery and checkpointing functionality
 
 import std/[unittest, os, times, strutils, random, tables, options, strformat]
-import storage/[recovery, checkpoint, datafile, record, keydir]
+import ../src/storage/[recovery, checkpoint, datafile, record, keydir, hintfile]
 import ../src/kvs/types
+
+# Utility for creating corrupt files
+proc badWrite(path: string, content: string) =
+  ## Write invalid/corrupt content to a file for testing
+  let file = open(path, fmWrite)
+  defer: file.close()
+  file.write(content)
 
 suite "Recovery System Tests":
 

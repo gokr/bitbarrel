@@ -10,29 +10,25 @@ suite "Error Handling Tests":
   # Note: Some tests for file corruption are simplified to avoid system-specific issues
   test "CRC32 mismatch detection - corrupted data":
     let testFile = "test_corruption.data"
+    defer: removeFile(testFile)
+
+    # Create file and write a valid record
     var df = open(testFile, 1)
-    defer:
-      df.close()
-      removeFile(testFile)
+    let info = df.appendRecord("testkey", "testvalue", 123456'i64)
 
-    # Write a valid record
-    let info = df.appendRecord("key", "value", 1'i64)
+    # Get original byte before closing
+    df.file.setFilePos(40)  # Position in record data (after CRC)
+    var originalByte: uint8 = 0
+    discard df.file.readBuffer(addr originalByte, 1)
 
-    # Close and reopen to get raw file access
+    # Corrupt while file is open
+    df.file.setFilePos(40)
+    let corruptedByte: uint8 = originalByte xor 0xFF
+    discard df.file.writeBuffer(unsafeAddr corruptedByte, 1)
+    df.file.flushFile()
     df.close()
-    df = open(testFile, 1)
 
-    # Corrupt the data by flipping a bit in the record (not CRC32)
-    # CRC32 is at position 0-3, record starts at position 4
-    df.file.setFilePos(10)  # Skip CRC32 and part of the record
-    var corruptByte: uint8 = 0
-    let bytesRead = df.file.readBuffer(addr corruptByte, 1)
-    if bytesRead == 1:
-      corruptByte = corruptByte xor 1  # Flip one bit
-      df.file.setFilePos(10)
-      discard df.file.writeBuffer(addr corruptByte, 1)
-
-    # Now try to read - should detect corruption
+    # Now try to read - should detect CRC32 mismatch
     var df2 = open(testFile, 1)
     defer: df2.close()
 

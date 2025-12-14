@@ -4,7 +4,7 @@
 ## and rebuilding the in-memory KeyDir index.
 
 import std/[os, strformat, strutils, times, sequtils, math, algorithm, endians, locks]
-import ../kvs/types, keydir, record, crc32
+import ../kvs/types, keydir, record, crc32, hintfile
 
 type
   RecoveryProgress* = object
@@ -24,6 +24,8 @@ type
     skipCorruptRecords*: bool = true     # Skip bad records vs abort
     maxProgressInterval*: int = 1000     # Report progress every N records
     enableVerboseLogging*: bool = false  # Detailed logging
+    useHintFiles*: bool = true           # Use hint files for fast recovery
+    validateHintFiles*: bool = true      # Validate hint file checksums
 
   RecoveryStats* = object
     totalFiles*: int
@@ -36,6 +38,10 @@ type
     recoveryTime*: Duration
     keyCount*: int
     errorCount*: int
+    hintFilesUsed*: int              # Number of hint files used
+    hintFilesInvalid*: int           # Number of invalid hint files
+    filesFromHint*: int              # Files recovered via hint
+    filesFromScan*: int              # Files recovered via full scan
 
   RecoveryEngine* = ref object
     dataDir*: string
@@ -214,6 +220,44 @@ proc readRecordFromFile*(engine: RecoveryEngine, filePath: string, offset: int64
       echo &"Warning: Error reading record from {filePath} at {offset}: {e.msg}"
     return (Record(), 0, false)
 
+proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
+  ## Attempt to recover using a hint file (much faster than full scan)
+  let hintPath = getHintPath(filePath)
+
+  if not hintFileExists(hintPath):
+    return false
+
+  if engine.options.enableVerboseLogging:
+    echo &"Attempting recovery from hint file: {hintPath.extractFilename()}"
+
+  # Validate hint file
+  if not validateHintFile(hintPath):
+    engine.stats.hintFilesInvalid += 1
+    if engine.options.enableVerboseLogging:
+      echo &"Hint file validation failed: {hintPath.extractFilename()}"
+    return false
+
+  # Load KeyDir from hint file
+  try:
+    engine.stats.hintFilesUsed += 1
+    let loaded = loadKeyDirFromHint(hintPath, engine.keyDir)
+
+    if loaded < 0:
+      engine.stats.errorCount += 1
+      if engine.options.enableVerboseLogging:
+        echo &"Failed to load hint file: {hintPath.extractFilename()}"
+      return false
+
+    if engine.options.enableVerboseLogging:
+      echo &"Successfully loaded {loaded} entries from hint file: {hintPath.extractFilename()}"
+
+    return true
+  except Exception as e:
+    engine.stats.errorCount += 1
+    if engine.options.enableVerboseLogging:
+      echo &"Error loading hint file {hintPath.extractFilename()}: {e.msg}"
+    return false
+
 proc recoverFromFile*(engine: RecoveryEngine, filePath: string): bool =
   ## Recover records from a single data file
   if not engine.validateFileHeader(filePath):
@@ -316,6 +360,18 @@ proc recover*(engine: RecoveryEngine): RecoveryStats =
 
     # Recover from each file
     for filePath in dataFiles:
+      var recovered = false
+
+      # Try hint file first if enabled (much faster)
+      if engine.options.useHintFiles:
+        recovered = engine.recoverFromHintFile(filePath)
+        if recovered:
+          engine.stats.filesFromHint += 1
+          engine.progress.filesScanned += 1
+          continue
+
+      # Fall back to full scan
+      engine.stats.filesFromScan += 1
       if not engine.recoverFromFile(filePath):
         if engine.options.skipCorruptRecords:
           echo &"Warning: Failed to recover from {filePath}, continuing..."
@@ -335,6 +391,9 @@ proc recover*(engine: RecoveryEngine): RecoveryStats =
       echo &"Files: {engine.stats.totalFiles}, Records: {engine.stats.totalRecords}"
       echo &"Valid: {engine.stats.validRecords}, Corrupt: {engine.stats.corruptRecords}"
       echo &"Keys recovered: {engine.stats.keyCount}"
+      if engine.options.useHintFiles:
+        echo &"Hint files used: {engine.stats.hintFilesUsed}, Files from hint: {engine.stats.filesFromHint}"
+        echo &"Files scanned: {engine.stats.filesFromScan}, Invalid hints: {engine.stats.hintFilesInvalid}"
 
     return engine.stats
 
