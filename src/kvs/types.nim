@@ -91,3 +91,21 @@ type
     timeStarted*: Time
     timeCompleted*: Time
 
+  # Recovery configuration
+  RecoveryConfig* = object
+    enabled*: bool
+    validateChecksums*: bool
+    skipCorruptRecords*: bool
+    checkpointInterval*: int
+    checkpointSizeThreshold*: int64
+    maxIncrementalCheckpoints*: int
+    autoRecovery*: bool
+
+  # Checkpoint configuration
+  CheckpointConfig* = object
+    enabled*: bool
+    interval*: int
+    sizeThreshold*: int64
+    maxIncremental*: int
+    compressionEnabled*: bool
+

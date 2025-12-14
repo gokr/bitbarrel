@@ -48,6 +48,7 @@ type
     storage*: StorageConfig
     performance*: PerformanceConfig
     merge*: MergeConfig
+    recovery*: RecoveryConfig
     logging*: LoggingConfig
 
 proc parseSyncMode*(s: string): SyncMode =
@@ -214,6 +215,53 @@ proc parseMergeConfig*(yamlNode: YamlNode): MergeConfig =
   result.mergeInterval = getYamlInt("merge_interval", 60)
   result.minFileSize = getYamlInt64("min_file_size", 1024 * 1024)
 
+proc parseRecoveryConfig*(yamlNode: YamlNode): RecoveryConfig =
+  if yamlNode.kind != yMapping:
+    raise newException(ValueError, "Recovery config must be a mapping")
+
+  let fields = yamlNode.fields
+
+  proc getYamlBool(key: string, default: bool): bool =
+    for k, v in fields.pairs:
+      if k.content == key and v.kind == yScalar:
+        let content = v.content.toLowerAscii()
+        return content == "true" or content == "yes" or content == "1"
+    return default
+
+  proc getYamlInt(key: string, default: int): int =
+    for k, v in fields.pairs:
+      if k.content == key and v.kind == yScalar:
+        try:
+          return parseInt(v.content)
+        except:
+          return default
+    return default
+
+  proc getYamlInt64(key: string, default: int64): int64 =
+    for k, v in fields.pairs:
+      if k.content == key and v.kind == yScalar:
+        try:
+          let content = v.content.toLowerAscii()
+          if content.endswith("mb"):
+            let numStr = content[0..^3]
+            return parseBiggestInt(numStr) * 1024 * 1024
+          elif content.endswith("kb"):
+            let numStr = content[0..^3]
+            return parseBiggestInt(numStr) * 1024
+          else:
+            return parseBiggestInt(content)
+        except:
+          return default
+    return default
+
+  result.enabled = getYamlBool("enabled", true)
+  result.validateChecksums = getYamlBool("validate_checksums", true)
+  result.skipCorruptRecords = getYamlBool("skip_corrupt_records", true)
+  result.checkpointInterval = getYamlInt("checkpoint_interval", 300)  # 5 minutes
+  result.checkpointSizeThreshold = getYamlInt64("checkpoint_size_threshold", 10 * 1024 * 1024)  # 10MB
+  result.maxIncrementalCheckpoints = getYamlInt("max_incremental_checkpoints", 5)
+  result.autoRecovery = getYamlBool("auto_recovery", true)
+
 proc parseLoggingConfig*(yamlNode: YamlNode): LoggingConfig =
   if yamlNode.kind != yMapping:
     raise newException(ValueError, "Logging config must be a mapping")
@@ -289,6 +337,15 @@ proc getDefaultConfig*(): KVSConfig =
       mergeInterval: 60,
       minFileSize: 1024 * 1024  # 1MB
     ),
+    recovery: RecoveryConfig(
+      enabled: true,
+      validateChecksums: true,
+      skipCorruptRecords: true,
+      checkpointInterval: 300,  # 5 minutes
+      checkpointSizeThreshold: 10 * 1024 * 1024,  # 10MB
+      maxIncrementalCheckpoints: 5,
+      autoRecovery: true
+    ),
     logging: LoggingConfig(
       level: "info",
       file: "kvs.log",
@@ -337,6 +394,11 @@ proc loadConfigFromYaml*(filePath: string): KVSConfig =
     for key, value in yamlRoot.fields.pairs:
       if key.content == "merge":
         result.merge = parseMergeConfig(value)
+
+    # Parse recovery section
+    for key, value in yamlRoot.fields.pairs:
+      if key.content == "recovery":
+        result.recovery = parseRecoveryConfig(value)
 
     # Parse logging section
     for key, value in yamlRoot.fields.pairs:

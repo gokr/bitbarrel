@@ -3,8 +3,8 @@
 ## This module handles compaction of data files to reclaim space
 ## from deleted and duplicate records.
 
-import std/[os, times, strformat, tables, threads, asynclocks]
-import types, datafile, keydir
+import std/[os, times, strformat, strutils, tables, options, locks, algorithm]
+import ../kvs/types, datafile, keydir
 
 type
   FileState* = enum
@@ -50,9 +50,8 @@ type
     activeFiles*: seq[FileInfo]
     completedFiles*: seq[FileInfo]
     mergeInProgress*: bool
-    mergeThread*: Thread[void]
     stats*: MergeStats
-    mergeMutex*: AsyncLock
+    mergeLock*: Lock
     keyDir*: KeyDir
 
   MergePriority* = object
@@ -82,23 +81,23 @@ proc newMergeController*(config: MergeConfig, keyDir: KeyDir): MergeController =
     recordsDropped: 0,
     bytesScanned: 0,
     bytesWritten: 0,
-    timeStarted: now(),
-    timeCompleted: now()
+    timeStarted: getTime(),
+    timeCompleted: getTime()
   )
-  result.mergeMutex.initLock()
+  initLock(result.mergeLock)
 
 proc calculateMergePriority*(controller: MergeController, file: FileInfo): MergePriority =
   ## Calculate priority score for file to determine merge order
   ## Higher score = higher priority for merging
 
-  if not config.enabled:
+  if not controller.config.enabled:
     return MergePriority(score: 0.0, fileInfo: file, reason: "Merge disabled")
 
   var score = 0.0
   var reasons: seq[string]
 
   # Size-based priority: Larger files have higher priority
-  score += float(file.size / config.maxFileSize) * 0.4
+  score += float(file.size) / float(controller.config.maxFileSize) * 0.4
 
   # Fragmentation-based priority: More tombstones = higher priority
   let fragmentationRatio = if file.totalRecords > 0:
@@ -106,7 +105,7 @@ proc calculateMergePriority*(controller: MergeController, file: FileInfo): Merge
   else:
     0.0
 
-  if fragmentationRatio > config.triggerThreshold:
+  if fragmentationRatio > controller.config.triggerThreshold:
     score += fragmentationRatio * 0.5
     reasons.add(&"Fragmentation: {fragmentationRatio:.2f}")
   else:
@@ -114,13 +113,13 @@ proc calculateMergePriority*(controller: MergeController, file: FileInfo): Merge
 
   # File count consideration: Prefer merging when there are many files
   let fileCount = controller.activeFiles.len
-  if fileCount >= config.minFilesToMerge:
+  if fileCount >= controller.config.minFilesToMerge:
     score += float(fileCount / 10) * 0.1
     reasons.add(&"File count: {fileCount}")
 
   # Age consideration: Older files get higher priority
-  let fileAge = now() - file.lastModified
-  score += min(fileAge.inHours / 24.0, 7.0) / 7.0 * 0.1
+  let fileAge = getTime() - file.lastModified
+  score += min(float(fileAge.inHours) / 24.0, 7.0) / 7.0 * 0.1
   reasons.add(&"Age: {fileAge.inDays}d")
 
   MergePriority(score: score, fileInfo: file, reason: reasons.join(", "))
@@ -135,12 +134,12 @@ proc selectFilesForMerge*(controller: MergeController): seq[FileInfo] =
 
   for file in controller.activeFiles:
     if file.state == fsImmutable and file.deleteCount + file.duplicateCount > 0:
-      let priority = calculateMergeController(controller, file)
+      let priority = calculateMergePriority(controller, file)
       if priority.score > 0:
         candidates.add(priority)
 
   # Sort by priority score (highest first)
-  candidates.sort((a, b) => b.score - a.score)
+  candidates.sort(proc(a, b: MergePriority): int = cmp(b.score, a.score))
 
   # Select top files to merge
   let maxFiles = min(controller.activeFiles.len, 5)  # Limit concurrent merge size
@@ -154,7 +153,7 @@ proc findDuplicates*(controller: MergeController, keyDir: KeyDir, file: FileInfo
   ## Scan a data file to find duplicate and tombstone records
   ## Returns: (duplicate_count, total_scanned, tombstone_count, scan_duration)
 
-  let startTime = now()
+  let startTime = getTime()
   var duplicates = 0
   var tombstones = 0
   var total = 0
@@ -181,13 +180,12 @@ proc findDuplicates*(controller: MergeController, keyDir: KeyDir, file: FileInfo
         if entry.timestamp < timestamp:
           inc(duplicates)
         # Count as duplicate if newer timestamp
-    except EOF:
-      break
+  except IOError:
+    discard  # End of file or read error
+  finally:
+    dataFile.close()
 
-    finally:
-      dataFile.close()
-
-  let scanTime = (now() - startTime).inMicroseconds.float / 1_000_000
+  let scanTime = (getTime() - startTime).inMicroseconds.float / 1_000_000
 
   return (duplicates, total, tombstones, scanTime)
 
@@ -204,7 +202,7 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
   let tempPath = newPath & ".tmp"
 
   controller.mergeInProgress = true
-  controller.stats.timeStarted = now()
+  controller.stats.timeStarted = getTime()
   controller.stats.filesProcessed = files.len
 
   try:
@@ -221,12 +219,9 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
       controller.stats.recordsDropped += duplicates + tombstones
       controller.stats.bytesScanned += file.size
 
-      fileStats.merge({
-        "duplicates": duplicates,
-        "tombstones": tombstones,
-        "total": total
-        "scanTime": scanTime
-      })
+      fileStats["duplicates"] = fileStats.getOrDefault("duplicates", 0) + duplicates
+      fileStats["tombstones"] = fileStats.getOrDefault("tombstones", 0) + tombstones
+      fileStats["total"] = fileStats.getOrDefault("total", 0) + total
 
       # Scan and copy live records to new file
       let oldDataFile = datafile.open(file.path, file.id)
@@ -287,8 +282,8 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
       id: newFileId,
       size: newDataFile.size,
       state: fsActive,
-      created: now(),
-      lastModified: now(),
+      created: getTime(),
+      lastModified: getTime(),
       deleteCount: 0,
       totalRecords: controller.stats.recordsKept,
       duplicateCount: 0,
@@ -313,40 +308,26 @@ proc performMerge*(controller: MergeController, files: seq[FileInfo]): bool =
     return false
 
   controller.mergeInProgress = false
-  controller.stats.timeCompleted = now()
+  controller.stats.timeCompleted = getTime()
 
   echo &"✅ Merge completed successfully!"
   echo &"   Records kept: {controller.stats.recordsKept:,}"
   echo &"   Records dropped: {controller.stats.recordsDropped:,}"
   echo &"   Files processed: {controller.stats.filesProcessed:,}"
-  echo &"   Time: {(now() - controller.stats.timeStarted).inSeconds:,} seconds"
+  echo &"   Time: {(getTime() - controller.stats.timeStarted).inSeconds:,} seconds"
 
   return true
 
-proc startMergeThread*(controller: MergeController) {.thread.} =
-  ## Background thread for handling merge operations
-
-  while true:
-    sleep(controller.config.mergeInterval * 1000)  # Convert seconds to milliseconds
-
-    with controller.mergeMutex:
-      if controller.activeFiles.len >= controller.config.minFilesToMerge:
-        let filesToMerge = selectFilesForMerge(controller)
-        if filesToMerge.len > 0:
-          controller.stats.reset() # Reset stats for this merge
-          discard performMerge(controller, filesToMerge)
-
-proc enableAutoMerge*(controller: MergeController) =
-  ## Start background merge thread
-  controller.mergeThread.createThread(startMergeThread, controller)
-
-proc disableAutoMerge*(controller: MergeController) =
-  ## Stop background merge thread
-  controller.mergeThread.joinThread()
+proc triggerMerge*(controller: MergeController) =
+  ## Trigger a manual merge operation
+  withLock(controller.mergeLock):
+    if controller.activeFiles.len >= controller.config.minFilesToMerge:
+      let filesToMerge = selectFilesForMerge(controller)
+      if filesToMerge.len > 0:
+        discard performMerge(controller, filesToMerge)
 
 proc getMergeStats*(controller: MergeController): MergeStats =
   ## Get current merge statistics
   ## Returns a copy to avoid race conditions
-
-  with controller.mergeMutex:
+  withLock(controller.mergeLock):
     result = controller.stats

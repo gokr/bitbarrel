@@ -67,6 +67,22 @@ proc loadFromEnvironment*(config: var KVSConfig) =
   if existsEnv("KVS_MERGE_MIN_FILE_SIZE"):
     config.merge.minFileSize = parseBiggestInt(getEnv("KVS_MERGE_MIN_FILE_SIZE"))
 
+  # Recovery settings
+  if existsEnv("KVS_RECOVERY_ENABLED"):
+    config.recovery.enabled = parseBool(getEnv("KVS_RECOVERY_ENABLED"))
+  if existsEnv("KVS_RECOVERY_VALIDATE_CHECKSUMS"):
+    config.recovery.validateChecksums = parseBool(getEnv("KVS_RECOVERY_VALIDATE_CHECKSUMS"))
+  if existsEnv("KVS_RECOVERY_SKIP_CORRUPT_RECORDS"):
+    config.recovery.skipCorruptRecords = parseBool(getEnv("KVS_RECOVERY_SKIP_CORRUPT_RECORDS"))
+  if existsEnv("KVS_RECOVERY_CHECKPOINT_INTERVAL"):
+    config.recovery.checkpointInterval = parseInt(getEnv("KVS_RECOVERY_CHECKPOINT_INTERVAL"))
+  if existsEnv("KVS_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"):
+    config.recovery.checkpointSizeThreshold = parseBiggestInt(getEnv("KVS_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"))
+  if existsEnv("KVS_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"):
+    config.recovery.maxIncrementalCheckpoints = parseInt(getEnv("KVS_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"))
+  if existsEnv("KVS_RECOVERY_AUTO_RECOVERY"):
+    config.recovery.autoRecovery = parseBool(getEnv("KVS_RECOVERY_AUTO_RECOVERY"))
+
   # Logging settings
   if existsEnv("KVS_LOGGING_LEVEL"):
     config.logging.level = getEnv("KVS_LOGGING_LEVEL")

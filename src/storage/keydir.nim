@@ -82,3 +82,10 @@ proc addIfNewer*(keyDir: var KeyDir, key: string, entry: KeyDirEntry): bool =
 proc deinit*(keyDir: var KeyDir) =
   ## Cleanup resources
   deinitLock(keyDir.lock)
+
+iterator pairs*(keyDir: var KeyDir): (string, KeyDirEntry) =
+  ## Iterate over all key-entry pairs
+  ## Note: Lock is held for entire iteration
+  withLock(keyDir.lock):
+    for key, entry in keyDir.table.pairs:
+      yield (key, entry)
