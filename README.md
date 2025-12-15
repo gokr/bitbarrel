@@ -60,7 +60,7 @@ nimble stress
 
 ### Use as Library
 
-The KVS can be installed via nimble and used as a library in your projects:
+The BitBarrel can be installed via nimble and used as a library in your projects:
 
 ```nim
 # Install the package

@@ -4,7 +4,7 @@
 ## Run with: nim c -r -d:release bench/stress_test.nim
 
 import os, times, random, strformat, strutils, times, random, options
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init

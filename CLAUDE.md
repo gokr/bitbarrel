@@ -99,7 +99,7 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 src/
 ├── kvs.nim              # Main library entry point
 ├── kvs/
-│   ├── simpleapi.nim    # High-level API (SimpleKVS)
+│   ├── simpleapi.nim    # High-level API (SimpleBitBarrel)
 │   ├── lowlevelapi.nim  # Low-level API
 │   ├── config.nim       # Configuration types
 │   ├── config_parser.nim # YAML/ENV config parsing
@@ -153,7 +153,7 @@ examples/                # Demo programs
 
 ## Thread Safety
 
-The KVS uses threading for background operations (merge/compaction). Key patterns:
+The BitBarrel uses threading for background operations (merge/compaction). Key patterns:
 
 ### Lock-Protected Data Structures
 - **KeyDir**: Uses `Lock` for concurrent access to the hash index

@@ -32,7 +32,7 @@ proc cleanupDataFiles() =
         except:
           discard
 
-proc runPerformanceTest*(kvs: SimpleKVS, test: PerformanceTest): int64 =
+proc runPerformanceTest*(barrel: SimpleBB, test: PerformanceTest): int64 =
   ## Run a performance test and return time in ms
   echo &"\n📊 {test.name}"
 
@@ -41,7 +41,7 @@ proc runPerformanceTest*(kvs: SimpleKVS, test: PerformanceTest): int64 =
   for i in 0..<test.operations:
     let key = &"test:{test.name}:{i:04d}"
     let value = &"value-{i:06d}-{test.valueSize}x"
-    discard kvs.set(key, value)
+    discard barrel.set(key, value)
 
   timer.stop()
   let elapsed = timer.elapsed()

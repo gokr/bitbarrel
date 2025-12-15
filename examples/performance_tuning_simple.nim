@@ -24,11 +24,11 @@ proc testSyncModes() =
 
   let testSize = 1000
   echo "  Testing None mode (max performance)..."
-  var configNone = kvs.defaultConfig()
-  configNone.syncMode = kvs.UserSyncMode.None
+  var configNone = barrel.defaultConfig()
+  configNone.syncMode = barrel.UserSyncMode.None
   configNone.writeBufferSize = 128 * 1024
 
-  let db1 = kvs.openDatabase("examples/data/perf_none.dat", configNone)
+  let db1 = barrel.openDatabase("examples/data/perf_none.dat", configNone)
   let start = cpuTime()
   for i in 0..<testSize:
     discard db1.set(&"key{i}", &"value{i}")
@@ -37,11 +37,11 @@ proc testSyncModes() =
 
   # Test Fsync mode
   echo "  Testing Fsync mode (max durability)..."
-  var configFsync = kvs.defaultConfig()
-  configFsync.syncMode = kvs.UserSyncMode.Fsync
+  var configFsync = barrel.defaultConfig()
+  configFsync.syncMode = barrel.UserSyncMode.Fsync
   configFsync.writeBufferSize = 128 * 1024
 
-  let db2 = kvs.openDatabase("examples/data/perf_fsync.dat", configFsync)
+  let db2 = barrel.openDatabase("examples/data/perf_fsync.dat", configFsync)
   let start2 = cpuTime()
   for i in 0..<testSize:
     discard db2.set(&"key2_{i}", &"value2_{i}")
@@ -70,11 +70,11 @@ proc testBuffers() =
   let testSize = 5000
 
   echo "  Testing 4KB buffer..."
-  var cfgSmall = kvs.defaultConfig()
-  cfgSmall.syncMode = kvs.UserSyncMode.None
+  var cfgSmall = barrel.defaultConfig()
+  cfgSmall.syncMode = barrel.UserSyncMode.None
   cfgSmall.writeBufferSize = 4 * 1024
 
-  let db1 = kvs.openDatabase("examples/data/perf_small.dat", cfgSmall)
+  let db1 = barrel.openDatabase("examples/data/perf_small.dat", cfgSmall)
   let start = cpuTime()
   for i in 0..<testSize:
     discard db1.set(&"buf_key{i}", &"buf_value{i}")
@@ -82,16 +82,16 @@ proc testBuffers() =
   db1.close()
 
   echo "  Testing 1MB buffer..."
-  var cfgLarge = kvs.defaultConfig()
-  cfgLarge.syncMode = kvs.UserSyncMode.None
+  var cfgLarge = barrel.defaultConfig()
+  cfgLarge.syncMode = barrel.UserSyncMode.None
   cfgLarge.writeBufferSize = 1024 * 1024
 
-  let db2 = kvs.openDatabase("examples/data/perf_large.dat", cfgLarge)
+  let db2 = barrel.openDatabase("examples/data/perf_large.dat", cfgLarge)
   let start2 = cpuTime()
   for i in 0..<testSize:
     discard db2.set(&"buf_key{i}", &"buf_value{i}")
-    let timeLarge = cpuTime() - start2
-    db2.close()
+  let timeLarge = cpuTime() - start2
+  db2.close()
 
   # Results
   let opsSmall = testSize / timeSmall

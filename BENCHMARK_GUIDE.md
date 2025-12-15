@@ -1,8 +1,8 @@
-# KVS Benchmark Guide
+# BitBarrel Benchmark Guide
 
 ## Overview
 
-The KVS project now has two ways to run benchmarks:
+The BitBarrel project now has two ways to run benchmarks:
 
 ## Quick Reference
 

@@ -113,4 +113,4 @@ Phase 3 is complete and the system is ready for Phase 4 (Network Protocol Server
 - Background maintenance operations
 - Comprehensive buffering for performance
 
-The KVS now provides a production-ready, high-performance key-value store with all core Bitcask features implemented.
+The BitBarrel now provides a production-ready, high-performance key-value store with all core Bitcask features implemented.

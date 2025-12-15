@@ -31,7 +31,7 @@ suite "Configuration Tests":
 
     # Test logging defaults
     check config.logging.level == "info"
-    check config.logging.file == "kvs.log"
+    check config.logging.file == "barrel.log"
 
   test "YAML loading":
     # Create a temporary YAML file

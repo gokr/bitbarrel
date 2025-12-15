@@ -1,6 +1,6 @@
-# KVS Samples and Demos
+# BitBarrel Samples and Demos
 
-This directory contains runnable examples demonstrating how to use the KVS (Key-Value Store) library.
+This directory contains runnable examples demonstrating how to use the BitBarrel (Key-Value Store) library.
 
 ## Quick Start
 
@@ -281,7 +281,7 @@ When you run `nim c -r samples/basic_demo.nim`, you should see:
 
 ```
 ╔════════════════════════════════════════════╗
-║   KVS Demo: Basic CRUD Operations         ║
+║   BitBarrel Demo: Basic CRUD Operations         ║
 ╚════════════════════════════════════════════╝
 
 📁 Opening database...

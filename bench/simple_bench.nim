@@ -9,7 +9,7 @@ import strformat
 import strutils
 import random
 import options
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init

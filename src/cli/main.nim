@@ -1,6 +1,6 @@
-## KVS Command Line Interface
+## BitBarrel Command Line Interface
 ##
-## This module provides the main entry point for the KVS server
+## This module provides the main entry point for the BitBarrel server
 ## using standard library parseopt for argument parsing
 
 import std/[os, parseopt, strformat, strutils, osproc, posix]
@@ -34,7 +34,7 @@ COMMANDS:
   test      Run all tests
 
 OPTIONS:
-  -c, --config FILE      Path to configuration file (default: kvs.yaml)
+  -c, --config FILE      Path to configuration file (default: bitbarrel.yaml)
   -d, --data-dir DIR     Override data directory
   -p, --port PORT        Override server port
   --log-level LEVEL      Override log level (debug, info, warn, error)
@@ -47,7 +47,7 @@ EXAMPLES:
   kvs server                            # Start server with default config
   kvs -c prod.yaml server               # Start server with custom config
   kvs -d /data -p 9090 server           # Override data dir and port
-  KVS_SERVER_PORT=9090 kvs server      # Override via environment variable
+  BITBARREL_SERVER_PORT=9090 kvs server      # Override via environment variable
 """
 
 proc showVersion*() =
@@ -59,7 +59,7 @@ proc showVersion*() =
 proc parseCliArgs*(): CliArgs =
   ## Parse command line arguments using parseopt
   result = CliArgs(
-    configFile: "kvs.yaml",
+    configFile: "bitbarrel.yaml",
     dataDir: "",
     port: 0,
     logLevel: "",

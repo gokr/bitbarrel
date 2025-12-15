@@ -18,84 +18,84 @@ var gConfig*: KVSConfig
 
 proc loadFromEnvironment*(config: var KVSConfig) =
   ## Load configuration from environment variables
-  ## Pattern: KVS_SECTION_SETTING
+  ## Pattern: BITBARREL_SECTION_SETTING
   # Server settings
-  if existsEnv("KVS_SERVER_ADDRESS"):
-    config.server.address = getEnv("KVS_SERVER_ADDRESS")
-  if existsEnv("KVS_SERVER_PORT"):
-    config.server.port = parseInt(getEnv("KVS_SERVER_PORT"))
-  if existsEnv("KVS_SERVER_MAX_CONNECTIONS"):
-    config.server.maxConnections = parseInt(getEnv("KVS_SERVER_MAX_CONNECTIONS"))
-  if existsEnv("KVS_SERVER_TIMEOUT"):
-    config.server.timeout = parseInt(getEnv("KVS_SERVER_TIMEOUT"))
+  if existsEnv("BITBARREL_SERVER_ADDRESS"):
+    config.server.address = getEnv("BITBARREL_SERVER_ADDRESS")
+  if existsEnv("BITBARREL_SERVER_PORT"):
+    config.server.port = parseInt(getEnv("BITBARREL_SERVER_PORT"))
+  if existsEnv("BITBARREL_SERVER_MAX_CONNECTIONS"):
+    config.server.maxConnections = parseInt(getEnv("BITBARREL_SERVER_MAX_CONNECTIONS"))
+  if existsEnv("BITBARREL_SERVER_TIMEOUT"):
+    config.server.timeout = parseInt(getEnv("BITBARREL_SERVER_TIMEOUT"))
 
   # Storage settings
-  if existsEnv("KVS_STORAGE_DATA_DIR"):
-    config.storage.dataDir = getEnv("KVS_STORAGE_DATA_DIR")
-  if existsEnv("KVS_STORAGE_MAX_FILE_SIZE"):
-    config.storage.maxFileSize = parseBiggestInt(getEnv("KVS_STORAGE_MAX_FILE_SIZE"))
-  if existsEnv("KVS_STORAGE_MAX_KEY_SIZE"):
-    config.storage.maxKeySize = parseInt(getEnv("KVS_STORAGE_MAX_KEY_SIZE"))
-  if existsEnv("KVS_STORAGE_MAX_VALUE_SIZE"):
-    config.storage.maxValueSize = parseBiggestInt(getEnv("KVS_STORAGE_MAX_VALUE_SIZE"))
-  if existsEnv("KVS_STORAGE_SYNC_MODE"):
-    config.storage.syncMode = parseSyncMode(getEnv("KVS_STORAGE_SYNC_MODE"))
-  if existsEnv("KVS_STORAGE_FSYNC_INTERVAL"):
-    config.storage.fsyncInterval = parseInt(getEnv("KVS_STORAGE_FSYNC_INTERVAL"))
+  if existsEnv("BITBARREL_STORAGE_DATA_DIR"):
+    config.storage.dataDir = getEnv("BITBARREL_STORAGE_DATA_DIR")
+  if existsEnv("BITBARREL_STORAGE_MAX_FILE_SIZE"):
+    config.storage.maxFileSize = parseBiggestInt(getEnv("BITBARREL_STORAGE_MAX_FILE_SIZE"))
+  if existsEnv("BITBARREL_STORAGE_MAX_KEY_SIZE"):
+    config.storage.maxKeySize = parseInt(getEnv("BITBARREL_STORAGE_MAX_KEY_SIZE"))
+  if existsEnv("BITBARREL_STORAGE_MAX_VALUE_SIZE"):
+    config.storage.maxValueSize = parseBiggestInt(getEnv("BITBARREL_STORAGE_MAX_VALUE_SIZE"))
+  if existsEnv("BITBARREL_STORAGE_SYNC_MODE"):
+    config.storage.syncMode = parseSyncMode(getEnv("BITBARREL_STORAGE_SYNC_MODE"))
+  if existsEnv("BITBARREL_STORAGE_FSYNC_INTERVAL"):
+    config.storage.fsyncInterval = parseInt(getEnv("BITBARREL_STORAGE_FSYNC_INTERVAL"))
 
   # Performance settings
-  if existsEnv("KVS_PERFORMANCE_WORKER_THREADS"):
-    config.performance.workerThreads = parseInt(getEnv("KVS_PERFORMANCE_WORKER_THREADS"))
-  if existsEnv("KVS_PERFORMANCE_WRITE_BUFFER_SIZE"):
-    config.performance.writeBufferSize = parseInt(getEnv("KVS_PERFORMANCE_WRITE_BUFFER_SIZE"))
-  if existsEnv("KVS_PERFORMANCE_WRITE_BUFFER_TIMEOUT"):
-    config.performance.writeBufferTimeout = parseInt(getEnv("KVS_PERFORMANCE_WRITE_BUFFER_TIMEOUT"))
-  if existsEnv("KVS_PERFORMANCE_READ_AHEAD_SIZE"):
-    config.performance.readAheadSize = parseInt(getEnv("KVS_PERFORMANCE_READ_AHEAD_SIZE"))
-  if existsEnv("KVS_PERFORMANCE_CACHE_SIZE"):
-    config.performance.cacheSize = parseInt(getEnv("KVS_PERFORMANCE_CACHE_SIZE"))
+  if existsEnv("BITBARREL_PERFORMANCE_WORKER_THREADS"):
+    config.performance.workerThreads = parseInt(getEnv("BITBARREL_PERFORMANCE_WORKER_THREADS"))
+  if existsEnv("BITBARREL_PERFORMANCE_WRITE_BUFFER_SIZE"):
+    config.performance.writeBufferSize = parseInt(getEnv("BITBARREL_PERFORMANCE_WRITE_BUFFER_SIZE"))
+  if existsEnv("BITBARREL_PERFORMANCE_WRITE_BUFFER_TIMEOUT"):
+    config.performance.writeBufferTimeout = parseInt(getEnv("BITBARREL_PERFORMANCE_WRITE_BUFFER_TIMEOUT"))
+  if existsEnv("BITBARREL_PERFORMANCE_READ_AHEAD_SIZE"):
+    config.performance.readAheadSize = parseInt(getEnv("BITBARREL_PERFORMANCE_READ_AHEAD_SIZE"))
+  if existsEnv("BITBARREL_PERFORMANCE_CACHE_SIZE"):
+    config.performance.cacheSize = parseInt(getEnv("BITBARREL_PERFORMANCE_CACHE_SIZE"))
 
   # Merge settings
-  if existsEnv("KVS_MERGE_ENABLED"):
-    config.merge.enabled = parseBool(getEnv("KVS_MERGE_ENABLED"))
-  if existsEnv("KVS_MERGE_TRIGGER_THRESHOLD"):
-    config.merge.triggerThreshold = parseFloat(getEnv("KVS_MERGE_TRIGGER_THRESHOLD"))
-  if existsEnv("KVS_MERGE_MAX_MERGE_THREADS"):
-    config.merge.maxMergeThreads = parseInt(getEnv("KVS_MERGE_MAX_MERGE_THREADS"))
-  if existsEnv("KVS_MERGE_MERGE_INTERVAL"):
-    config.merge.mergeInterval = parseInt(getEnv("KVS_MERGE_MERGE_INTERVAL"))
-  if existsEnv("KVS_MERGE_MIN_FILE_SIZE"):
-    config.merge.minFileSize = parseBiggestInt(getEnv("KVS_MERGE_MIN_FILE_SIZE"))
+  if existsEnv("BITBARREL_MERGE_ENABLED"):
+    config.merge.enabled = parseBool(getEnv("BITBARREL_MERGE_ENABLED"))
+  if existsEnv("BITBARREL_MERGE_TRIGGER_THRESHOLD"):
+    config.merge.triggerThreshold = parseFloat(getEnv("BITBARREL_MERGE_TRIGGER_THRESHOLD"))
+  if existsEnv("BITBARREL_MERGE_MAX_MERGE_THREADS"):
+    config.merge.maxMergeThreads = parseInt(getEnv("BITBARREL_MERGE_MAX_MERGE_THREADS"))
+  if existsEnv("BITBARREL_MERGE_MERGE_INTERVAL"):
+    config.merge.mergeInterval = parseInt(getEnv("BITBARREL_MERGE_MERGE_INTERVAL"))
+  if existsEnv("BITBARREL_MERGE_MIN_FILE_SIZE"):
+    config.merge.minFileSize = parseBiggestInt(getEnv("BITBARREL_MERGE_MIN_FILE_SIZE"))
 
   # Recovery settings
-  if existsEnv("KVS_RECOVERY_ENABLED"):
-    config.recovery.enabled = parseBool(getEnv("KVS_RECOVERY_ENABLED"))
-  if existsEnv("KVS_RECOVERY_VALIDATE_CHECKSUMS"):
-    config.recovery.validateChecksums = parseBool(getEnv("KVS_RECOVERY_VALIDATE_CHECKSUMS"))
-  if existsEnv("KVS_RECOVERY_SKIP_CORRUPT_RECORDS"):
-    config.recovery.skipCorruptRecords = parseBool(getEnv("KVS_RECOVERY_SKIP_CORRUPT_RECORDS"))
-  if existsEnv("KVS_RECOVERY_CHECKPOINT_INTERVAL"):
-    config.recovery.checkpointInterval = parseInt(getEnv("KVS_RECOVERY_CHECKPOINT_INTERVAL"))
-  if existsEnv("KVS_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"):
-    config.recovery.checkpointSizeThreshold = parseBiggestInt(getEnv("KVS_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"))
-  if existsEnv("KVS_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"):
-    config.recovery.maxIncrementalCheckpoints = parseInt(getEnv("KVS_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"))
-  if existsEnv("KVS_RECOVERY_AUTO_RECOVERY"):
-    config.recovery.autoRecovery = parseBool(getEnv("KVS_RECOVERY_AUTO_RECOVERY"))
+  if existsEnv("BITBARREL_RECOVERY_ENABLED"):
+    config.recovery.enabled = parseBool(getEnv("BITBARREL_RECOVERY_ENABLED"))
+  if existsEnv("BITBARREL_RECOVERY_VALIDATE_CHECKSUMS"):
+    config.recovery.validateChecksums = parseBool(getEnv("BITBARREL_RECOVERY_VALIDATE_CHECKSUMS"))
+  if existsEnv("BITBARREL_RECOVERY_SKIP_CORRUPT_RECORDS"):
+    config.recovery.skipCorruptRecords = parseBool(getEnv("BITBARREL_RECOVERY_SKIP_CORRUPT_RECORDS"))
+  if existsEnv("BITBARREL_RECOVERY_CHECKPOINT_INTERVAL"):
+    config.recovery.checkpointInterval = parseInt(getEnv("BITBARREL_RECOVERY_CHECKPOINT_INTERVAL"))
+  if existsEnv("BITBARREL_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"):
+    config.recovery.checkpointSizeThreshold = parseBiggestInt(getEnv("BITBARREL_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"))
+  if existsEnv("BITBARREL_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"):
+    config.recovery.maxIncrementalCheckpoints = parseInt(getEnv("BITBARREL_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"))
+  if existsEnv("BITBARREL_RECOVERY_AUTO_RECOVERY"):
+    config.recovery.autoRecovery = parseBool(getEnv("BITBARREL_RECOVERY_AUTO_RECOVERY"))
 
   # Logging settings
-  if existsEnv("KVS_LOGGING_LEVEL"):
-    config.logging.level = getEnv("KVS_LOGGING_LEVEL")
-  if existsEnv("KVS_LOGGING_FILE"):
-    config.logging.file = getEnv("KVS_LOGGING_FILE")
-  if existsEnv("KVS_LOGGING_MAX_SIZE"):
-    config.logging.maxSize = parseBiggestInt(getEnv("KVS_LOGGING_MAX_SIZE"))
-  if existsEnv("KVS_LOGGING_MAX_BACKUPS"):
-    config.logging.maxBackups = parseInt(getEnv("KVS_LOGGING_MAX_BACKUPS"))
-  if existsEnv("KVS_LOGGING_FORMAT"):
-    config.logging.format = getEnv("KVS_LOGGING_FORMAT")
+  if existsEnv("BITBARREL_LOGGING_LEVEL"):
+    config.logging.level = getEnv("BITBARREL_LOGGING_LEVEL")
+  if existsEnv("BITBARREL_LOGGING_FILE"):
+    config.logging.file = getEnv("BITBARREL_LOGGING_FILE")
+  if existsEnv("BITBARREL_LOGGING_MAX_SIZE"):
+    config.logging.maxSize = parseBiggestInt(getEnv("BITBARREL_LOGGING_MAX_SIZE"))
+  if existsEnv("BITBARREL_LOGGING_MAX_BACKUPS"):
+    config.logging.maxBackups = parseInt(getEnv("BITBARREL_LOGGING_MAX_BACKUPS"))
+  if existsEnv("BITBARREL_LOGGING_FORMAT"):
+    config.logging.format = getEnv("BITBARREL_LOGGING_FORMAT")
 
-proc initConfig*(configFile: string = "kvs.yaml"): KVSConfig {.discardable.} =
+proc initConfig*(configFile: string = "bitbarrel.yaml"): KVSConfig {.discardable.} =
   ## Initialize configuration with the specified file
   ## Returns the loaded config and stores it in global variable
 

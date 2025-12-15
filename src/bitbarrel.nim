@@ -12,7 +12,7 @@ import storage
 export types, simpleapi, lowlevelapi, storage
 
 # Convenience aliases for common operations
-proc openDatabase*(path: string, config: SimpleConfig = defaultConfig()): SimpleKVS =
+proc openDatabase*(path: string, config: SimpleConfig = defaultConfig()): SimpleBB =
   ## Alias for simpleapi.open - convenient top-level function
   simpleapi.open(path, config)
 

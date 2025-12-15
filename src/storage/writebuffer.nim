@@ -4,7 +4,7 @@
 ## disk I/O and improve throughput. Configurable sync strategies allow
 ## trade-offs between durability and performance.
 
-import std/[locks, times, strformat, deques, typedthreads, strutils]
+import std/[locks, times, deques, typedthreads, strutils]
 
 import ../bitbarrel/types
 

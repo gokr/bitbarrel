@@ -301,7 +301,7 @@ proc parseLoggingConfig*(yamlNode: YamlNode): LoggingConfig =
     return default
 
   result.level = getYamlString("level", "info")
-  result.file = getYamlString("file", "kvs.log")
+  result.file = getYamlString("file", "barrel.log")
   result.maxSize = getYamlInt64("max_size", 100 * 1024 * 1024)
   result.maxBackups = getYamlInt("max_backups", 5)
   result.format = getYamlString("format", "text")
@@ -348,7 +348,7 @@ proc getDefaultConfig*(): KVSConfig =
     ),
     logging: LoggingConfig(
       level: "info",
-      file: "kvs.log",
+      file: "barrel.log",
       maxSize: 100 * 1024 * 1024,  # 100MB
       maxBackups: 5,
       format: "text"

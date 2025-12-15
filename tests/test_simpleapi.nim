@@ -1,12 +1,12 @@
 ## Tests for Simple API
 ##
-## Tests the high-level SimpleKVS API functionality
+## Tests the high-level SimpleBB API functionality
 
 import std/[unittest, times, os]
 import bitbarrel/simpleapi as bbapi
 type SimpleConfig = bbapi.SimpleConfig
 
-suite "SimpleKVS API Tests":
+suite "SimpleBB API Tests":
 
   setup:
     let dbPath = "test_simpleapi.data"

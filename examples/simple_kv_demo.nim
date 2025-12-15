@@ -23,44 +23,44 @@ proc formatNumber(n: int64): string =
     result.add c
 
 type
-  SimpleKVS* = ref object
+  SimpleBB* = ref object
     dataFile: DataFile
     keyDir: KeyDir
     fileId: uint32
 
-proc open*(path: string, fileId: uint32): SimpleKVS =
+proc open*(path: string, fileId: uint32): SimpleBB =
   ## Open a simple key-value store
-  result = SimpleKVS()
+  result = SimpleBB()
   result.fileId = fileId
   result.dataFile = datafile.open(path, fileId)
   result.keyDir = init()
 
-proc close*(kvs: SimpleKVS) =
+proc close*(barrel: SimpleBB) =
   ## Close the key-value store
-  kvs.dataFile.close()
+  barrel.dataFile.close()
   # Note: KeyDir cleanup handled by GC
 
-proc set*(kvs: SimpleKVS, key: string, value: string): bool =
+proc set*(barrel: SimpleBB, key: string, value: string): bool =
   ## Set a key-value pair
   let timestamp = getTime().toUnix()
   try:
-    let info = kvs.dataFile.appendRecord(key, value, timestamp)
+    let info = barrel.dataFile.appendRecord(key, value, timestamp)
     let entry = KeyDirEntry(
-      fileId: kvs.fileId,
+      fileId: barrel.fileId,
       recordPos: info.recordPos,
       valuePos: info.valuePos,
       valueSize: info.valueSize,
       timestamp: timestamp,
       recordSize: info.recordSize
     )
-    kvs.keyDir.add(key, entry)
+    barrel.keyDir.add(key, entry)
     return true
   except:
     return false
 
-proc get*(kvs: SimpleKVS, key: string): string =
+proc get*(barrel: SimpleBB, key: string): string =
   ## Get a value by key (returns empty string if not found)
-  let found = kvs.keyDir.get(key)
+  let found = barrel.keyDir.get(key)
   if found.isSome():
     let entry = found.get()
     let recordInfo = RecordInfo(
@@ -70,39 +70,39 @@ proc get*(kvs: SimpleKVS, key: string): string =
       recordSize: entry.recordSize
     )
     try:
-      let (_, value, _) = kvs.dataFile.readRecord(recordInfo)
+      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
       return value
     except:
       return ""
   else:
     return ""
 
-proc delete*(kvs: SimpleKVS, key: string): bool =
+proc delete*(barrel: SimpleBB, key: string): bool =
   ## Delete a key (using tombstone)
   let timestamp = getTime().toUnix()
   try:
     # Write empty value as tombstone
-    let info = kvs.dataFile.appendRecord(key, "", timestamp)
+    let info = barrel.dataFile.appendRecord(key, "", timestamp)
     let entry = KeyDirEntry(
-      fileId: kvs.fileId,
+      fileId: barrel.fileId,
       recordPos: info.recordPos,
       valuePos: info.valuePos,
       valueSize: info.valueSize,
       timestamp: timestamp,
       recordSize: info.recordSize
     )
-    kvs.keyDir.add(key, entry)
+    barrel.keyDir.add(key, entry)
     return true
   except:
     return false
 
-proc exists*(kvs: SimpleKVS, key: string): bool =
+proc exists*(barrel: SimpleBB, key: string): bool =
   ## Check if a key exists
-  return kvs.keyDir.contains(key)
+  return barrel.keyDir.contains(key)
 
-proc count*(kvs: SimpleKVS): int =
+proc count*(barrel: SimpleBB): int =
   ## Get number of keys in store
-  return kvs.keyDir.len
+  return barrel.keyDir.len
 
 proc main() =
   echo "╔════════════════════════════════════════════╗"
@@ -116,7 +116,7 @@ proc main() =
       removeFile(dbPath)
 
   # Open database
-  echo "📂 Opening SimpleKVS..."
+  echo "📂 Opening SimpleBB..."
   var db = open(dbPath, 1'u32)
   defer:
     echo "\n📂 Closing database..."
@@ -175,7 +175,7 @@ proc main() =
   echo &"   Total keys: {db.count()}"
   echo &"   Database file size: {formatNumber(getFileSize(dbPath).int64)} bytes"
 
-  echo "\n✨ SimpleKVS demo completed!"
+  echo "\n✨ SimpleBB demo completed!"
 
 when isMainModule:
   main()

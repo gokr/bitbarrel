@@ -4,7 +4,7 @@
 ## Usage: unified_benchmark [quick|standard|comprehensive]
 
 import os, times, strformat, math, strutils, sugar, sequtils, random
-import kvs
+import bitbarrel
 
 type
   BenchmarkResult = object

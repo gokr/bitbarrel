@@ -528,7 +528,7 @@ All Phase 3 objectives have been successfully implemented with additional featur
 
 ## Phase 5: Examples and Documentation (New)
 
-**Goals**: Create comprehensive examples demonstrating KVS features for users
+**Goals**: Create comprehensive examples demonstrating BitBarrel features for users
 
 **Status**: IN PROGRESS
 
@@ -545,14 +545,14 @@ Files created:
 - ⏳ `examples/advanced_operations_demo.nim` - Complex workflows
 
 **Key Implementation Philosophy**:
-- **USE existing KVS APIs** - Never reimplement KVS features in examples
-- **Show real usage patterns** - Demonstrate how developers would actually use KVS
+- **USE existing BitBarrel APIs** - Never reimplement BitBarrel features in examples
+- **Show real usage patterns** - Demonstrate how developers would actually use BitBarrel
 - **Focus on practical scenarios** - Real-world use cases, not toy examples
 - **Progressive complexity** - From simple to advanced examples
 
 **Example Structure**:
 ```nim
-# CORRECT - Using KVS APIs
+# CORRECT - Using BitBarrel APIs
 import ../src/kvs/simpleapi
 from ../src/kvs/simpleapi import UserSyncMode
 
@@ -563,7 +563,7 @@ var db = openDatabase("myapp.db", cfg)
 ```
 
 **Completed Examples**:
-1. **Configuration Demo** - Shows both SimpleConfig and full KVSConfig usage with environment variable overrides
+1. **Configuration Demo** - Shows both SimpleConfig and full BitBarrelConfig usage with environment variable overrides
 2. **Performance Tuning Demo** - Demonstrates sync modes and their actual impact on operations
 
 **Next Priority**: Fix remaining examples to follow the correct API usage pattern.

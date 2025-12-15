@@ -64,7 +64,7 @@ Expected output: All tests should pass ✓
 
 ### Bitcask Architecture
 
-This KVS uses the Bitcask storage model:
+This BitBarrel uses the Bitcask storage model:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -120,7 +120,7 @@ nim c -r examples/basic_demo.nim
 **Expected output:**
 ```
 ╔════════════════════════════════════════════════════════════╗
-║   KVS Demo: Basic CRUD Operations                         ║
+║   BitBarrel Demo: Basic CRUD Operations                         ║
 ╚════════════════════════════════════════════════════════════╝
 
 📁 Opening database...
@@ -236,7 +236,7 @@ nim c -d:release bench/stress_test.nim
 **Expected Output:**
 ```
 ╔════════════════════════════════════════════════════════════╗
-║ KVS Stress Test Suite                                     ║
+║ BitBarrel Stress Test Suite                                     ║
 ╚════════════════════════════════════════════════════════════╝
   Testing system limits and error handling...
 
@@ -495,7 +495,7 @@ proc verifyData(dataFile: DataFile, keyDir: var KeyDir) =
 ```nim
 import json
 import bitbarrel
-from kvs/simpleapi import SimpleKVS
+from kvs/simpleapi import SimpleBitBarrel
 
 type
   User* = object
@@ -503,11 +503,11 @@ type
     email*: string
     age*: int
 
-proc saveUser(db: SimpleKVS, userId: string, user: User): bool =
+proc saveUser(db: SimpleBitBarrel, userId: string, user: User): bool =
   let jsonStr = $$user  # Quick JSON conversion
   return db.set("user:" & userId, jsonStr)
 
-proc loadUser(db: SimpleKVS, userId: string): Option[User] =
+proc loadUser(db: SimpleBitBarrel, userId: string): Option[User] =
   let jsonStr = db.get("user:" & userId)
   if jsonStr.len > 0:
     try:
