@@ -1,4 +1,4 @@
-## Demonstration of KVS basic operations
+## Demonstration of BitBarrel basic operations
 
 import os
 import times

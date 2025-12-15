@@ -44,7 +44,7 @@ server:
   max_connections: 500
 
 storage:
-  data_dir: "/tmp/kvs_data"
+  data_dir: "/tmp/bitbarrel_data"
   max_key_size: "128KB"
   sync_mode: "batched"
 
@@ -68,7 +68,7 @@ logging:
       check config.server.port == 9999
       check config.server.maxConnections == 500
 
-      check config.storage.dataDir == "/tmp/kvs_data"
+      check config.storage.dataDir == "/tmp/bitbarrel_data"
       check config.storage.maxKeySize == 128 * 1024
       check config.storage.syncMode == syncBatched
 
@@ -214,7 +214,7 @@ server:
   port: 5555
 
 storage:
-  data_dir: "/kvs/data"
+  data_dir: "/bitbarrel/data"
 
 logging:
   level: "debug"
@@ -236,7 +236,7 @@ logging:
       check retrieved.server.port == 5555  # From file
       check retrieved.server.address == "0.0.0.0"  # Default
       check retrieved.server.maxConnections == 2000  # From env
-      check retrieved.storage.dataDir == "/kvs/data"  # From file
+      check retrieved.storage.dataDir == "/bitbarrel/data"  # From file
       check retrieved.logging.level == "debug"  # From file
 
     finally:

@@ -1,6 +1,6 @@
 ## Simple Performance Demo
 ##
-## Demonstrates performance options in KVS
+## Demonstrates performance options in BitBarrel
 ##
 
 import os, times, strformat
@@ -112,8 +112,8 @@ proc testBuffers() =
 proc main() =
   echo ""
   echo "╔══════════════════════════════════════════╗"
-  echo "║         KVS Performance Demo                        ║"
-  echo "╚═════════════════════════════════════"
+  echo "║         BitBarrel Performance Demo       ║"
+  echo "╚══════════════════════════════════════════╝"
   echo ""
   echo "This demo shows performance impacts of different configurations."
   echo ""

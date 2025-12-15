@@ -1,4 +1,4 @@
-## Crash Recovery Engine for Bitcask KVS
+## Crash Recovery Engine for BitBarrel
 ##
 ## This module handles recovery from crashes by scanning data files
 ## and rebuilding the in-memory KeyDir index.

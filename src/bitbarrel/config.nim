@@ -1,4 +1,4 @@
-## KVS Configuration System
+## BitBarrel Configuration System
 ##
 ## This module provides the main configuration types and loading logic.
 ## Configuration is loaded with the following precedence:
@@ -12,11 +12,11 @@ import config_parser
 import types
 
 # Global configuration instance
-var gConfig*: KVSConfig
+var gConfig*: BitBarrelConfig
 
 
 
-proc loadFromEnvironment*(config: var KVSConfig) =
+proc loadFromEnvironment*(config: var BitBarrelConfig) =
   ## Load configuration from environment variables
   ## Pattern: BITBARREL_SECTION_SETTING
   # Server settings
@@ -95,7 +95,7 @@ proc loadFromEnvironment*(config: var KVSConfig) =
   if existsEnv("BITBARREL_LOGGING_FORMAT"):
     config.logging.format = getEnv("BITBARREL_LOGGING_FORMAT")
 
-proc initConfig*(configFile: string = "bitbarrel.yaml"): KVSConfig {.discardable.} =
+proc initConfig*(configFile: string = "bitbarrel.yaml"): BitBarrelConfig {.discardable.} =
   ## Initialize configuration with the specified file
   ## Returns the loaded config and stores it in global variable
 
@@ -116,14 +116,14 @@ proc initConfig*(configFile: string = "bitbarrel.yaml"): KVSConfig {.discardable
   # Store in global variable for easy access
   gConfig = result
 
-proc getConfig*(): KVSConfig =
+proc getConfig*(): BitBarrelConfig =
   ## Get the current configuration
   ## Should be called after initConfig()
   if gConfig.storage.dataDir.len == 0:
     raise newException(Exception, "Configuration not initialized. Call initConfig() first.")
   result = gConfig
 
-proc validateConfig*(config: KVSConfig): bool =
+proc validateConfig*(config: BitBarrelConfig): bool =
   ## Validate configuration values
   result = true
 

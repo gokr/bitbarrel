@@ -1,4 +1,4 @@
-## Simple Benchmark for KVS
+## Simple Benchmark for BitBarrel
 ##
 ## Run with: nim c -d:release bench/simple_bench.nim
 ## Or with nimble: nimble bench

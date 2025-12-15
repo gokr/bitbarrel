@@ -22,14 +22,14 @@ type
 proc showHelp*() =
   ## Display help information
   echo """
-KVS - High-Performance Bitcask Key/Value Store
+BitBarrel - High-Performance Bitcask Key/Value Store
 
 USAGE:
-  kvs [OPTIONS] COMMAND
+  bitbarrel [OPTIONS] COMMAND
 
 COMMANDS:
-  server    Start the KVS server
-  client    Run KVS client interface (coming in Phase 2)
+  server    Start the BitBarrel server
+  client    Run BitBarrel client interface (coming in Phase 2)
   bench     Run benchmark tests
   test      Run all tests
 
@@ -44,16 +44,16 @@ OPTIONS:
   -v, --version          Show version information
 
 EXAMPLES:
-  kvs server                            # Start server with default config
+  barrel server                            # Start server with default config
   kvs -c prod.yaml server               # Start server with custom config
   kvs -d /data -p 9090 server           # Override data dir and port
-  BITBARREL_SERVER_PORT=9090 kvs server      # Override via environment variable
+  BITBARREL_SERVER_PORT=9090 barrel server      # Override via environment variable
 """
 
 proc showVersion*() =
   ## Display version information
-  echo "KVS version 0.1.0"
-  echo "High-Performance Bitcask Key/Value Store"
+  echo "BitBarrel version 0.1.0"
+  echo "High-Performance Bitcask style Key/Value Store"
   echo ""
 
 proc parseCliArgs*(): CliArgs =
@@ -109,7 +109,7 @@ proc parseCliArgs*(): CliArgs =
     of cmdEnd:
       break
 
-proc applyCliOverrides*(config: var KVSConfig, args: CliArgs) =
+proc applyCliOverrides*(config: var BitBarrelConfig, args: CliArgs) =
   ## Apply command-line argument overrides to configuration
   if args.dataDir.len > 0:
     config.storage.dataDir = args.dataDir
@@ -153,7 +153,7 @@ proc runAsDaemon*(pidFile: string) =
     quit(1)
 
 proc runServer*(args: CliArgs) =
-  ## Run the KVS server
+  ## Run the BitBarrel server
   # Initialize configuration
   var config = initConfig(args.configFile)
 
@@ -169,7 +169,7 @@ proc runServer*(args: CliArgs) =
   if args.daemon:
     runAsDaemon(args.pidFile)
 
-  echo "Starting KVS server..."
+  echo "Starting BitBarrel server..."
   echo &"Server: {config.server.address}:{config.server.port}"
   echo &"Data dir: {config.storage.dataDir}"
   echo &"Log level: {config.logging.level}"
@@ -181,7 +181,7 @@ proc runServer*(args: CliArgs) =
   echo &"  nim c -r examples/basic_demo.nim -d \"{config.storage.dataDir}\""
 
 proc runClient*(args: CliArgs) =
-  ## Run the KVS client
+  ## Run the BitBarrel client
   echo "Client implementation coming in Phase 2"
 
 proc runBenchmark*(args: CliArgs) =
@@ -191,7 +191,7 @@ proc runBenchmark*(args: CliArgs) =
 
 proc runTests*(args: CliArgs) =
   ## Run all tests
-  echo "Running KVS tests..."
+  echo "Running BitBarrel tests..."
   discard execCmd(&"cd {getCurrentDir()} && nimble test")
 
 proc main*() =

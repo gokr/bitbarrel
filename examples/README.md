@@ -54,7 +54,7 @@ nimble demo
 ### Basic CRUD Pattern
 
 ```nim
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init

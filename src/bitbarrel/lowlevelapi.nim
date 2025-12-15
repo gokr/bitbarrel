@@ -1,4 +1,4 @@
-## Low-Level KVS API Wrapper
+## Low-Level BitBarrel API Wrapper
 ##
 ## Provides convenient access to the low-level storage primitives
 ## Re-exports storage modules with consistent naming and documentation

@@ -1,4 +1,4 @@
-## Simple High-Level KVS API
+## Simple High-Level BitBarrel API
 ##
 ## Provides a simplified interface for key-value storage operations
 ## Based on the SimpleBB demo, but enhanced with configuration options
@@ -223,6 +223,6 @@ proc clear*(barrel: SimpleBB): bool =
     return false
 
 proc isClosed*(barrel: SimpleBB): bool =
-  ## Check if the KVS is closed
+  ## Check if the BitBarrel is closed
   return barrel.closed
 

@@ -63,16 +63,16 @@ proc demonstrateSimpleConfig*() =
   # Note: cleanupDataFiles() will be run later in demonstrateConfigurationInAction
 
 proc demonstrateFullConfig*() =
-  ## Demonstrate full KVSConfig usage for advanced applications
-  subsectionHeader("Full KVSConfig Usage - For Advanced Applications")
+  ## Demonstrate full BitBarrelConfig usage for advanced applications
+  subsectionHeader("Full BitBarrelConfig Usage - For Advanced Applications")
 
-  echo "ℹ️  Full KVSConfig provides comprehensive control over all KVS settings"
+  echo "ℹ️  Full BitBarrelConfig provides comprehensive control over all KVS settings"
   echo "   Perfect for server deployments and production use cases."
   echo ""
 
   # Example 1: Load from YAML file
   info("Example 1: Loading configuration from YAML file")
-  let configPath = "examples/kvs_config.yaml"
+  let configPath = "examples/bitbarrel_config.yaml"
 
   if fileExists(configPath):
     try:
@@ -201,7 +201,7 @@ proc demonstrateBestPractices*() =
 
   echo "✓ Use environment variables for deployment:"
   info("   KVS_SERVER_PORT=9090")
-  info("   KVS_STORAGE_DATA_DIR=/mnt/kvs/data")
+  info("   KVS_STORAGE_DATA_DIR=/mnt/bitbarrel/data")
   info("   # These override YAML configuration")
   echo ""
 
@@ -251,7 +251,7 @@ proc main() =
   echo ""
   echo "Key takeaways:"
   success("• Use SimpleConfig for most applications")
-  success("• Use full KVSConfig for server deployments")
+  success("• Use full BitBarrelConfig for server deployments")
   success("• Environment variables override configuration files")
   success("• Sync mode affects durability vs performance")
 

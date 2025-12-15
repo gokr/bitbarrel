@@ -88,7 +88,7 @@ The `examples/performance_tuning_demo.nim` demonstrates how to:
 
 ```
 kvs/
-├── src/kvs/
+├── src/bitbarrel/
 │   ├── types.nim
 │   ├── config.nim
 │   ├── simpleapi.nim

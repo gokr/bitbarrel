@@ -72,7 +72,7 @@ The BitBarrel can be installed via nimble and used as a library in your projects
 
 ```nim
 # Install the package
-# nimble install kvs
+# nimble install bitbarrel
 
 # Simple high-level API
 import bitbarrel
@@ -87,7 +87,7 @@ db.close()
 
 ```nim
 import bitbarrel
-from kvs/simpleapi import UserSyncMode, defaultConfig
+from bitbarrel/simpleapi import UserSyncMode, defaultConfig
 
 var cfg = defaultConfig()
 cfg.syncMode = UserSyncMode.Fsync
@@ -237,7 +237,7 @@ bitbarrel/
 ├── bitbarrel.yaml          # Default configuration file
 ├── PLAN.md                 # Implementation plan
 ├── FEEDBACK.md             # Code review feedback
-├── kvs.nimble              # Nimble package definition
+├── bitbarrel.nimble              # Nimble package definition
 └── README.md               # This file
 ```
 

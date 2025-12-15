@@ -7,7 +7,7 @@ import ../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init
 
-suite "Integration Tests - KVS Operations":
+suite "Integration Tests - BitBarrel Operations":
   test "GET/SET/DELETE workflow":
     # Setup
     let testDataPath = "test_integration.data"

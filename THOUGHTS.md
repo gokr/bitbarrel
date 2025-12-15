@@ -275,13 +275,13 @@ These features transform BitBarrel from:
 
 #### 6. **Nimble Integration**
 **Features:**
-- `nimble tasks kvs` for common operations
+- `nimble tasks bitbarrel` for common operations
 - Nimble hooks for build-time DB setup
 - Package manager integration examples
 
 #### 7. **Interactive Console**
 **Features:**
-- `kvs repl` for debugging/admin
+- `bitbarrel repl` for debugging/admin
 - Command history
 - Syntax highlighting
 - Export/import commands

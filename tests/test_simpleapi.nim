@@ -20,7 +20,7 @@ suite "SimpleBB API Tests":
       removeFile(dbPath)
 
   test "Basic CRUD operations":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # SET
@@ -45,7 +45,7 @@ suite "SimpleBB API Tests":
       db.count() == 3
 
   test "Update operations":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # Initial set
@@ -60,7 +60,7 @@ suite "SimpleBB API Tests":
     check db.count() == 1
 
   test "Delete operations":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # Set initial data
@@ -82,7 +82,7 @@ suite "SimpleBB API Tests":
       db.count() == 2
 
   test "List keys":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # Add some keys
@@ -99,7 +99,7 @@ suite "SimpleBB API Tests":
       "c" in keys
 
   test "Clear database":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # Add some data
@@ -117,11 +117,11 @@ suite "SimpleBB API Tests":
       db.get("key2") == ""
 
   test "Configuration with different sync modes":
-    var cfg = kvsapi.defaultConfig()
-    cfg.syncMode = kvsapi.UserSyncMode.Fsync
+    var cfg = barrelapi.defaultConfig()
+    cfg.syncMode = barrelapi.UserSyncMode.Fsync
     cfg.writeBufferSize = 32 * 1024
 
-    var db = kvsapi.open(dbPath, cfg)
+    var db = barrelapi.open(dbPath, cfg)
     defer: db.close()
 
     # Operations should work with custom config
@@ -129,7 +129,7 @@ suite "SimpleBB API Tests":
     check db.get("sync_test") == "value"
 
   test "Closed database operations":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
 
     # Close early
     db.close()
@@ -146,8 +146,8 @@ suite "SimpleBB API Tests":
       db.listKeys().len == 0
 
   test "Multiple databases with different paths":
-    var db1 = kvsapi.open(dbPath, 1'u32, SimpleConfig())
-    var db2 = kvsapi.open(dbPath & "2", 2'u32, SimpleConfig())
+    var db1 = barrelapi.open(dbPath, 1'u32, SimpleConfig())
+    var db2 = barrelapi.open(dbPath & "2", 2'u32, SimpleConfig())
     # Use explicit empty config to avoid ambiguity
     defer:
       db1.close()
@@ -163,7 +163,7 @@ suite "SimpleBB API Tests":
       db2.get("key") == "value2"
 
   test "Large value storage":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # Create a large value (10KB)
@@ -176,7 +176,7 @@ suite "SimpleBB API Tests":
     check db.count() == 1
 
   test "Binary data handling":
-    var db = kvsapi.open(dbPath)
+    var db = barrelapi.open(dbPath)
     defer: db.close()
 
     # Test with binary data (including null bytes)

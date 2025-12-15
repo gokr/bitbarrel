@@ -1,5 +1,5 @@
 ## Demo Utilities
-## Common utility functions for KVS examples
+## Common utility functions for BitBarrel examples
 
 import strformat
 import strutils

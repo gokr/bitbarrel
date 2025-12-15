@@ -137,7 +137,7 @@ Files to create:
 - `src/storage/keydir.nim` - In-memory hash index
 - `src/storage/msgpack.nim` - MessagePack encoding/decoding
 - `src/storage/record.nim` - Record format and parsing
-- `src/kvs/types.nim` - Common types and constants
+- `src/bitbarrel/types.nim` - Common types and constants
 
 Tasks:
 - [ ] Design file format with CRC32 checksums
@@ -208,7 +208,7 @@ Files to create:
 - `src/network/protocol.nim` - Binary protocol parser
 - `src/network/server.nim` - Async socket server
 - `src/network/client.nim` - Client library
-- `src/kvs/cli.nim` - CLI for server management
+- `src/bitbarrel/cli.nim` - CLI for server management
 
 Tasks:
 - [ ] Implement binary protocol with length-prefixed frames
@@ -239,8 +239,8 @@ Tasks (write buffering and read-ahead already implemented):
 **Goals**: Make production-ready
 
 Files to create:
-- `src/kvs/config.nims` - Main configuration
-- `src/kvs/main.nim` - CLI and daemon
+- `src/bitbarrel/config.nims` - Main configuration
+- `src/bitbarrel/main.nim` - CLI and daemon
 - `docs/api.md` - API documentation
 - `examples/simple_client.nim` - Usage examples
 
@@ -298,7 +298,7 @@ Planned for post-MVP, when basic system is stable:
 ## File Structure
 
 ```
-nim-kvs/
+nim-bitbarrel/
 ├── src/
 │   ├── kvs.nim                 # Main module
 │   ├── storage/
@@ -333,8 +333,8 @@ nim-kvs/
 │   ├── protocol.md
 │   └── deployment.md
 ├── config
-│   └── kvs.toml
-├── kvs.nimble
+│   └── bitbarrel.yaml
+├── bitbarrel.nimble
 └── README.md
 ```
 
@@ -367,7 +367,7 @@ Response:
 ### Nim Client API
 
 ```nim
-import kvs/client
+import bitbarrel/client
 
 let client = newKvsClient("127.0.0.1", 8080)
 
@@ -389,7 +389,7 @@ if client.exists("key"):
 ## Configuration
 
 ```toml
-# kvs.toml
+# bitbarrel.yaml
 
 [server]
 address = "0.0.0.0"
@@ -416,7 +416,7 @@ max_merge_threads = 1
 
 [logging]
 level = "info"
-file = "kvs.log"
+file = "bitbarrel.log"
 ```
 
 ## Trade-offs Made
@@ -534,7 +534,7 @@ All Phase 3 objectives have been successfully implemented with additional featur
 
 Files created:
 - ✅ `examples/configuration_demo.nim` - Proper configuration API usage
-- ✅ `examples/kvs_config.yaml` - Example YAML configuration
+- ✅ `examples/bitbarrel_config.yaml` - Example YAML configuration
 - ✅ `examples/demo_utils.nim` - Demo utilities
 - ⏳ `examples/performance_tuning_demo.nim` - Performance characteristics
 - ⏳ `examples/crash_recovery_demo.nim` - Recovery and checkpoints
@@ -553,8 +553,8 @@ Files created:
 **Example Structure**:
 ```nim
 # CORRECT - Using BitBarrel APIs
-import ../src/kvs/simpleapi
-from ../src/kvs/simpleapi import UserSyncMode
+import ../src/bitbarrel/simpleapi
+from ../src/bitbarrel/simpleapi import UserSyncMode
 
 # SimpleConfig usage
 var cfg = defaultConfig()

@@ -1,4 +1,4 @@
-## KVS Utilities
+## BitBarrel Utilities
 ##
 ## Utility modules for demos and benchmarks
 

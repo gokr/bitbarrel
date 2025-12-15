@@ -1,4 +1,4 @@
-## Merge Policy for Bitcask KVS
+## Merge Policy for BitBarrel
 ##
 ## This module defines policies for when and how to merge data files.
 

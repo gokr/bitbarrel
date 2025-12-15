@@ -43,7 +43,7 @@ type
     maxBackups*: int
     format*: string
 
-  KVSConfig* = object
+  BitBarrelConfig* = object
     server*: ServerConfig
     storage*: StorageConfig
     performance*: PerformanceConfig
@@ -306,9 +306,9 @@ proc parseLoggingConfig*(yamlNode: YamlNode): LoggingConfig =
   result.maxBackups = getYamlInt("max_backups", 5)
   result.format = getYamlString("format", "text")
 
-proc getDefaultConfig*(): KVSConfig =
+proc getDefaultConfig*(): BitBarrelConfig =
   ## Get default configuration values
-  result = KVSConfig(
+  result = BitBarrelConfig(
     server: ServerConfig(
       address: "0.0.0.0",
       port: 8080,
@@ -355,7 +355,7 @@ proc getDefaultConfig*(): KVSConfig =
     )
   )
 
-proc loadConfigFromYaml*(filePath: string): KVSConfig =
+proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
   ## Load configuration from a YAML file
   if not fileExists(filePath):
     raise newException(IOError, &"Configuration file not found: {filePath}")
@@ -410,14 +410,14 @@ proc loadConfigFromYaml*(filePath: string): KVSConfig =
   finally:
     yamlStream.close()
 
-proc saveConfigToYaml*(config: KVSConfig, filePath: string) =
+proc saveConfigToYaml*(config: BitBarrelConfig, filePath: string) =
   ## Save configuration to a YAML file
   let stream = newFileStream(filePath, fmWrite)
   if stream == nil:
     raise newException(IOError, &"Could not create config file: {filePath}")
 
   try:
-    stream.write("# KVS Configuration File\n")
+    stream.write("# BitBarrel Configuration File\n")
     stream.write("# All values have reasonable defaults\n\n")
 
     # Write server config

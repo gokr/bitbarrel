@@ -1,4 +1,4 @@
-## Common types and constants for the KVS implementation
+## Common types and constants for BitBarrel
 
 import times
 

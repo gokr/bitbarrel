@@ -67,13 +67,13 @@ task stress, "Run stress tests":
 
 # Task for building server
 
-task server, "Build KVS server":
+task server, "Build BitBarrel server":
   echo "Server implementation coming in Phase 2"
   # exec "nim c -d:release src/server.nim"
 
 # Task for building client
 
-task client, "Build KVS client":
+task client, "Build BitBarrel client":
   echo "Client implementation coming in Phase 2"
   # exec "nim c -d:release src/client.nim"
 

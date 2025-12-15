@@ -1,4 +1,4 @@
-## Checkpoint System for Bitcask KVS
+## Checkpoint System for BitBarrel
 ##
 ## This module provides periodic checkpointing of the KeyDir
 ## for faster recovery and incremental checkpointing.

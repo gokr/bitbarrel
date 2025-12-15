@@ -7,7 +7,7 @@ import ../src/storage/datafile
 import ../src/storage/keydir
 import ../src/storage/merge
 
-const TestDir = "/tmp/kvs_test_merge"
+const TestDir = "/tmp/bitbarrel_test_merge"
 
 proc setupTest(): string =
   let testDir = TestDir & "_" & $getTime().toUnix()

@@ -322,7 +322,7 @@ The high-level API supports several configuration options:
 
 ```nim
 import bitbarrel
-from kvs/simpleapi import UserSyncMode, defaultConfig
+from bitbarrel/simpleapi import UserSyncMode, defaultConfig
 
 # Create custom configuration
 var cfg = defaultConfig()
@@ -495,7 +495,7 @@ proc verifyData(dataFile: DataFile, keyDir: var KeyDir) =
 ```nim
 import json
 import bitbarrel
-from kvs/simpleapi import SimpleBitBarrel
+from bitbarrel/simpleapi import SimpleBitBarrel
 
 type
   User* = object

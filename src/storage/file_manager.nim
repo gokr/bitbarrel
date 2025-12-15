@@ -1,4 +1,4 @@
-## File Manager for Bitcask KVS
+## File Manager for BitBarrel
 ##
 ## This module manages the lifecycle of data files,
 ## including creation, rotation, and deletion.

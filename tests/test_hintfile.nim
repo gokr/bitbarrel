@@ -5,7 +5,7 @@ import ../src/bitbarrel/types
 import ../src/storage/hintfile
 import ../src/storage/keydir
 
-const TestDir = "/tmp/kvs_test_hintfile"
+const TestDir = "/tmp/bitbarrel_test_hintfile"
 
 proc setupTest(): string =
   let testDir = TestDir & "_" & $getTime().toUnix()

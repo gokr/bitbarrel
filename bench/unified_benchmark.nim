@@ -1,4 +1,4 @@
-## Unified KVS Benchmark Suite
+## Unified BitBarrel Benchmark Suite
 ##
 ## Comprehensive benchmark testing for all UserSyncMode options and configurations
 ## Usage: unified_benchmark [quick|standard|comprehensive]
@@ -286,7 +286,7 @@ proc main() =
 
   echo ""
   echo "============================================================"
-  echo "                KVS Unified Benchmark Suite"
+  echo "                BitBarrel Unified Benchmark Suite"
   echo "============================================================"
   echo ""
   echo &"Profile: {profile.name}"

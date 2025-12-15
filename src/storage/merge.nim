@@ -1,4 +1,4 @@
-## Merge/Compaction System for Bitcask KVS
+## Merge/Compaction System for BitBarrel
 ##
 ## This module handles compaction of data files to reclaim space
 ## from deleted and duplicate records.

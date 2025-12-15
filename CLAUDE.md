@@ -65,9 +65,9 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 
 ```
 ┌─────────────────────────────────────────────┐
-│  SimpleAPI (src/kvs/simpleapi.nim)          │  High-level: open/get/set/delete
+│  SimpleAPI (src/bitbarrel/simpleapi.nim)          │  High-level: open/get/set/delete
 ├─────────────────────────────────────────────┤
-│  LowLevelAPI (src/kvs/lowlevelapi.nim)      │  Direct storage access
+│  LowLevelAPI (src/bitbarrel/lowlevelapi.nim)      │  Direct storage access
 ├─────────────────────────────────────────────┤
 │  Storage Engine (src/storage/)              │  Bitcask implementation
 └─────────────────────────────────────────────┘

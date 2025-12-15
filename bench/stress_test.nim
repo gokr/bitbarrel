@@ -1,4 +1,4 @@
-## Stress Test for KVS
+## Stress Test for BitBarrel
 ##
 ## Pushes the system to its limits
 ## Run with: nim c -r -d:release bench/stress_test.nim
@@ -320,7 +320,7 @@ proc main() =
   randomize()
 
   echo ""
-  printHeader("KVS Stress Test Suite")
+  printHeader("BitBarrel Stress Test Suite")
   echo "  Testing system limits and error handling..."
 
   # Create bench directory

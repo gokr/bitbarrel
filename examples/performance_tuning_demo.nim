@@ -1,6 +1,6 @@
 ## Performance Tuning Demo
 ##
-## Demonstrates performance characteristics of KVS using real APIs:
+## Demonstrates performance characteristics of BitBarrel using real APIs:
 ## - Sync modes (None, Sync, Fsync) and their trade-offs
 ## - Write buffer sizing impact
 ## - Batch operations vs individual writes
@@ -241,7 +241,7 @@ proc demonstrateRealWorldScenario*() =
   cleanupDataFiles()
 
 proc printPerformanceInsights*() =
-  ## Provide insights about KVS performance characteristics
+  ## Provide insights about BitBarrel performance characteristics
   subsectionHeader("Performance Insights & Best Practices")
 
   echo "✅ Sync Mode Selection:"
