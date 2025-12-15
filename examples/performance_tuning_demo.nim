@@ -230,6 +230,8 @@ proc demonstrateRealWorldScenario*() =
 
   echo "\n📓 Mixed Workload Results:"
   keyValue("Total operations", totalOps)
+  keyValue("Expected reads", readOps)
+  keyValue("Expected writes", writeOps)
   keyValue("Reads performed", readsPerformed)
   keyValue("Writes performed", writesPerformed)
   keyValue("Total time", &"{timer.elapsed()}ms")
