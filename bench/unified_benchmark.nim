@@ -3,9 +3,8 @@
 ## Comprehensive benchmark testing for all UserSyncMode options and configurations
 ## Usage: unified_benchmark [quick|standard|comprehensive]
 
-import os, times, strformat, math
+import os, times, strformat, math, strutils, sugar, sequtils, random
 import kvs
-import kvs/utils
 
 type
   BenchmarkResult = object
@@ -94,11 +93,11 @@ proc runWriteBenchmark(config: BenchmarkConfig, syncMode: UserSyncMode, bufferSi
 
   result = BenchmarkResult(
     name: config.profile.name & " - " & $syncMode,
-    opsPerSec: config.profile.operations / totalTime,
-    avgLatency: (totalTime * 1000) / config.profile.operations,
+    opsPerSec: config.profile.operations.float / totalTime,
+    avgLatency: (totalTime * 1000) / config.profile.operations.float,
     totalTime: totalTime * 1000,
     mode: $syncMode,
-    bufferMode: "{bufferSize div 1024}KB"
+    bufferMode: $(bufferSize div 1024) & "KB"
   )
 
 proc testSyncModes(config: BenchmarkConfig) =
@@ -116,12 +115,12 @@ proc testSyncModes(config: BenchmarkConfig) =
     if result.opsPerSec > fastestResult.opsPerSec:
       fastestResult = result
 
-    printTableRow([result.mode, &"{int(result.opsPerSec):,}",
-                   &"{result.avgLatency:.3f}", &"{int(result.totalTime):,}"])
+    printTableRow([result.mode, $int(result.opsPerSec),
+                   &"{result.avgLatency:.3f}", $int(result.totalTime)])
 
   printTableFooter(sum(columns.mapIt(it.len + 3)))
   echo ""
-  echo &"🏆 Fast sync mode: {fastestResult.mode} ({int(fastestResult.opsPerSec):,} ops/sec)"
+  echo &"🏆 Fast sync mode: {fastestResult.mode} ({int(fastestResult.opsPerSec)} ops/sec)"
   echo ""
 
 proc testBufferSizes(config: BenchmarkConfig) =
@@ -139,12 +138,12 @@ proc testBufferSizes(config: BenchmarkConfig) =
     if result.opsPerSec > bestResult.opsPerSec:
       bestResult = result
 
-    printTableRow([result.bufferMode, &"{int(result.opsPerSec):,}",
-                   &"{result.avgLatency:.3f}", &"{int(result.totalTime):,}"])
+    printTableRow([result.bufferMode, $int(result.opsPerSec),
+                   &"{result.avgLatency:.3f}", $int(result.totalTime)])
 
   printTableFooter(sum(columns.mapIt(it.len + 3)))
   echo ""
-  echo &"🏆 Best buffer size: {bestResult.bufferMode} ({int(bestResult.opsPerSec):,} ops/sec)"
+  echo &"🏆 Best buffer size: {bestResult.bufferMode} ({int(bestResult.opsPerSec)} ops/sec)"
   echo ""
 
 proc testReadPerformance(): BenchmarkResult =
@@ -174,16 +173,16 @@ proc testReadPerformance(): BenchmarkResult =
 
   result = BenchmarkResult(
     name: "Read Test",
-    opsPerSec: numKeys / totalTime,
-    avgLatency: (totalTime * 1000) / numKeys,
+    opsPerSec: numKeys.float / totalTime,
+    avgLatency: (totalTime * 1000) / numKeys.float,
     totalTime: totalTime * 1000,
     mode: "N/A",
     bufferMode: "N/A"
   )
 
   echo &"Read Performance:"
-  echo &"  Operations: {numKeys:,}"
-  echo &"  Throughput: {int(result.opsPerSec):,} ops/sec"
+  echo &"  Operations: {numKeys}"
+  echo &"  Throughput: {int(result.opsPerSec)} ops/sec"
   echo &"  Average Latency: {result.avgLatency:.3f} ms"
   echo ""
 
@@ -194,7 +193,7 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
   let kvs = openDatabase(dbFile)
 
   let readRatio = 0.8
-  let writeOps = int(config.profile.operations * (1 - readRatio))
+  let writeOps = int(config.profile.operations.float * (1 - readRatio))
   let readOps = config.profile.operations - writeOps
 
   # Seed initial data
@@ -210,7 +209,7 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
 
   var i = 0
   while i < config.profile.operations:
-    if random() < readRatio:
+    if rand(1.0) < readRatio:
       # Read operation
       let key = "mixed_key_" & $(i mod readOps)
       let value = kvs.get(key)
@@ -230,18 +229,18 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
 
   result = BenchmarkResult(
     name: "Mixed Workload",
-    opsPerSec: config.profile.operations / totalTime,
-    avgLatency: (totalTime * 1000) / config.profile.operations,
+    opsPerSec: config.profile.operations.float / totalTime,
+    avgLatency: (totalTime * 1000) / config.profile.operations.float,
     totalTime: totalTime * 1000,
     mode: "Mixed",
     bufferMode: &"R:{readOps} W:{writesDone}"
   )
 
   echo &"Mixed Workload Results:"
-  echo &"  Total Operations: {config.profile.operations:,}"
-  echo &"  Read Operations: {readsDone:,} ({readRatio * 100:.0f}%)"
-  echo &"  Write Operations: {writesDone:,} ({(1-readRatio) * 100:.0f}%)"
-  echo &"  Overall Throughput: {int(result.opsPerSec):,} ops/sec"
+  echo &"  Total Operations: {config.profile.operations}"
+  echo &"  Read Operations: {readsDone} ({readRatio * 100:.0f}%)"
+  echo &"  Write Operations: {writesDone} ({(1-readRatio) * 100:.0f}%)"
+  echo &"  Overall Throughput: {int(result.opsPerSec)} ops/sec"
   echo &"  Average Latency: {result.avgLatency:.3f} ms"
   echo ""
 
@@ -253,12 +252,12 @@ proc printSummary(results: seq[BenchmarkResult]) =
     return
 
   echo &"Profile: {results[0].name}"
-  echo &"Test Operations: {STANDARD_PROFILE.operations:,}"
+  echo &"Test Operations: {STANDARD_PROFILE.operations}"
   echo ""
 
   for result in results:
     if result.name != "Read Test" and result.name != "Mixed Workload":
-      echo &"  {result.name}: {int(result.opsPerSec):,} ops/sec ({result.totalTime:.0f}ms)"
+      echo &"  {result.name}: {int(result.opsPerSec)} ops/sec ({result.totalTime:.0f}ms)"
 
   echo ""
 
@@ -274,7 +273,7 @@ proc main() =
     of "standard":
       profile = STANDARD_PROFILE
     of "comprehensive":
-      profile = COMPREHENSIVE
+      profile = COMPREHENSIVE_PROFILE
     else:
       echo "Unknown profile. Using standard."
       echo "Usage: unified_benchmark [quick|standard|comprehensive]"
@@ -292,7 +291,7 @@ proc main() =
   echo "╚══════════════════════════════════════════════════════════╝"
   echo ""
   echo &"Profile: {profile.name}"
-  echo &"Operations per test: {profile.operations:,}"
+  echo &"Operations per test: {profile.operations}"
   echo &"Sync modes to test: {profile.syncModes.len}"
   echo &"Buffer sizes to test: {profile.bufferSizes.len}"
   echo ""

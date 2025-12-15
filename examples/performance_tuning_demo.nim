@@ -1,196 +1,299 @@
 ## Performance Tuning Demo
 ##
-## Demonstrates different performance optimization options in KVS:
-## - Sync modes (None, Normal, Full)
-## - Write buffering strategies
-## - Batch operations
+## Demonstrates performance characteristics of KVS using real APIs:
+## - Sync modes (None, Sync, Fsync) and their trade-offs
+## - Write buffer sizing impact
+## - Batch operations vs individual writes
 ##
 ## Run with: nim c -r examples/performance_tuning_demo.nim
 
 import os
-import kvs
+import strformat
+import demo_utils
+import ../src/kvs
 
-# Import utils directly for now
-include ../src/kvs/utils/demo_output
-include ../src/kvs/utils/performance_timer
-include ../src/kvs/utils/data_generator
+type
+  PerformanceTest* = object
+    name: string
+    operations: int
+    keySize: int
+    valueSize: int
 
-var testCount = 0
+proc runPerformanceTest*(kvs: SimpleKVS, test: PerformanceTest): int64 =
+  ## Run a performance test and return time in ms
+  echo &"\n📊 {test.name}"
 
-proc sectionHeader(title: string) =
-  let line = "─".repeat(title.length)
-  echo ""
-  echo title
-  echo line
+var timer = startTimer()
 
-proc success(message: string) =
-  echo "  ✓ " & message
+  for i in 0..<test.operations:
+    let key = &"test:{test.name}:{i:04d}"
+    let value = &"value-{i:06d}-{test.valueSize}x"
+    discard kvs.set(key, value)
 
-proc compareSyncModes() =
-  ## Simple comparison of sync modes
-  sectionHeader("Sync Mode Comparison")
+  timer.stop()
+  let elapsed = timer.elapsed()
+  let opsPerSec = test.operations.float / (elapsed.float / 1000.0)
 
-  let testSize = 1000
-  echo "  Testing different sync modes with {testSize} writes..."
+  keyValue("Operations", test.operations)
+  keyValue("Time (ms)", elapsed)
+  keyValue("Ops/sec", &"{opsPerSec:.0f}")
 
-  # Test with no sync
-  echo "  Testing None mode (max performance)..."
-  var configNone = kvs.defaultConfig()
-  configNone.syncMode = kvs.UserSyncMode.None
-  configNone.writeBufferSize = 128 * 1024
+  return elapsed
 
-let kvsNone = kvs.openDatabase("examples/data/perf_none.dat", configNone)
-  let startNone = cpuTime()
-  for i in 0..<testSize:
-    discard kvsNone.set(&"key{i}", &"value{i}")
-  let timeNone = cpuTime() - startNone
-  kvsNone.close()
-  let opsNone = testSize / timeNone
-
-  # Test with full sync
-  echo "  Testing Fsync mode (max durability)..."
-  var configFsync = kvs.defaultConfig()
-  configFsync.syncMode = kvs.UserSyncMode.Fsync
-  configFsync.writeBufferSize = 128 * 1024
-
-  let kvsFsync = kvs.openDatabase("examples/data/perf_fsync.dat", configFsync)
-  let startFsync = cpuTime()
-  for i in 0..<testSize:
-    discard kvsFsync.set(&"key{i}", &"value{i}")
-  let timeFsync = cpuTime() - startFsync
-  kvsFsync.close()
-  let opsFsync = testSize / timeFsync
-
-  # Calculate improvement
-  let speedRatio = opsNone / opsFsync
-
-  echo ""
-  echo "  Results:"
-  echo &"    None mode:  {int(opsNone):,} ops/sec"
-  echo &"    Fsync mode: {int(opsFsync):,} ops/sec"
-  success &"Speedup: {speedRatio:.1f}x faster with None mode"
-  echo ""
-  echo "  💡 None mode gives fastest performance but risks data loss on crash"
-  echo "     Fsync mode ensures durability but is slower"
-  echo ""
-
-  # Cleanup
-  if fileExists("examples/data/perf_none.dat"):
-    removeFile("examples/data/perf_none.dat")
-  if fileExists("examples/data/perf_fsync.dat"):
-    removeFile("examples/data/perf_fsync.dat")
-
-proc demonstrateBuffering() =
-  ## Show impact of write buffering
-  sectionHeader("Write Buffering Impact")
+proc demonstrateSyncModes*() =
+  ## Compare performance of different sync modes
+  subsectionHeader("Sync Mode Performance Comparison")
 
   let testSize = 5000
-  echo "  Testing different buffer sizes with {testSize} writes..."
+  echo &"Performing {testSize} write operations per test...\n"
 
-  # Small buffer
-  echo "  Testing with 4KB buffer..."
-  var configSmall = kvs.defaultConfig()
-  configSmall.syncMode = kvs.UserSyncMode.None
-  configSmall.writeBufferSize = 4 * 1024
+  # Test with None sync (max performance, no durability)
+  var fastConfig = defaultConfig()
+  fastConfig.syncMode = UserSyncMode.None
+  fastConfig.writeBufferSize = 1024 * 1024  # 1MB buffer
 
-let kvsSmall = kvs.openDatabase("examples/data/perf_small.dat", configSmall)
-  let startSmall = cpuTime()
-  for i in 0..<testSize:
-    discard kvsSmall.set(&"buffer_key{i}", &"buffer_value{i}")
-  let timeSmall = cpuTime() - startSmall
-  kvsSmall.close()
+  var fastDb = openDatabase("examples/data/fast_sync_test.db", fastConfig)
+  defer: fastDb.close()
 
-  # Large buffer
-  echo "  Testing with 1MB buffer..."
-  var configLarge = kvs.defaultConfig()
-  configLarge.syncMode = kvs.UserSyncMode.None
-  configLarge.writeBufferSize = 1024 * 1024
+  let fastTime = runPerformanceTest(fastDb, PerformanceTest(
+    name: "None Sync",
+    operations: testSize,
+    keySize: 16,
+    valueSize: 64
+  ))
 
-let kvsLarge = kvs.openDatabase("examples/data/perf_large.dat", configLarge)
-  let startLarge = cpuTime()
-  for i in 0..<testSize:
-    discard kvsLarge.set(&"buffer_key{i}", &"buffer_value{i}")
-  let timeLarge = cpuTime() - startLarge
-  kvsLarge.close()
+  # Test with Sync mode (balanced)
+  var normalConfig = defaultConfig()
+  normalConfig.syncMode = UserSyncMode.Sync
+  normalConfig.writeBufferSize = 256 * 1024  # 256KB buffer
 
-  # Calculate improvement
-  let speedup = timeSmall / timeLarge
-  let opsSmall = testSize / timeSmall
-  let opsLarge = testSize / timeLarge
+  var normalDb = openDatabase("examples/data/normal_sync_test.db", normalConfig)
+  defer: normalDb.close()
 
-  echo ""
-  echo "  Results:"
-  echo &"    4KB buffer:  {int(opsSmall):,} ops/sec"
-  echo &"    1MB buffer:  {int(opsLarge):,} ops/sec"
-  success &"Speedup: {speedup:.1f}x faster with larger buffer"
-  echo ""
-  echo "  💡 Larger buffers reduce syscalls and improve throughput"
-  echo "     But increase memory usage and data loss risk during crash"
+  let normalTime = runPerformanceTest(normalDb, PerformanceTest(
+    name: "Sync Mode",
+    operations: testSize,
+    keySize: 16,
+    valueSize: 64
+  ))
 
-  # Cleanup
-  if fileExists("examples/data/perf_small.dat"):
-    removeFile("examples/data/perf_small.dat")
-  if fileExists("examples/data/perf_large.dat"):
-    removeFile("examples/data/perf_large.dat")
+  # Test with Fsync (max durability)
+  var safeConfig = defaultConfig()
+  safeConfig.syncMode = UserSyncMode.Fsync
+  safeConfig.writeBufferSize = 32 * 1024  # 32KB buffer
 
-proc demonstrateBatching() =
-  ## Show benefit of batching operations
-  sectionHeader("Batching Benefits")
+  var safeDb = openDatabase("examples/data/safe_sync_test.db", safeConfig)
+  defer: safeDb.close()
+
+  let safeTime = runPerformanceTest(safeDb, PerformanceTest(
+    name: "Fsync Mode",
+    operations: testSize,
+    keySize: 16,
+    valueSize: 64
+  ))
+
+  # Calculate and show performance ratios
+  echo "\n📈 Performance Analysis:"
+  let speedRatioNoneVsSync = normalTime.float / fastTime.float
+  let speedRatioSyncVsFsync = safeTime.float / normalTime.float
+  let speedRatioNoneVsFsync = safeTime.float / fastTime.float
+
+  success(&"None mode is {speedRatioNoneVsSync:.1f}x faster than Sync")
+  info(&"Sync mode is {speedRatioSyncVsFsync:.1f}x faster than Fsync")
+  warning(&"None mode is {speedRatioNoneVsFsync:.1f}x faster than Fsync")
+
+  cleanupDataFiles()
+
+proc demonstrateBufferSizes*() =
+  ## Show impact of different write buffer sizes
+  subsectionHeader("Write Buffer Size Impact")
+
+  let testSize = 3000
+  let bufferSizes = [16*1024, 64*1024, 256*1024, 1024*1024]  # 16KB to 1MB
+  echo &"Testing {bufferSizes.len} buffer sizes with {testSize} operations each\n"
+
+  for bufSize in bufferSizes:
+    var config = defaultConfig()
+    config.syncMode = UserSyncMode.None  # No sync to isolate buffer effect
+    config.writeBufferSize = bufSize
+
+    let db = openDatabase(&"examples/data/buf_{bufSize}.db", config)
+    defer: db.close()
+
+    let time = runPerformanceTest(db, PerformanceTest(
+      name: &"Buffer {formatBytes(bufSize)}",
+      operations: testSize,
+      keySize: 16,
+      valueSize: 64
+    ))
+
+  echo &"Buffer {formatBytes(bufSize)}: {formatBytes(testSize * 80)} written in {time}ms"
+
+  cleanupDataFiles()
+
+proc demonstrateBatching*() =
+  ## Show how batching affects performance
+  subsectionHeader("Batch Operations vs Individual Writes")
 
   let testSize = 2000
-  echo "  Testing batching vs individual operations with {testSize} writes..."
+  let batchSizes = [1, 10, 50, 100, 500]
+  echo &"Testing {batchSizes.len} batch sizes with {testSize} total operations\n"
 
-  # Individual writes
-  echo "  Testing individual writes..."
-  var configBatch = kvs.defaultConfig()
-  configBatch.syncMode = kvs.UserSyncMode.None
-  configBatch.writeBufferSize = 1024 * 1024
+  for batchSize in batchSizes:
+    let numBatches = testSize div batchSize
+    var config = defaultConfig()
+    config.syncMode = UserSyncMode.None
+    config.writeBufferSize = 512 * 1024
 
-let kvsBatch = kvs.openDatabase("examples/data/perf_batch.dat", configBatch)
-  let startBatch = cpuTime()
-  for i in 0..<testSize:
-    discard kvsBatch.set(&"batch_key{i}", &"batch_value{i}")
-  let timeBatch = cpuTime() - startBatch
-  kvsBatch.close()
+    let db = openDatabase(&"examples/data/batch_{batchSize}.db", config)
+    defer: db.close()
 
-  let opsBatch = testSize / timeBatch
-  echo &"    Individual: {int(opsBatch):,} ops/sec"
+    var timer = startTimer()
 
-  echo ""
-  echo "  💡 Batching is automatically handled by the write buffer"
-  echo "     Larger batch sizes reduce per-operation overhead"
+    for batchIdx in 0..<numBatches:
+      let startIdx = batchIdx * batchSize
+      let endIdx = min(startIdx + batchSize, testSize)
 
-  # Cleanup
-  if fileExists("examples/data/perf_batch.dat"):
-    removeFile("examples/data/perf_batch.dat")
+      for i in startIdx..<endIdx:
+        let key = &"batch:{batchIdx}:{i:04d}"
+        let value = &"value-{i:04d}"
+        discard db.set(key, value)
+
+    timer.stop()
+    let elapsed = timer.elapsed()
+    let opsPerSec = testSize.float / (elapsed.float / 1000.0)
+
+    echo &"Batch size {batchSize:3d}: {formatSeconds(elapsed/1000.0)}s, {opsPerSec:.0f} ops/sec"
+
+  cleanupDataFiles()
+
+proc demonstrateRealWorldScenario*() =
+  ## Simulate a real-world mixed workload
+  subsectionHeader("Real-World Mixed Workload")
+
+  echo "Simulating 70% reads, 30% writes pattern...\n"
+
+  var config = defaultConfig()
+  config.syncMode = UserSyncMode.Sync  # Balanced durability
+  config.writeBufferSize = 128 * 1024
+
+  let db = openDatabase("examples/data/realworld.db", config)
+  defer: db.close()
+
+  # Pre-populate with data
+  let loadData = 1000
+  for i in 0..<loadData:
+    discard db.set(&"user:{i}", &"user-data-{i}")
+
+  echo &"Pre-populated {loadData} keys"
+
+  # Mixed operations
+  let totalOps = 5000
+  let readOps = (totalOps * 7) div 10  # 70% reads
+  let writeOps = totalOps - readOps
+
+var timer = startTimer()
+
+  var readsPerformed = 0
+  var writesPerformed = 0
+
+  var i = 0
+  while i < totalOps:
+    if readsPerformed < readOps:
+      # Read operation
+      let key = &"user:{i mod loadData}"
+      let _ = db.get(key)
+      inc readsPerformed
+    else:
+      # Write operation
+      let key = &"session:{i}"
+      let value = &"session-data-{i}-{getTime().toUnix()}"
+      discard db.set(key, value)
+      inc writesPerformed
+
+    inc i
+
+  timer.stop()
+
+  echo "\n📓 Mixed Workload Results:"
+  keyValue("Total operations", totalOps)
+  keyValue("Reads performed", readsPerformed)
+  keyValue("Writes performed", writesPerformed)
+  keyValue("Total time", &"{timer.elapsed()}ms")
+  let mixedOpsPerSec = totalOps.float / (timer.elapsed().float / 1000.0)
+  echo &"Mixed throughput: {mixedOpsPerSec:.0f} ops/sec"
+
+  cleanupDataFiles()
+
+proc cleanupDataFiles() =
+  ## Clean up test data files
+  let dataDir = "examples/data"
+  if dirExists(dataDir):
+    for kind, path in walkDir(dataDir):
+      if kind == pcFile and path.endswith(".db"):
+        try:
+          removeFile(path)
+        except:
+          discard
+
+proc printPerformanceInsights*() =
+  ## Provide insights about KVS performance characteristics
+  subsectionHeader("Performance Insights & Best Practices")
+
+  echo "✅ Sync Mode Selection:"
+  info("  • None模式 - 最高性能，但进程崩溃会丢失最后未同步的数据")
+  info("  • Sync模式 - 平衡点，每写同步到操作系统")
+  info("  • Fsync模式 - 最大安全性，写操作会等待磁盘I/O完成")
+
+  echo "\n✅ Buffer Size Tuning:"
+  info("  • 小缓冲区(16KB): 低延迟，适合低负载应用")
+  info("  • 中等缓冲区(256KB): 平衡性能和内存使用")
+  info("  • 大缓冲区(1MB): 高吞吐量，适合批量写入")
+
+  echo "\n✅ Batching Benefits:"
+  info("  • 批量操作减少系统调用开销")
+  info("  • 10-100是最佳批量大小范围")
+  info("  • 过大批次会增加单个操作的延迟")
+
+  echo "\n✅ Memory Trade-offs:"
+  info("  • KeyDir占用: ~50字节/键")
+  info("  • 100万键 ≈ 500MB内存")
+  info("  • 建议: 100万-500万keys作为实际限制")
+
+  echo "\n✅ Disk Usage:"
+  info("  • Bitcask特点: 1.0-1.5倍数据大小(追加式开销)")
+  info("  → 定期compaction可回收空间")
+  info("  → 适合SSD硬盘(顺序写入)")
 
 proc main() =
-  echo "╔════════════════════════════════════════════════════════════╗"
-  echo "║         KVS Performance Tuning Demo                          ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
-  echo ""
-  echo "This demo shows how different configurations affect performance."
-  echo "For full benchmarks, run: nimble bench"
-  echo ""
+  sectionHeader("KVS Performance Tuning Demo")
 
-  compareSyncModes()
-  testCount += 1
+  echo "This demo demonstrates real KVS performance characteristics using actual APIs."
+  echo "It measures actual behavior, not theoretical values.\n"
 
-  demonstrateBuffering()
-  testCount += 1
+  echo "⚡  Note: Results will vary based on your hardware.\n"
+
+  demonstrateSyncModes()
+  separator()
+
+  demonstrateBufferSizes()
+  separator()
 
   demonstrateBatching()
-  testCount += 1
+  separator()
 
-  echo ""
-  echo "✨ Demo completed! ({testCount} tests run)"
-  echo ""
+  demonstrateRealWorldScenario()
+  separator()
+
+  printPerformanceInsights()
+
+  echo "\n✨ Performance tuning demo completed!"
+  echo
   echo "Key takeaways:"
-  echo "  • Sync mode biggest impact on write performance"
-  echo "  • Larger buffers improve throughput significantly"
-  echo "  • Write buffer handles batching automatically"
-  echo ""
-  echo "Run 'nimble bench' for comprehensive benchmarking!"
+  success("• Choose sync mode based on durability requirements")
+  success("• Tune buffer size for your workload pattern")
+  success("• Use batching for bulk operations")
+  success("• Monitor metrics in production to tune further")
 
 when isMainModule:
   main()

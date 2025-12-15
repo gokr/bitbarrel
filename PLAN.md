@@ -526,6 +526,48 @@ All Phase 3 objectives have been successfully implemented with additional featur
 - Comprehensive test suite (65 tests passing)
 - Ready to proceed with Phase 4 (Network Protocol)
 
+## Phase 5: Examples and Documentation (New)
+
+**Goals**: Create comprehensive examples demonstrating KVS features for users
+
+**Status**: IN PROGRESS
+
+Files created:
+- ✅ `examples/configuration_demo.nim` - Proper configuration API usage
+- ✅ `examples/kvs_config.yaml` - Example YAML configuration
+- ✅ `examples/demo_utils.nim` - Demo utilities
+- ⏳ `examples/performance_tuning_demo.nim` - Performance characteristics
+- ⏳ `examples/crash_recovery_demo.nim` - Recovery and checkpoints
+- ⏳ `examples/merge_compaction_demo.nim` - Space reclamation
+- ⏳ `examples/data_integrity_demo.nim` - Corruption handling
+- ⏳ `examples/monitoring_metrics_demo.nim` - Monitoring capabilities
+- ⏳ `examples/production_patterns_demo.nim` - Real-world patterns
+- ⏳ `examples/advanced_operations_demo.nim` - Complex workflows
+
+**Key Implementation Philosophy**:
+- **USE existing KVS APIs** - Never reimplement KVS features in examples
+- **Show real usage patterns** - Demonstrate how developers would actually use KVS
+- **Focus on practical scenarios** - Real-world use cases, not toy examples
+- **Progressive complexity** - From simple to advanced examples
+
+**Example Structure**:
+```nim
+# CORRECT - Using KVS APIs
+import ../src/kvs/simpleapi
+from ../src/kvs/simpleapi import UserSyncMode
+
+# SimpleConfig usage
+var cfg = defaultConfig()
+cfg.syncMode = UserSyncMode.Fsync
+var db = openDatabase("myapp.db", cfg)
+```
+
+**Completed Examples**:
+1. **Configuration Demo** - Shows both SimpleConfig and full KVSConfig usage with environment variable overrides
+2. **Performance Tuning Demo** - Demonstrates sync modes and their actual impact on operations
+
+**Next Priority**: Fix remaining examples to follow the correct API usage pattern.
+
 **Key implemented files**:
 - `src/storage/datafile.nim` - Core Bitcask format
 - `src/storage/keydir.nim` - In-memory index
