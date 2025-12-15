@@ -5,12 +5,12 @@ A simple but extremely performant key/value store implemented in Nim using the B
 ## ✅ Current Status: Production-Ready with Phase 3 Optimizations!
 
 - **Test Suite**: 65/65 tests passing (100%) - Including Phase 3 features
-- **Performance**: ~90K writes/sec, ~110K reads/sec (baseline)
+- **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Stability**: Stress-tested with 25K+ keys
 - **Crash Recovery**: Ultra-fast recovery with hint files (40K+ keys/sec)
 - **Merge/Compaction**: Background threading for space reclamation
 - **Read Buffering**: LRU cache for improved read performance
-- **Write Buffering**: Configurable sync modes (Immediate, Buffered, Batched, TimeBased)
+- **Write Buffering**: Configurable sync modes (none/sync/fsync)
 - **Architecture**: Bitcask append-only with CRC32 verification
 
 ## Features
@@ -105,13 +105,29 @@ See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
 
 ## Performance
 
-### Current Baseline (No Optimizations)
+### Current Performance (Release Build, Linux x86_64)
 
-```
-Writes: ~90,000 ops/sec (1000 writes in ~0.011s)
-Reads:  ~110,000 ops/sec (1000 reads in ~0.009s)
-Latency: < 0.02ms per operation
-```
+**Write Performance:**
+- None sync: ~250K ops/sec (minimum durability, maximum speed)
+- Sync mode: ~245K ops/sec (OS-level durability)
+- Fsync mode: ~11.5K ops/sec (disk-level durability)
+
+**Read Performance:**
+- Sequential reads: ~180K ops/sec
+- Random access: ~178K ops/sec
+
+**Mixed Workload (80% Read / 20% Write):**
+- Overall throughput: ~278K ops/sec
+
+**Latency:**
+- None/Sync writes: ~0.004ms
+- Fsync writes: ~0.086ms
+- Reads: ~0.006ms
+
+**Buffer Size Impact:**
+- 4KB buffer: ~119K ops/sec
+- 64KB-256KB buffer: ~230K ops/sec (optimal range)
+- 1MB buffer: ~188K ops/sec
 
 ### CRC32 Implementation Performance
 
@@ -140,14 +156,27 @@ nimble benchCrunchy
 
 **Note**: Our benchmarks show the original lookup table implementation outperforms crunchy for the current workload. The crunchy option is maintained for potential future benefits with different access patterns or larger data sizes. See `bench/crc32_performance_summary.md` for detailed comparison.
 
-### With Planned Optimizations
+### Performance Characteristics
 
-Target performance with write buffering and optimizations:
-```
-Writes: 50,000-100,000 ops/sec (fsync-enabled)
-Reads:  100,000+ ops/sec
-Memory: ~40 bytes per key overhead
-```
+| Metric | Current | Notes |
+|--------|---------|-------|
+| Write throughput (none sync) | 250K ops/sec | Maximum performance |
+| Write throughput (sync) | 245K ops/sec | OS-level durability |
+| Write throughput (fsync) | 11.5K ops/sec | Disk-level durability |
+| Read throughput | 180K ops/sec | Both sequential and random |
+| Mixed workload (80R/20W) | 278K ops/sec | Combined operations |
+| Write latency (none/sync) | 0.004ms | Sub-millisecond |
+| Write latency (fsync) | 0.086ms | Disk sync overhead |
+| Read latency | 0.006ms | O(1) hash lookup |
+| Memory per key | ~50 bytes | KeyDir index overhead |
+| Recovery throughput | 40K keys/sec | With hint files |
+
+**Performance Tips:**
+- Use `none` sync for maximum speed (data at risk on crash)
+- Use `sync` for balanced performance/durability
+- Use `fsync` for critical data (slower but safest)
+- Buffer size 64KB-256KB gives optimal performance
+- Mixed workloads benefit from read-ahead caching
 
 ## Repository Structure
 
@@ -170,13 +199,15 @@ kvstore/
 │       ├── writebuffer.nim  # Write buffering system
 │       ├── readbuffer.nim   # Read-ahead LRU buffering
 │       └── (future)         # Network protocol
-├── samples/                 # Runnable demos
+├── examples/                # Runnable demos
 │   ├── basic_demo.nim       # CRUD operations demo
-│   └── README.md            # Samples documentation
+│   ├── simple_kv_demo.nim   # Detailed demo
+│   ├── performance_tuning_demo.nim # Performance characteristics
+│   └── configuration_demo.nim # Config API usage
 ├── bench/                   # Benchmarks and stress tests
+│   ├── unified_benchmark.nim # Comprehensive benchmark suite
 │   ├── simple_bench.nim     # Performance benchmark
-│   ├── stress_test.nim      # Stress testing suite
-│   └── (future)             # Detailed benchmarks
+│   └── stress_test.nim      # Stress testing suite
 ├── tests/                   # Test suites
 │   ├── test_storage.nim     # Storage tests (✅ 3/3)
 │   ├── test_keydir.nim      # KeyDir tests (✅ 7/7)
@@ -314,18 +345,9 @@ On read, CRC32 is verified and exception raised on mismatch.
 
 ## Performance Characteristics
 
-**Measured on:** Linux, AMD64, NVMe SSD, Nim 2.2.6
+**Measured on:** Linux x86_64, SSD, Nim 2.2.6 (Release Build)
 
-| Metric | Current | Target (Phase 4) |
-|--------|---------|------------------|
-| Write throughput | ~90K ops/sec | 50-100K ops/sec |
-| Read throughput | ~110K ops/sec | 100K+ ops/sec |
-| Recovery throughput | ~40K keys/sec | 50K+ keys/sec |
-| Write latency | ~0.01ms | < 0.1ms (fsync) |
-| Read latency | ~0.009ms | < 0.02ms |
-| Recovery latency | ~0.025ms (1000 keys) | < 0.05ms |
-| Memory per key | ~48 bytes | ~40 bytes |
-| Record overhead | ~20 bytes | ~20 bytes |
+[See updated performance data above]
 
 ## Development
 

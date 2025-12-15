@@ -81,18 +81,22 @@ type
 proc startTimer*(): Timer =
   ## Start a new timer
   result = Timer(
-    startTime: getTime().toUnix() * 1000,
+    startTime: int64(cpuTime() * 1000),
     measurements: @[]
   )
 
 proc stop*(timer: var Timer) =
   ## Stop the timer and record measurement
-  let elapsed = (getTime().toUnix() * 1000) - timer.startTime
-  timer.measurements.add(elapsed)
+  let elapsed = int64(cpuTime() * 1000) - timer.startTime
+  if elapsed == 0:
+    timer.measurements.add(1)  # Minimum 1ms to avoid division by zero
+  else:
+    timer.measurements.add(elapsed)
 
 proc elapsed*(timer: Timer): int64 =
   ## Get elapsed time in milliseconds
   if timer.measurements.len > 0:
     result = timer.measurements[^1]
   else:
-    result = (getTime().toUnix() * 1000) - timer.startTime
+    let elapsed = int64(cpuTime() * 1000) - timer.startTime
+    result = if elapsed == 0: 1 else: elapsed
