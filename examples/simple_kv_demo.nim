@@ -6,7 +6,6 @@
 import os
 import times
 import strformat
-import strutils
 import options
 import ../src/bitbarrel/types
 import ../src/storage

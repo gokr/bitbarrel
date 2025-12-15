@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "0.2.0"
 author        = "Göran Krampe"
 description   = "High-Performance Bitcask-style Key/Value Store"
 license       = "MIT"

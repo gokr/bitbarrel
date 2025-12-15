@@ -3,7 +3,7 @@
 ## Demonstrates write and read buffer benefits
 
 import os, times, strformat
-import ../src/bitbarrel/[types, simpleapi]
+import ../src/bitbarrel
 
 const NUM_OPS = 10000
 
@@ -29,15 +29,15 @@ proc testBufferedWrites(): float64 =
   result = cpuTime() - start
   removeDir("bench_buffered", true)
 
-proc testPerformance():
+proc testPerformance() =
   echo "\n=== Buffer Performance Test ==="
   echo &"Testing with {NUM_OPS} operations\n"
 
   let directTime = testDirectWrites()
-  echo &"Direct writes:        {directTime:.3f}s ({NUM_OPS / directTime:,.0f} ops/sec)"
+  echo &"Direct writes:        {directTime:.3f}s ({int(NUM_OPS / directTime)} ops/sec)"
 
   let bufferedTime = testBufferedWrites()
-  echo &"Buffered writes:      {bufferedTime:.3f}s ({NUM_OPS / bufferedTime:,.0f} ops/sec)"
+  echo &"Buffered writes:      {bufferedTime:.3f}s ({int(NUM_OPS / bufferedTime)} ops/sec)"
 
   if bufferedTime < directTime:
     echo &"Speedup: {directTime / bufferedTime:.2f}x faster"

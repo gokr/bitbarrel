@@ -3,13 +3,13 @@
 ## Demonstrates performance options in BitBarrel
 ##
 
-import os, times, strformat
-import ../src/bitbarrel
+import os, times, strformat, strutils
+import ../src/bitbarrel as barrel
 
 var testCount = 0
 
 proc sectionHeader(title: string) =
-  let line = "─".repeat(title.length + 4)
+  let line = "─".repeat(title.len + 4)
   echo ""
   echo &"╔" & line & "╗"
   echo "║  " & title & " ║"
@@ -46,7 +46,7 @@ proc testSyncModes() =
   for i in 0..<testSize:
     discard db2.set(&"key2_{i}", &"value2_{i}")
   let timeFsync = cpuTime() - start2
-    db2.close()
+  db2.close()
 
   # Results
   let opsNone = testSize.float / timeNone
@@ -55,8 +55,8 @@ proc testSyncModes() =
 
   echo ""
   echo "Results:"
-  echo &"    None mode: {int(opsNone):,} ops/sec"
-  echo &"  Fsync mode: {int(opsFsync):,} ops/sec"
+  echo &"    None mode: {int(opsNone)} ops/sec"
+  echo &"  Fsync mode: {int(opsFsync)} ops/sec"
   echo &"  Speedup: {speedup:.1f}x faster"
   echo ""
 
@@ -94,14 +94,14 @@ proc testBuffers() =
   db2.close()
 
   # Results
-  let opsSmall = testSize / timeSmall
-  let opsLarge = testSize / timeLarge
+  let opsSmall = testSize.float / timeSmall
+  let opsLarge = testSize.float / timeLarge
   let speedup = timeSmall / timeLarge
 
   echo ""
   echo "Results:"
-  echo &"    4KB buffer: {int(opsSmall):,} ops/sec"
-  echo &" 1MB buffer: {int(opsLarge):,} ops/sec"
+  echo &"    4KB buffer: {int(opsSmall)} ops/sec"
+  echo &" 1MB buffer: {int(opsLarge)} ops/sec"
   echo &"  Speedup: {speedup:.1f}x faster"
   echo ""
 

@@ -1,5 +1,5 @@
 import os, times, strformat
-import bitbarrel
+import ../src/bitbarrel
 
 const NUM_OPS = 10000
 

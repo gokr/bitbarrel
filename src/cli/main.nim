@@ -52,7 +52,7 @@ EXAMPLES:
 
 proc showVersion*() =
   ## Display version information
-  echo "BitBarrel version 0.1.0"
+  echo "BitBarrel version 0.2.0"
   echo "High-Performance Bitcask style Key/Value Store"
   echo ""
 

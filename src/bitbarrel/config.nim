@@ -163,13 +163,3 @@ proc validateConfig*(config: BitBarrelConfig): bool =
     echo "Error: Max merge threads must be positive when merge is enabled"
     result = false
 
-# Backward compatibility - expose old constants as deprecated
-{.deprecated: "Use config.storage.maxKeySize instead".}
-proc getMaxKeySize*(): int =
-  if gConfig.storage.maxKeySize > 0: gConfig.storage.maxKeySize
-  else: 64 * 1024
-
-{.deprecated: "Use config.storage.maxValueSize instead".}
-proc getMaxValueSize*(): int =
-  if gConfig.storage.maxValueSize > 0: gConfig.storage.maxValueSize
-  else: 1024 * 1024
