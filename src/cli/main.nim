@@ -4,7 +4,7 @@
 ## using standard library parseopt for argument parsing
 
 import std/[os, parseopt, strformat, strutils, osproc, posix]
-import ../kvs/[config, config_parser]
+import ../bitbarrel/[config, config_parser]
 import ../storage
 
 type

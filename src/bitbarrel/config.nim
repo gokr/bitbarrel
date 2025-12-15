@@ -7,7 +7,7 @@
 ## 3. Configuration file (YAML)
 ## 4. Default values (lowest)
 
-import std/[os, strformat, strutils, tables]
+import std/[os, strformat, strutils]
 import config_parser
 import types
 

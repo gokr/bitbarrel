@@ -5,11 +5,11 @@
 ## When run as binary, starts the CLI application
 
 # Library exports
-import bitbarrel/[types, config, simpleapi, lowlevelapi]
+import bitbarrel/[types, simpleapi, lowlevelapi]
 import storage
 
 # Export everything users might need
-export types, config, simpleapi, lowlevelapi, storage
+export types, simpleapi, lowlevelapi, storage
 
 # Convenience aliases for common operations
 proc openDatabase*(path: string, config: SimpleConfig = defaultConfig()): SimpleKVS =

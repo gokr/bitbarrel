@@ -1,7 +1,7 @@
 ## Key Directory (KeyDir) - In-memory hash index for Bitcask
 
 import std/[tables, locks, options]
-import ../kvs/types
+import ../bitbarrel/types
 
 type
   KeyDir* = object

@@ -4,7 +4,7 @@
 ## and rebuilding the in-memory KeyDir index.
 
 import std/[os, strformat, strutils, times, sequtils, math, algorithm, endians, locks]
-import ../kvs/types, keydir, record, crc32, hintfile
+import ../bitbarrel/types, keydir, record, crc32, hintfile
 
 type
   RecoveryProgress* = object

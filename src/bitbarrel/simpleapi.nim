@@ -3,7 +3,7 @@
 ## Provides a simplified interface for key-value storage operations
 ## Based on the SimpleKVS demo, but enhanced with configuration options
 
-import std/[os, times, options]
+import std/[times, options]
 import types
 import ../storage
 import ../storage/datafile

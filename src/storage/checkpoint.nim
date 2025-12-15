@@ -4,7 +4,7 @@
 ## for faster recovery and incremental checkpointing.
 
 import std/[os, strformat, strutils, times, tables, locks, algorithm]
-import ../kvs/types, keydir
+import ../bitbarrel/types, keydir
 
 type
   CheckpointMetadata* = object

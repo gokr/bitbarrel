@@ -6,7 +6,7 @@
 
 import std/[locks, times, strformat, deques, typedthreads, strutils]
 
-import ../kvs/types
+import ../bitbarrel/types
 
 type
   ## Callback type for flushing entries to disk

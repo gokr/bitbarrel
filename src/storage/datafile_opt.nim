@@ -5,7 +5,7 @@
 import std/[os, times, locks]
 when defined(posix):
   import std/posix except Time
-import ../kvs/types
+import ../bitbarrel/types
 from record import crc32, Record, encode, decode
 from writebuffer import WriteBuffer, startWorker, stopWorker
 

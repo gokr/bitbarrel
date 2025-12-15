@@ -49,28 +49,27 @@ const
   )
 
 proc printHeader(title: string) =
-  let line = "═".repeat(title.len + 4)
-  echo "╔" & line & "╗"
-  echo "║  " & title & " ║"
-  echo "╚" & line & "╝"
+  let line = "=".repeat(60)
+  echo line
+  echo "  " & title
+  echo line
   echo ""
 
 proc printTableHeader(columns: openArray[string]) =
   let totalWidth = sum(columns.mapIt(it.len + 3))
-  echo "┌" & "─".repeat(totalWidth) & "┐"
+  echo "  " & "─".repeat(totalWidth)
   for i, col in columns:
     let padding = 3 - col.len mod 2
     echo "│ " & col & " ".repeat(padding) & " "
-  echo "├" & "─".repeat(totalWidth) & "┤"
+  echo "├" & "─".repeat(totalWidth)
 
 proc printTableRow(values: openArray[string]) =
   for i, val in values:
     let padding = 3 - val.len mod 2
     echo "│ " & val & " ".repeat(padding) & " "
-  echo "│"
 
 proc printTableFooter(width: int) =
-  echo "└" & "─".repeat(width) & "┘"
+  echo "└" & "─".repeat(width)
 
 proc runWriteBenchmark(config: BenchmarkConfig, syncMode: UserSyncMode, bufferSize: int): BenchmarkResult =
   let dbFile = "bench_unified_test.dat"
@@ -286,9 +285,9 @@ proc main() =
   )
 
   echo ""
-  echo "╔════════════════════════════════════════════════════════════╗"
-  echo "║           KVS Unified Benchmark Suite                      ║"
-  echo "╚══════════════════════════════════════════════════════════╝"
+  echo "============================================================"
+  echo "                KVS Unified Benchmark Suite"
+  echo "============================================================"
   echo ""
   echo &"Profile: {profile.name}"
   echo &"Operations per test: {profile.operations}"

@@ -1,7 +1,7 @@
 ## Record format and encoding for Bitcask
 
 import std/endians
-import ../kvs/types
+import ../bitbarrel/types
 import ./crc32
 
 # Re-export crc32 for backwards compatibility

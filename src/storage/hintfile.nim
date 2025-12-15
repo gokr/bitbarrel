@@ -8,7 +8,7 @@
 ## - Entries (variable): keyLen(2) + key + recordPos(8) + valuePos(8) + valueSize(4) + timestamp(8) + recordSize(4)
 
 import std/[os, times, strformat]
-import ../kvs/types
+import ../bitbarrel/types
 import keydir
 from crc32 import crc32
 

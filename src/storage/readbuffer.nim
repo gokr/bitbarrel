@@ -4,7 +4,7 @@
 ## disk I/O and improve read throughput through caching frequently accessed data.
 
 import std/[tables, times, locks, options, algorithm]
-import ../kvs/types
+import ../bitbarrel/types
 
 type
   CacheKey* = tuple[fileId: uint32, offset: uint64]

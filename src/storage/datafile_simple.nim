@@ -6,7 +6,7 @@
 import std/[os, times, locks, strformat]
 when defined(posix):
   import std/posix
-import ../kvs/types
+import ../bitbarrel/types
 from record import crc32, Record, encode, decode
 
 type
