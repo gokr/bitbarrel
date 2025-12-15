@@ -16,7 +16,7 @@ A key/value store implemented in Nim using the Bitcask storage model.
 ## Features
 
 - ✅ **Append-only storage** for efficient write performance
-- ✅ **In-memory hash index** for fast read operations
+- ✅ **In-memory hash index** for O(1) read operations
 - ✅ **CRC32 checksums** for data integrity
 - ✅ **Crash recovery** with checkpoint system
 - ✅ **Fast recovery** at 40,000+ keys/sec
