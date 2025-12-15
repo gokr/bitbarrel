@@ -1,10 +1,10 @@
 # NimKVS - High-Performance Bitcask Key/Value Store
 
-A simple but extremely performant key/value store implemented in Nim using the Bitcask storage model.
+A simple but performant key/value store implemented in Nim using the Bitcask storage model.
 
-## ✅ Current Status: Production-Ready with Phase 3 Optimizations!
+## ✅ Current Status
 
-- **Test Suite**: 65/65 tests passing (100%) - Including Phase 3 features
+- **Test Suite**: 65/65 tests passing (100%)
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Stability**: Stress-tested with 25K+ keys
 - **Crash Recovery**: Ultra-fast recovery with hint files (40K+ keys/sec)
@@ -18,15 +18,15 @@ A simple but extremely performant key/value store implemented in Nim using the B
 - ✅ **Append-only storage** for optimal write performance
 - ✅ **In-memory hash index** for O(1) read operations
 - ✅ **CRC32 checksums** for data integrity
-- ✅ **Crash recovery** with checkpoint system (Phase 2)
+- ✅ **Crash recovery** with checkpoint system
 - ✅ **Fast recovery** at 40,000+ keys/sec
 - ✅ **Thread-safe** KeyDir operations
 - ✅ **Binary checkpoint format** for persistence
-- ✅ **Automatic compaction** with background threads (Phase 3)
-- ✅ **Hint files** for ultra-fast recovery (Phase 3)
-- ✅ **Read-ahead LRU buffering** for improved performance (Phase 3)
-- ✅ **Write buffering** with configurable sync modes (Phase 3)
-- 🚧 **Network protocol** (Phase 4)
+- ✅ **Automatic compaction** with background threads
+- ✅ **Hint files** for ultra-fast recovery
+- ✅ **Read-ahead LRU buffering** for improved performance
+- ✅ **Write buffering** with configurable sync modes
+- 🚧 **Network protocol** (coming)
 
 ## Quick Start
 

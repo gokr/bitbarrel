@@ -203,7 +203,7 @@ proc demonstrateRealWorldScenario*() =
   # Mixed operations
   let totalOps = 5000
   let readOps = (totalOps * 7) div 10  # 70% reads
-  let writeOps = totalOps - readOps
+  let writeOps = totalOps - readOps  # 30% writes
 
   var timer = startTimer()
 
