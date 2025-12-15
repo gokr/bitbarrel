@@ -1,7 +1,7 @@
 ## Tests for error handling and data corruption scenarios
 
 import std/[unittest, os, strutils, options, locks]
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage/datafile
 import ../src/storage/keydir
 import ../src/storage/record

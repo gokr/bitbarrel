@@ -4,9 +4,9 @@
 ## from deleted and duplicate records.
 
 import std/[os, times, strformat, strutils, tables, options, locks, algorithm, atomics, typedthreads]
-import ../kvs/types, datafile, keydir
+import ../bitbarrel/types, datafile, keydir
 
-# Re-export types from kvs/types for convenience (use qualified names to avoid os.FileInfo conflict)
+# Re-export types from bitbarrel/types for convenience (use qualified names to avoid os.FileInfo conflict)
 export types.FileState, types.FileInfo, types.MergeStats, types.MergeConfig
 
 type

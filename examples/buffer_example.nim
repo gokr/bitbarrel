@@ -3,7 +3,7 @@
 ## Demonstrates write and read buffer benefits
 
 import os, times, strformat
-import ../src/kvs/[types, simpleapi]
+import ../src/bitbarrel/[types, simpleapi]
 
 const NUM_OPS = 10000
 

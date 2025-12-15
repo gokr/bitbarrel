@@ -4,7 +4,7 @@
 
 import std/[unittest, os, strformat, times]
 import ../src/storage/[recovery, datafile, hintfile, keydir, record]
-import ../src/kvs/types
+import ../src/bitbarrel/types
 
 # Utility for creating corrupt files
 proc badWrite(path: string, content: string) =

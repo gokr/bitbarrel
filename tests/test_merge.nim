@@ -2,7 +2,7 @@
 
 import std/[unittest, times, tables, strformat, strutils]
 import std/os except FileInfo
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage/datafile
 import ../src/storage/keydir
 import ../src/storage/merge

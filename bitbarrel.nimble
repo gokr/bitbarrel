@@ -2,10 +2,10 @@
 
 version       = "0.1.0"
 author        = "Göran Krampe"
-description   = "High-Performance Bitcask Key/Value Store"
+description   = "High-Performance Bitcask-style Key/Value Store"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["kvs"]
+bin           = @["bitbarrel"]
 
 # Dependencies
 

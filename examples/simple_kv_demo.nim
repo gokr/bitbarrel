@@ -1,4 +1,4 @@
-## Simple High-Level KVS Demo
+## Simple High-Level BitBarrel Demo
 ##
 ## Demonstrates simplified API with automatic KeyDir management
 ## Run with: nim c -r examples/simple_kv_demo.nim
@@ -8,7 +8,7 @@ import times
 import strformat
 import strutils
 import options
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 import ../src/storage/datafile
 from ../src/storage/keydir import init
@@ -106,7 +106,7 @@ proc count*(kvs: SimpleKVS): int =
 
 proc main() =
   echo "╔════════════════════════════════════════════╗"
-  echo "║  Simple KVS Demo: High-Level API          ║"
+  echo "║  Simple BitBarrel Demo: High-Level API          ║"
   echo "╚════════════════════════════════════════════╝"
   echo ""
 

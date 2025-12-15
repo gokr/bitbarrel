@@ -1,4 +1,4 @@
-# KVS Implementation Status
+# BitBarrel Implementation Status
 
 This document tracks the current implementation status and remaining tasks.
 

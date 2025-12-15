@@ -1,10 +1,10 @@
-# KVS Tutorial: High-Performance Key-Value Store
+# BitBarrel Tutorial: High-Performance Key-Value Store
 
-This tutorial walks you through using the Bitcask-based key-value store (KVS) implementation in Nim. By the end, you'll understand how to use the storage engine, run benchmarks, and stress-test the system.
+This tutorial walks you through using the Bitcask-style key-value store (BitBarrel) implementation in Nim. By the end, you'll understand how to use the storage engine, run benchmarks, and stress-test the system.
 
 ## Key Features
 
-The KVS provides these core capabilities:
+BitBarrel provides these core capabilities:
 
 - **Fast Recovery**: Hint files enable ultra-fast recovery (up to 10x faster)
 - **Background Merge**: Automatic space reclamation without blocking operations
@@ -305,7 +305,7 @@ Avg read latency:  ~0.009 ms
 The high-level API provides a simple interface for most use cases:
 
 ```nim
-import kvs
+import bitbarrel
 
 # Basic usage
 var db = openDatabase("mydb")
@@ -321,7 +321,7 @@ db.close()
 The high-level API supports several configuration options:
 
 ```nim
-import kvs
+import bitbarrel
 from kvs/simpleapi import UserSyncMode, defaultConfig
 
 # Create custom configuration
@@ -349,7 +349,7 @@ db.close()
 ### Simple Operations
 
 ```nim
-import kvs
+import bitbarrel
 
 var db = openDatabase("mydb")
 
@@ -380,7 +380,7 @@ db.close()
 For fine-grained control, use the low-level API:
 
 ```nim
-import kvs/[lowlevelapi, simpleapi]
+import bitbarrel/[lowlevelapi, simpleapi]
 
 # Work directly with data files
 var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
@@ -408,7 +408,7 @@ var info = lowlevelapi.newRecordInfo(
 ### Custom Configuration (Low-Level)
 
 ```nim
-import kvs/types
+import bitbarrel/types
 import storage/datafile
 import storage/keydir
 
@@ -494,7 +494,7 @@ proc verifyData(dataFile: DataFile, keyDir: var KeyDir) =
 
 ```nim
 import json
-import kvs
+import bitbarrel
 from kvs/simpleapi import SimpleKVS
 
 type
@@ -536,7 +536,7 @@ db.close()
 
 ```nim
 import json
-import kvs/types
+import bitbarrel/types
 import storage/datafile
 import storage/keydir
 
@@ -724,4 +724,4 @@ If you encounter issues:
 
 **Happy coding!** 🚀
 
-This KVS implementation provides a solid foundation for high-performance storage. The combination of Bitcask's append-only design and Nim's efficiency makes it suitable for read-heavy workloads requiring low latency.
+This BitBarrel implementation provides a solid foundation for high-performance storage. The combination of Bitcask's append-only design and Nim's efficiency makes it suitable for read-heavy workloads requiring low latency.

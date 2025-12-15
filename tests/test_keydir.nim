@@ -3,7 +3,7 @@ import tables
 import locks
 import times
 import options
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage/keydir
 
 suite "KeyDir Operations":

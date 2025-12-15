@@ -1,6 +1,6 @@
-# NimKVS - Bitcask Key/Value Store
+# BitBarrel - High-Performance Bitcask-style Key/Value Store
 
-A key/value store implemented in Nim using the Bitcask storage model.
+A key/value store implemented in Nim using the enhanced Bitcask storage model.
 
 ## ✅ Current Status
 
@@ -67,7 +67,7 @@ The KVS can be installed via nimble and used as a library in your projects:
 # nimble install kvs
 
 # Simple high-level API
-import kvs
+import bitbarrel
 
 var db = openDatabase("mydb")
 db.set("key", "value")
@@ -78,7 +78,7 @@ db.close()
 #### With Configuration
 
 ```nim
-import kvs
+import bitbarrel
 from kvs/simpleapi import UserSyncMode, defaultConfig
 
 var cfg = defaultConfig()
@@ -95,7 +95,7 @@ For advanced use cases, you can use the low-level storage API:
 
 ```nim
 # For backward compatibility or fine-grained control
-import kvs/[lowlevelapi, simpleapi]
+import bitbarrel/[lowlevelapi, simpleapi]
 
 var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
 # Work directly with data files

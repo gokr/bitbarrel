@@ -1,8 +1,8 @@
 ## Configuration Tests
 
 import std/[os, unittest, strformat]
-import ../src/kvs/[config, config_parser]
-import ../src/kvs/types
+import ../src/bitbarrel/[config, config_parser]
+import ../src/bitbarrel/types
 
 suite "Configuration Tests":
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KVS is a high-performance Bitcask-style key-value storage engine written in Nim. It provides:
+BitBarrel is a high-performance Bitcask-style key-value storage engine written in Nim. It provides:
 - Append-only log files with O(1) reads via in-memory hash index
 - CRC32 data integrity verification
 - Crash recovery with hint files for fast startup (40K+ keys/sec)
@@ -12,7 +12,7 @@ KVS is a high-performance Bitcask-style key-value storage engine written in Nim.
 - Configurable durability (immediate, buffered, batched, time-based sync modes)
 - Write buffering and read-ahead caching
 
-**Current Status**: Phase 3 complete - merge/compaction with background threading implemented.
+**Current Status**: Core implementation complete with advanced features - ready for production use.
 
 ## Build Commands
 
@@ -207,7 +207,7 @@ The merge system uses atomic flags for shutdown signaling and channels for coord
 
 ## Tutorial
 
-See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive documentation on using the KVS system, including:
+See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive documentation on using BitBarrel, including:
 - API usage examples
 - Performance benchmarks
 - Configuration options

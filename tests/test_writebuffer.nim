@@ -3,7 +3,7 @@
 import std/[unittest, os, times, strformat]
 import ../src/storage/datafile
 import ../src/storage/writebuffer
-import ../src/kvs/types
+import ../src/bitbarrel/types
 
 suite "Write Buffer Tests":
   test "write buffer initialization":

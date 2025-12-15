@@ -1,4 +1,4 @@
-## Basic KVS Demo - Simple GET/SET operations
+## BitBarrel Demo - Simple GET/SET operations
 ##
 ## Run with: nim c -r examples/basic_demo.nim
 
@@ -6,14 +6,14 @@ import os
 import times
 import strformat
 import options
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init
 
 proc main() =
   echo "╔════════════════════════════════════════════╗"
-  echo "║   KVS Demo: Basic CRUD Operations         ║"
+  echo "║   BitBarrel Demo: Basic CRUD Operations   ║"
   echo "╚════════════════════════════════════════════╝"
   echo ""
 

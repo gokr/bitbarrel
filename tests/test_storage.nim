@@ -1,7 +1,7 @@
 import unittest
 import os
 import times
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 
 suite "Data File Format":

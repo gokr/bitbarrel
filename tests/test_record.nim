@@ -2,7 +2,7 @@
 
 import std/[unittest, times]
 import ../src/storage/record
-import ../src/kvs/types
+import ../src/bitbarrel/types
 
 suite "Record Module Tests":
   test "CRC32 with known test vectors":

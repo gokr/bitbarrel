@@ -1,7 +1,7 @@
 ## Tests for hint file implementation
 
 import std/[unittest, os, times, strformat, options]
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage/hintfile
 import ../src/storage/keydir
 

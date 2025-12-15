@@ -1,7 +1,7 @@
-## KVS Configuration Demo
+## BitBarrel Configuration Demo
 ##
-## Demonstrates how to properly use the KVS configuration system
-## Shows both SimpleConfig (for basic use) and full KVSConfig (for advanced use)
+## Demonstrates how to properly use the BitBarrel configuration system
+## Shows both SimpleConfig (for basic use) and full BitBarrelConfig (for advanced use)
 ##
 ## Run with: nim c -r examples/configuration_demo.nim
 
@@ -9,7 +9,7 @@ import os
 import strformat
 import strutils
 import demo_utils
-import ../src/kvs
+import ../src/bitbarrel
 
 proc demonstrateSimpleConfig*() =
   ## Demonstrate SimpleConfig usage for basic applications
@@ -182,7 +182,7 @@ proc demonstrateBestPractices*() =
   subsectionHeader("Configuration Best Practices")
 
   echo "✓ Use SimpleConfig for most applications:"
-  info("   import kvs/simpleapi")
+  info("   import bitbarrel/simpleapi")
   info("   var db = openDatabase('myapp.db')")
   echo ""
 
@@ -194,7 +194,7 @@ proc demonstrateBestPractices*() =
   echo ""
 
   echo "✓ Use full config for server deployment:"
-  info("   import kvs/config")
+  info("   import bitbarrel/config")
   info("   let config = initConfig('production.yaml')")
   info("   # Then use config values throughout app")
   echo ""
@@ -228,11 +228,11 @@ proc cleanupDataFiles() =
           discard
 
 proc main() =
-  sectionHeader("KVS Configuration Management Demo")
+  sectionHeader("BitBarrel Configuration Management Demo")
 
   echo ""
-  echo "This demo shows how to PROPERLY use the KVS configuration system."
-  echo "It does NOT reimplement configuration logic - it USES the existing KVS APIs!"
+  echo "This demo shows how to PROPERLY use the BitBarrel configuration system."
+  echo "It does NOT reimplement configuration logic - it USES the existing BitBarrel APIs!"
   echo ""
 
   demonstrateSimpleConfig()

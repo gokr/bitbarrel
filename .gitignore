@@ -12,6 +12,7 @@ tests/*
 !tests/*.cfg
 !tests/*.nims
 # Root binaries
+/bitbarrel
 /kvs
 /unified_benchmark
 /simple_bench

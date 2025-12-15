@@ -1,11 +1,11 @@
-## KVS Library and CLI Entry Point
+## BitBarrel Library and CLI Entry Point
 ##
 ## Provides both library functionality and CLI interface
 ## When imported as a library, exports high-level and low-level APIs
 ## When run as binary, starts the CLI application
 
 # Library exports
-import kvs/[types, config, simpleapi, lowlevelapi]
+import bitbarrel/[types, config, simpleapi, lowlevelapi]
 import storage
 
 # Export everything users might need

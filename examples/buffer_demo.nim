@@ -1,5 +1,5 @@
 import os, times, strformat
-import kvs
+import bitbarrel
 
 const NUM_OPS = 10000
 

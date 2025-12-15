@@ -3,13 +3,13 @@
 import os
 import times
 import options
-import ../src/kvs/types
+import ../src/bitbarrel/types
 import ../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init
 
 proc main() =
-  echo "=== KVS Demo: Basic Operations ==="
+  echo "=== BitBarrel Demo: Basic Operations ==="
 
   let testPath = "demo.data"
 

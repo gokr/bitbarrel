@@ -3,8 +3,8 @@
 ## Tests the high-level SimpleKVS API functionality
 
 import std/[unittest, times, os]
-import kvs/simpleapi as kvsapi
-type SimpleConfig = kvsapi.SimpleConfig
+import bitbarrel/simpleapi as bbapi
+type SimpleConfig = bbapi.SimpleConfig
 
 suite "SimpleKVS API Tests":
 
