@@ -2,31 +2,39 @@
 
 A key/value store implemented in Nim using the enhanced Bitcask storage model.
 
-## ✅ Current Status
+## ✅ Status & Features
 
+**Current Status:**
 - **Test Suite**: 65/65 tests passing (100%)
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Stability**: Stress-tested with 25K+ keys
-- **Crash Recovery**: Fast recovery with hint files (40K+ keys/sec)
-- **Merge/Compaction**: Background threading for space reclamation
-- **Read Buffering**: LRU cache for improved read performance
-- **Write Buffering**: Configurable sync modes (none/sync/fsync)
 - **Architecture**: Bitcask append-only with CRC32 verification
 
-## Features
+**Core Features (Completed):**
+- ✅ Append-only storage for efficient write performance
+- ✅ In-memory hash index for O(1) read operations
+- ✅ CRC32 checksums for data integrity
+- ✅ Binary record encoding/decoding with validation
+- ✅ Basic CRUD operations (GET/SET/DELETE)
+- ✅ Thread-safe KeyDir operations
 
-- ✅ **Append-only storage** for efficient write performance
-- ✅ **In-memory hash index** for O(1) read operations
-- ✅ **CRC32 checksums** for data integrity
-- ✅ **Crash recovery** with checkpoint system
-- ✅ **Fast recovery** at 40,000+ keys/sec
-- ✅ **Thread-safe** KeyDir operations
-- ✅ **Binary checkpoint format** for persistence
-- ✅ **Automatic compaction** with background threads
-- ✅ **Hint files** for ultra-fast recovery
-- ✅ **Read-ahead LRU buffering** for improved performance
-- ✅ **Write buffering** with configurable sync modes
-- 🚧 **Network protocol** (coming)
+**Reliability Features:**
+- ✅ Crash recovery with checkpoint system
+- ✅ Fast recovery at 40,000+ keys/sec with hint files
+- ✅ Binary checkpoint format for persistence
+- ✅ Configurable recovery options
+
+**Performance Features:**
+- ✅ Automatic merge/compaction with background threading
+- ✅ Hint file generation for ultra-fast recovery
+- ✅ Space reclamation and fragmentation management
+- ✅ Read-ahead LRU buffering for improved read performance
+- ✅ Write buffering with configurable sync modes (none/sync/fsync)
+
+**Future Work:**
+- 🚧 Network server with binary protocol
+- 🚧 Compression for large values
+- 🚧 Multi-key transactions
 
 ## Quick Start
 
@@ -181,24 +189,27 @@ nimble benchCrunchy
 ## Repository Structure
 
 ```
-kvstore/
+bitbarrel/
 ├── src/                      # Source code
-│   ├── kvs.nim              # Library & CLI entry point
-│   ├── kvs/types.nim        # Common types
-│   ├── kvs/simpleapi.nim    # High-level API
-│   ├── kvs/lowlevelapi.nim  # Low-level wrapper
-│   ├── kvs/config.nim       # Configuration system
-│   └── storage/             # Storage engine
-│       ├── datafile.nim     # Data file format
-│       ├── keydir.nim       # In-memory index
-│       ├── record.nim       # Record encoding
-│       ├── recovery.nim     # Crash recovery engine
-│       ├── checkpoint.nim   # Checkpoint system
-│       ├── merge.nim        # Merge/compaction with background threads
-│       ├── hintfile.nim     # Hint files for fast recovery
-│       ├── writebuffer.nim  # Write buffering system
-│       ├── readbuffer.nim   # Read-ahead LRU buffering
-│       └── (future)         # Network protocol
+│   ├── bitbarrel.nim        # Library & CLI entry point
+│   ├── bitbarrel/           # BitBarrel API modules
+│   │   ├── types.nim        # Common types
+│   │   ├── simpleapi.nim    # High-level API
+│   │   ├── lowlevelapi.nim  # Low-level wrapper
+│   │   ├── config.nim       # Configuration system
+│   │   └── config_parser.nim # YAML/ENV config parsing
+│   ├── storage/             # Storage engine
+│   │   ├── datafile.nim     # Data file format
+│   │   ├── keydir.nim       # In-memory index
+│   │   ├── record.nim       # Record encoding
+│   │   ├── recovery.nim     # Crash recovery engine
+│   │   ├── checkpoint.nim   # Checkpoint system
+│   │   ├── merge.nim        # Merge/compaction with background threads
+│   │   ├── hintfile.nim     # Hint files for fast recovery
+│   │   ├── writebuffer.nim  # Write buffering system
+│   │   └── readbuffer.nim   # Read-ahead LRU buffering
+│   └── cli/                 # Command line interface
+│       └── main.nim         # CLI server entry point
 ├── examples/                # Runnable demos
 │   ├── basic_demo.nim       # CRUD operations demo
 │   ├── simple_kv_demo.nim   # Detailed demo
@@ -223,8 +234,7 @@ kvstore/
 ├── docs/                    # Documentation
 │   ├── TUTORIAL.md          # Comprehensive tutorial
 │   ├── (future)             # API docs, deployment guide
-├── config/                  # Configuration files
-│   └── kvs.toml            # Default configuration
+├── bitbarrel.yaml          # Default configuration file
 ├── PLAN.md                 # Implementation plan
 ├── FEEDBACK.md             # Code review feedback
 ├── kvs.nimble              # Nimble package definition
@@ -304,34 +314,6 @@ Each record written includes:
 
 On read, CRC32 is verified and exception raised on mismatch.
 
-## Implementation Status
-
-### Core Features ✅
-- ✅ Append-only file format with CRC32 headers
-- ✅ Binary record encoding/decoding
-- ✅ In-memory hash index (KeyDir) for O(1) reads
-- ✅ Basic CRUD operations
-- ✅ Data integrity verification
-- ✅ All tests passing (65/65)
-
-### Crash Recovery ✅
-- ✅ Recovery engine for crash recovery
-- ✅ Checkpoint system for KeyDir snapshots
-- ✅ Binary checkpoint format
-- ✅ Recovery at 40,000+ keys/sec with hint files
-- ✅ Configurable recovery options
-
-### Performance Optimizations ✅
-- ✅ Automatic merge/compaction with background threads
-- ✅ Hint file generation for fast recovery
-- ✅ Space reclamation
-- ✅ Read-ahead LRU buffering
-- ✅ Write buffering with configurable sync modes
-
-### Future Work 🚧
-- 🚧 Network server with binary protocol
-- 🚧 Compression for large values
-- 🚧 Multi-key transactions
 
 ## Documentation
 
