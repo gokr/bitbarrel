@@ -9,6 +9,8 @@
 
 import os
 import strformat
+import strutils except formatSize
+import times
 import demo_utils
 import ../src/kvs
 
@@ -19,11 +21,22 @@ type
     keySize: int
     valueSize: int
 
+proc cleanupDataFiles() =
+  ## Clean up test data files
+  let dataDir = "examples/data"
+  if dirExists(dataDir):
+    for kind, path in walkDir(dataDir):
+      if kind == pcFile and path.endsWith(".db"):
+        try:
+          removeFile(path)
+        except:
+          discard
+
 proc runPerformanceTest*(kvs: SimpleKVS, test: PerformanceTest): int64 =
   ## Run a performance test and return time in ms
   echo &"\n📊 {test.name}"
 
-var timer = startTimer()
+  var timer = startTimer()
 
   for i in 0..<test.operations:
     let key = &"test:{test.name}:{i:04d}"
@@ -121,13 +134,13 @@ proc demonstrateBufferSizes*() =
     defer: db.close()
 
     let time = runPerformanceTest(db, PerformanceTest(
-      name: &"Buffer {formatBytes(bufSize)}",
+      name: &"Buffer {formatSize(bufSize)}",
       operations: testSize,
       keySize: 16,
       valueSize: 64
     ))
 
-  echo &"Buffer {formatBytes(bufSize)}: {formatBytes(testSize * 80)} written in {time}ms"
+    echo &"Buffer {formatSize(bufSize)}: {formatSize(testSize * 80)} written in {time}ms"
 
   cleanupDataFiles()
 
@@ -163,7 +176,7 @@ proc demonstrateBatching*() =
     let elapsed = timer.elapsed()
     let opsPerSec = testSize.float / (elapsed.float / 1000.0)
 
-    echo &"Batch size {batchSize:3d}: {formatSeconds(elapsed/1000.0)}s, {opsPerSec:.0f} ops/sec"
+    echo &"Batch size {batchSize:3d}: {elapsed.float/1000.0:.2f}s, {opsPerSec:.0f} ops/sec"
 
   cleanupDataFiles()
 
@@ -192,7 +205,7 @@ proc demonstrateRealWorldScenario*() =
   let readOps = (totalOps * 7) div 10  # 70% reads
   let writeOps = totalOps - readOps
 
-var timer = startTimer()
+  var timer = startTimer()
 
   var readsPerformed = 0
   var writesPerformed = 0
@@ -224,17 +237,6 @@ var timer = startTimer()
   echo &"Mixed throughput: {mixedOpsPerSec:.0f} ops/sec"
 
   cleanupDataFiles()
-
-proc cleanupDataFiles() =
-  ## Clean up test data files
-  let dataDir = "examples/data"
-  if dirExists(dataDir):
-    for kind, path in walkDir(dataDir):
-      if kind == pcFile and path.endswith(".db"):
-        try:
-          removeFile(path)
-        except:
-          discard
 
 proc printPerformanceInsights*() =
   ## Provide insights about KVS performance characteristics
@@ -288,7 +290,7 @@ proc main() =
   printPerformanceInsights()
 
   echo "\n✨ Performance tuning demo completed!"
-  echo
+  echo ""
   echo "Key takeaways:"
   success("• Choose sync mode based on durability requirements")
   success("• Tune buffer size for your workload pattern")
