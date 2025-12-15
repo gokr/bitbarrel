@@ -1,355 +1,259 @@
-## Configuration Management Demo
+## KVS Configuration Demo
 ##
-## Demonstrates the KVS configuration system, showing how different
-## configuration sources interact and override each other.
+## Demonstrates how to properly use the KVS configuration system
+## Shows both SimpleConfig (for basic use) and full KVSConfig (for advanced use)
 ##
 ## Run with: nim c -r examples/configuration_demo.nim
 
 import os
 import strformat
-import tables
-import parsecfg
 import strutils
-import posix
-import utils/demo_output
+import demo_utils
+import ../src/kvs
 
-type
-  KVSConfig* = object
-    # Server settings
-    serverAddress*: string
-    serverPort*: int = 8080
-    maxConnections*: int = 100
-    timeout*: int = 30
+proc demonstrateSimpleConfig*() =
+  ## Demonstrate SimpleConfig usage for basic applications
+  subsectionHeader("SimpleConfig Usage - For Basic Applications")
 
-    # Storage settings
-    dataDir*: string = "data"
-    maxFileSize*: int64 = 1073741824  # 1GB
-    maxKeySize*: int = 256
-    maxValueSize*: int = 1048576  # 1MB
-    syncMode*: string = "normal"
+  echo "ℹ️  SimpleConfig is perfect for most applications that need basic control"
+  echo "   over sync mode, write buffer size, and auto-compaction."
+  echo ""
 
-    # Performance settings
-    workerThreads*: int = 4
-    writeBufferSize*: int = 65536  # 64KB
-    readAheadSize*: int = 8192  # 8KB
-    enableCache*: bool = true
-    cacheSize*: int64 = 134217728  # 128MB
+  # Example 1: Default configuration
+  info("Example 1: Using default SimpleConfig")
+  var db1 = openDatabase("examples/data/simple_default.db")
+  defer: db1.close()
 
-    # Merge settings
-    mergeEnabled*: bool = true
-    mergeThreshold*: float = 0.7
-    minFilesToMerge*: int = 3
-    maxMergeFiles*: int = 10
-    mergeInterval*: int = 3600  # 1 hour
+  discard db1.set("user:1", "Alice")
+  discard db1.set("user:2", "Bob")
+  echo &"   ✓ Created database with defaults - {db1.count()} keys"
+  echo ""
 
-    # Recovery settings
-    recoveryEnabled*: bool = true
-    checkpointInterval*: int = 300  # 5 minutes
-    incrementalCheckpoints*: bool = true
-    onCorruption*: string = "skip"
+  # Example 2: Custom configuration for performance
+  info("Example 2: Custom SimpleConfig for high performance")
+  var cfg = defaultConfig()
+  cfg.writeBufferSize = 1024 * 1024  # 1MB write buffer
+  cfg.syncMode = UserSyncMode.None  # Don't sync on every write
+  cfg.autoCompact = true
+  cfg.compactThreshold = 0.4  # Compact at 40% tombstones
 
-proc loadConfigFromFile*(path: string): KVSConfig =
-  ## Load configuration from YAML-like config file
-  result = KVSConfig()
+  var db2 = openDatabase("examples/data/simple_fast.db", cfg)
+  defer: db2.close()
 
-  if not fileExists(path):
-    warning(&"Config file not found: {path}")
-    return result
+  discard db2.set("session:1", "data-xxxx")
+  discard db2.set("session:2", "data-yyyy")
+  echo &"   ✓ Created high-performance database - write buffer: {cfg.writeBufferSize} bytes"
+  echo ""
 
-  info(&"Loading configuration from: {path}")
+  # Example 3: Configuration for durability
+  info("Example 3: SimpleConfig for maximum durability")
+  var durableCfg = defaultConfig()
+  durableCfg.syncMode = UserSyncMode.Fsync  # Fsync on every write
+  durableCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
+
+  var db3 = openDatabase("examples/data/safe.db", durableCfg)
+  defer: db3.close()
+
+  discard db3.set("important:1", "critical-data-1")
+  discard db3.set("important:2", "critical-data-2")
+  echo &"   ✓ Created durable database - sync mode: {durableCfg.syncMode}"
+  echo ""
+
+  # Cleanup data files
+  # Note: cleanupDataFiles() will be run later in demonstrateConfigurationInAction
+
+proc demonstrateFullConfig*() =
+  ## Demonstrate full KVSConfig usage for advanced applications
+  subsectionHeader("Full KVSConfig Usage - For Advanced Applications")
+
+  echo "ℹ️  Full KVSConfig provides comprehensive control over all KVS settings"
+  echo "   Perfect for server deployments and production use cases."
+  echo ""
+
+  # Example 1: Load from YAML file
+  info("Example 1: Loading configuration from YAML file")
+  let configPath = "examples/kvs_config.yaml"
+
+  if fileExists(configPath):
+    try:
+      let config = initConfig(configPath)
+      success(&"Configuration loaded from {configPath}")
+      echo ""
+      echo "Configuration values from YAML:"
+      keyValue("Server Port", config.server.port)
+      keyValue("Data Directory", config.storage.dataDir)
+      keyValue("Sync Mode", $config.storage.syncMode)
+      keyValue("Worker Threads", config.performance.workerThreads)
+      keyValue("Merge Enabled", config.merge.enabled)
+      echo ""
+    except Exception as e:
+      error(&"Failed to load config: {e.msg}")
+  else:
+    warning(&"Config file not found: {configPath}")
+
+  # Example 2: Environment variable overrides
+  info("Example 2: Environment variable overrides")
+  echo "Environment variables take precedence over YAML config:"
+  echo ""
+
+  # Set some environment variables
+  putEnv("KVS_SERVER_PORT", "9090")
+  putEnv("KVS_STORAGE_DATA_DIR", "./examples/data/env_override")
+  putEnv("KVS_PERFORMANCE_WORKER_THREADS", "8")
+
+  echo "Set environment variables:"
+  echo "   KVS_SERVER_PORT=9090"
+  echo "   KVS_STORAGE_DATA_DIR=./examples/data/env_override"
+  echo "   KVS_PERFORMANCE_WORKER_THREADS=8"
+  echo ""
 
   try:
-    # For simplicity, we'll parse a basic INI-like format
-    let dict = loadConfig(path)
-
-    # Server section
-    if dict.hasKey("server"):
-      let section = dict["server"]
-      result.serverAddress = section.getOrDefault("address", "127.0.0.1")
-      result.serverPort = parseInt(section.getOrDefault("port", "8080"))
-      result.maxConnections = parseInt(section.getOrDefault("max_connections", "100"))
-      result.timeout = parseInt(section.getOrDefault("timeout", "30"))
-
-    # Storage section
-    if dict.hasKey("storage"):
-      let section = dict["storage"]
-      result.dataDir = section.getOrDefault("data_dir", "data")
-      result.maxFileSize = parseInt(section.getOrDefault("max_file_size", "1073741824"))
-      result.maxKeySize = parseInt(section.getOrDefault("max_key_size", "256"))
-      result.maxValueSize = parseInt(section.getOrDefault("max_value_size", "1048576"))
-      result.syncMode = section.getOrDefault("sync_mode", "normal")
-
-    # Performance section
-    if dict.hasKey("performance"):
-      let section = dict["performance"]
-      result.workerThreads = parseInt(section.getOrDefault("worker_threads", "4"))
-      result.writeBufferSize = parseInt(section.getOrDefault("write_buffer_size", "65536"))
-      result.readAheadSize = parseInt(section.getOrDefault("read_ahead_size", "8192"))
-      result.enableCache = parseBool(section.getOrDefault("enable_cache", "true"))
-      result.cacheSize = parseInt(section.getOrDefault("cache_size", "134217728"))
-
-    # Merge section
-    if dict.hasKey("merge"):
-      let section = dict["merge"]
-      result.mergeEnabled = parseBool(section.getOrDefault("enabled", "true"))
-      result.mergeThreshold = parseFloat(section.getOrDefault("threshold", "0.7"))
-      result.minFilesToMerge = parseInt(section.getOrDefault("min_files_to_merge", "3"))
-      result.maxMergeFiles = parseInt(section.getOrDefault("max_merge_files", "10"))
-      result.mergeInterval = parseInt(section.getOrDefault("merge_interval", "3600"))
-
-    # Recovery section
-    if dict.hasKey("recovery"):
-      let section = dict["recovery"]
-      result.recoveryEnabled = parseBool(section.getOrDefault("enabled", "true"))
-      result.checkpointInterval = parseInt(section.getOrDefault("checkpoint_interval", "300"))
-      result.incrementalCheckpoints = parseBool(section.getOrDefault("incremental_checkpoints", "true"))
-      result.onCorruption = section.getOrDefault("on_corruption", "skip")
-
-    success("Configuration loaded successfully")
+    let config = initConfig(configPath)  # Will also load env vars
+    echo "Configuration after environment overrides:"
+    keyValue("Server Port", config.server.port)
+    keyValue("Data Directory", config.storage.dataDir)
+    keyValue("Worker Threads", config.performance.workerThreads)
+    echo ""
+    success("Environment variables successfully override config!")
   except Exception as e:
-    error(&"Failed to load config: {e.msg}")
+    error(&"Error: {e.msg}")
 
-proc countEnvVars(): int =
-  ## Count KVS_ environment variables
-  result = 0
-  for key, val in envPairs():
-    if key.startsWith("KVS_"):
-      inc result
+  # Clean up environment variables
+  delEnv("KVS_SERVER_PORT")
+  delEnv("KVS_STORAGE_DATA_DIR")
+  delEnv("KVS_PERFORMANCE_WORKER_THREADS")
 
-proc loadConfigFromEnv*(): KVSConfig =
-  ## Load configuration from environment variables
-  result = KVSConfig()
+proc demonstrateConfigurationInAction*() =
+  ## Show how configuration affects actual KVS operations
+  subsectionHeader("Configuration in Action - Real Operations")
 
-  info("Loading configuration from environment variables")
+  echo "ℹ️  Seeing how different configurations affect actual operations"
+  echo ""
 
-  # Environment variables use KVS_ prefix
-  if existsEnv("KVS_SERVER_ADDRESS"):
-    result.serverAddress = getEnv("KVS_SERVER_ADDRESS")
-  if existsEnv("KVS_SERVER_PORT"):
-    result.serverPort = parseInt(getEnv("KVS_SERVER_PORT"))
-  if existsEnv("KVS_MAX_CONNECTIONS"):
-    result.maxConnections = parseInt(getEnv("KVS_MAX_CONNECTIONS"))
-  if existsEnv("KVS_TIMEOUT"):
-    result.timeout = parseInt(getEnv("KVS_TIMEOUT"))
+  # Compare write performance with different sync modes
+  info("Comparing write operations with different sync modes:")
+  echo ""
 
-  if existsEnv("KVS_DATA_DIR"):
-    result.dataDir = getEnv("KVS_DATA_DIR")
-  if existsEnv("KVS_MAX_FILE_SIZE"):
-    result.maxFileSize = parseInt(getEnv("KVS_MAX_FILE_SIZE"))
-  if existsEnv("KVS_SYNC_MODE"):
-    result.syncMode = getEnv("KVS_SYNC_MODE")
+  # Fast mode - no syncing
+  var fastCfg = defaultConfig()
+  fastCfg.syncMode = UserSyncMode.None
+  fastCfg.writeBufferSize = 256 * 1024
 
-  if existsEnv("KVS_WORKER_THREADS"):
-    result.workerThreads = parseInt(getEnv("KVS_WORKER_THREADS"))
-  if existsEnv("KVS_WRITE_BUFFER_SIZE"):
-    result.writeBufferSize = parseInt(getEnv("KVS_WRITE_BUFFER_SIZE"))
-  if existsEnv("KVS_ENABLE_CACHE"):
-    result.enableCache = parseBool(getEnv("KVS_ENABLE_CACHE"))
-  if existsEnv("KVS_CACHE_SIZE"):
-    result.cacheSize = parseInt(getEnv("KVS_CACHE_SIZE"))
+  var fastTimer = startTimer()
+  var fastDb = openDatabase("examples/data/fast.db", fastCfg)
+  defer: fastDb.close()
 
-  if existsEnv("KVS_MERGE_ENABLED"):
-    result.mergeEnabled = parseBool(getEnv("KVS_MERGE_ENABLED"))
-  if existsEnv("KVS_MERGE_THRESHOLD"):
-    result.mergeThreshold = parseFloat(getEnv("KVS_MERGE_THRESHOLD"))
+  for i in 0..<1000:
+    let key = &"fast:test:{i}"
+    let value = &"value-{i:04d}"
+    discard fastDb.set(key, value)
 
-  if existsEnv("KVS_RECOVERY_ENABLED"):
-    result.recoveryEnabled = parseBool(getEnv("KVS_RECOVERY_ENABLED"))
-  if existsEnv("KVS_CHECKPOINT_INTERVAL"):
-    result.checkpointInterval = parseInt(getEnv("KVS_CHECKPOINT_INTERVAL"))
-  if existsEnv("KVS_ON_CORRUPTION"):
-    result.onCorruption = getEnv("KVS_ON_CORRUPTION")
+  fastTimer.stop()
+  echo "Fast mode (None sync):"
+  keyValue("1000 writes", &"{fastTimer.elapsed()}ms")
+  echo ""
 
-  let envCount = countEnvVars()
-  if envCount > 0:
-    success(&"Loaded {envCount} environment variables")
-  else:
-    warning("No environment variables found")
+  # Safe mode - full sync
+  var safeCfg = defaultConfig()
+  safeCfg.syncMode = UserSyncMode.Fsync
+  safeCfg.writeBufferSize = 32 * 1024
 
-proc loadConfigWithPrecedence*(filePath: string): KVSConfig =
-  ## Load configuration with proper precedence:
-  ## 1. Default values
-  ## 2. Configuration file
-  ## 3. Environment variables
-  ## 4. Command line arguments (highest precedence)
+  var safeTimer = startTimer()
+  var safeDb = openDatabase("examples/data/safe.db", safeCfg)
+  defer: safeDb.close()
 
-  info("Loading configuration with precedence hierarchy")
+  for i in 0..<1000:
+    let key = &"safe:test:{i}"
+    let value = &"value-{i:04d}"
+    discard safeDb.set(key, value)
 
-  subsectionHeader("1. Loading defaults")
-  result = KVSConfig()  # Uses Nim's default values
-  echo "   ✓ Loaded default configuration"
+  safeTimer.stop()
+  echo "Safe mode (Fsync):"
+  keyValue("1000 writes", &"{safeTimer.elapsed()}ms")
+  echo ""
 
-  subsectionHeader("2. Loading from file")
-  let fileConfig = loadConfigFromFile(filePath)
-  # Apply file config (override defaults)
-  if fileConfig.serverAddress != "":
-    result.serverAddress = fileConfig.serverAddress
-  if fileConfig.serverPort != 0:
-    result.serverPort = fileConfig.serverPort
-  # ... apply all fields (simplified for demo)
+  let speedRatio = safeTimer.elapsed() / fastTimer.elapsed()
+  info(&"Performance ratio: {speedRatio:.1f}x (safe/fast)")
 
-  subsectionHeader("3. Loading from environment")
-  let envConfig = loadConfigFromEnv()
-  # Apply env config (override file)
-  if envConfig.serverAddress != "":
-    result.serverAddress = envConfig.serverAddress
-  if envConfig.serverPort != 0:
-    result.serverPort = envConfig.serverPort
-  # ... apply all fields (simplified for demo)
+  # cleanupDataFiles()  # Optional cleanup
 
-  subsectionHeader("4. Command-line arguments (if any)")
-  # In a real implementation, you'd parse command line args
-  # For demo, we'll simulate it
-  let args = commandLineParams()
-  if "--port" in args:
-    let idx = args.find("--port")
-    if idx + 1 < args.len:
-      result.serverPort = parseInt(args[idx + 1])
-      info(&"Port overridden to {result.serverPort} from command line")
+proc demonstrateBestPractices*() =
+  ## Show configuration best practices
+  subsectionHeader("Configuration Best Practices")
 
-  success("Configuration loading completed with precedence")
+  echo "✓ Use SimpleConfig for most applications:"
+  info("   import kvs/simpleapi")
+  info("   var db = openDatabase('myapp.db')")
+  echo ""
 
-proc printConfig*(config: KVSConfig) =
-  ## Print configuration in a formatted way
-  echo "\nCurrent Configuration:"
-  echo "─────────────────────────────────────────────────"
+  echo "✓ Customize SimpleConfig for specific needs:"
+  info("   var cfg = defaultConfig()")
+  info("   cfg.syncMode = UserSyncMode.Fsync  # For durability")
+  info("   cfg.writeBufferSize = 1024 * 1024  # 1MB buffer")
+  info("   var db = openDatabase('myapp.db', cfg)")
+  echo ""
 
-  subsectionHeader("Server Settings")
-  keyValue("Address", config.serverAddress)
-  keyValue("Port", config.serverPort)
-  keyValue("Max Connections", config.maxConnections)
-  keyValue("Timeout (s)", config.timeout)
+  echo "✓ Use full config for server deployment:"
+  info("   import kvs/config")
+  info("   let config = initConfig('production.yaml')")
+  info("   # Then use config values throughout app")
+  echo ""
 
-  subsectionHeader("Storage Settings")
-  keyValue("Data Dir", config.dataDir)
-  keyValue("Max File Size", formatBytes(config.maxFileSize))
-  keyValue("Max Key Size", config.maxKeySize)
-  keyValue("Max Value Size", formatBytes(config.maxValueSize))
-  keyValue("Sync Mode", config.syncMode)
+  echo "✓ Use environment variables for deployment:"
+  info("   KVS_SERVER_PORT=9090")
+  info("   KVS_STORAGE_DATA_DIR=/mnt/kvs/data")
+  info("   # These override YAML configuration")
+  echo ""
 
-  subsectionHeader("Performance Settings")
-  keyValue("Worker Threads", config.workerThreads)
-  keyValue("Write Buffer", formatBytes(config.writeBufferSize))
-  keyValue("Read Ahead", formatBytes(config.readAheadSize))
-  keyValue("Cache Enabled", config.enableCache)
-  keyValue("Cache Size", formatBytes(config.cacheSize))
+  echo "✓ Validate configuration before use:"
+  info("   if not validateConfig(config):")
+  info("     quit('Invalid configuration')")
+  echo ""
 
-  subsectionHeader("Merge Settings")
-  keyValue("Merge Enabled", config.mergeEnabled)
-  keyValue("Merge Threshold", &"{config.mergeThreshold:.1f}%")
-  keyValue("Min Files to Merge", config.minFilesToMerge)
-  keyValue("Max Merge Files", config.maxMergeFiles)
-  keyValue("Merge Interval (s)", config.mergeInterval)
+  echo "✓ Choose sync mode wisely:"
+  info("   • None - Max performance, data loss on crash")
+  info("   • Sync - Balanced (default)")
+  info("   • Fsync - Max durability, slower")
+  echo ""
 
-  subsectionHeader("Recovery Settings")
-  keyValue("Recovery Enabled", config.recoveryEnabled)
-  keyValue("Checkpoint Interval (s)", config.checkpointInterval)
-  keyValue("Incremental Checkpoints", config.incrementalCheckpoints)
-  keyValue("On Corruption", config.onCorruption)
-
-proc demonstrateConfigProfiles*() =
-  ## Demonstrate different configuration profiles
-
-  subsectionHeader("Default Configuration Profile")
-  let defaultConfig = KVSConfig()
-  printConfig(defaultConfig)
-
-  separator()
-
-  subsectionHeader("Performance Configuration Profile")
-  let perfConfig = loadConfigFromFile("examples/configs/performance.ini")
-  info("Performance optimizations:")
-  if perfConfig.writeBufferSize > defaultConfig.writeBufferSize:
-    success(&"Write buffer increased: {formatBytes(perfConfig.writeBufferSize)}")
-  if perfConfig.workerThreads > defaultConfig.workerThreads:
-    success(&"More worker threads: {perfConfig.workerThreads}")
-  if perfConfig.syncMode == "none":
-    warning("Sync mode disabled for maximum performance")
-
-  separator()
-
-  subsectionHeader("Production Configuration Profile")
-  let prodConfig = loadConfigFromFile("examples/configs/production.ini")
-  info("Production safety features:")
-  if prodConfig.syncMode == "full":
-    success("Full sync enabled for durability")
-  if prodConfig.mergeEnabled:
-    success("Merge enabled for space management")
-  if prodConfig.recoveryEnabled:
-    success("Recovery system enabled")
-
-proc demonstrateDynamicConfig*() =
-  ## Demonstrate dynamic configuration updates
-
-  subsectionHeader("Dynamic Configuration Updates")
-
-  var config = KVSConfig()
-
-  # Scenario 1: Runtime configuration change
-  info("Scenario 1: Increasing cache size at runtime")
-  echo &"   Current cache size: {formatBytes(config.cacheSize)}"
-  config.cacheSize = config.cacheSize * 2
-  echo &"   New cache size: {formatBytes(config.cacheSize)}"
-  success("Cache size doubled for better performance")
-
-  # Scenario 2: Conditional configuration based on environment
-  info("Scenario 2: Adaptive configuration")
-  let isProduction = getEnv("ENVIRONMENT", "development") == "production"
-  if isProduction:
-    config.syncMode = "full"
-    config.mergeThreshold = 0.8
-    info("Production mode: Enabled safety features")
-  else:
-    config.syncMode = "none"
-    config.mergeThreshold = 0.5
-    info("Development mode: Optimized for speed")
-
-  # Scenario 3: Configuration validation
-  info("Scenario 3: Configuration validation")
-  var errors: seq[string]
-
-  if config.serverPort < 1024 and config.serverPort != 80:
-    errors.add("Port should be >= 1024 or 80 for HTTP")
-  if config.maxKeySize > 1024:
-    errors.add("Key size too large (> 1KB)")
-  if config.writeBufferSize < 4096:
-    errors.add("Write buffer too small (< 4KB)")
-
-  if errors.len > 0:
-    error("Configuration validation failed:")
-    for err in errors:
-      error(&"  - {err}")
-  else:
-    success("Configuration validation passed")
+proc cleanupDataFiles() =
+  ## Clean up data files created during demo
+  let dataDir = "examples/data"
+  if dirExists(dataDir):
+    for file in walkDir(dataDir):
+      if file.kind == pcFile:
+        try:
+          removeFile(file.path)
+        except:
+          discard
 
 proc main() =
   sectionHeader("KVS Configuration Management Demo")
 
-  subsectionHeader("Configuration Precedence Demonstration")
-  let configFile = "examples/configs/default.ini"
-  let config = loadConfigWithPrecedence(configFile)
-  printConfig(config)
+  echo ""
+  echo "This demo shows how to PROPERLY use the KVS configuration system."
+  echo "It does NOT reimplement configuration logic - it USES the existing KVS APIs!"
+  echo ""
 
+  demonstrateSimpleConfig()
   separator()
 
-  subsectionHeader("Configuration Profiles Comparison")
-  demonstrateConfigProfiles()
-
+  demonstrateFullConfig()
   separator()
 
-  subsectionHeader("Dynamic Configuration")
-  demonstrateDynamicConfig()
-
+  demonstrateConfigurationInAction()
   separator()
 
-  subsectionHeader("Configuration Best Practices")
-  info("✓ Use environment variables for deployment-specific settings")
-  info("✓ Store secrets in environment, never in config files")
-  info("✓ Version control your configuration files")
-  info("✓ Validate configuration before applying")
-  info("✓ Document all configuration options")
+  demonstrateBestPractices()
 
-  echo "\n✨ Configuration demo completed!"
+  echo ""
+  echo "✨ Configuration demo completed!"
+  echo ""
+  echo "Key takeaways:"
+  success("• Use SimpleConfig for most applications")
+  success("• Use full KVSConfig for server deployments")
+  success("• Environment variables override configuration files")
+  success("• Sync mode affects durability vs performance")
 
 when isMainModule:
   main()

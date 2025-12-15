@@ -4,12 +4,12 @@
 ## Based on the SimpleKVS demo, but enhanced with configuration options
 
 import std/[os, times, options]
-import kvs/types as kvsTypes
-import storage
-import storage/datafile
-import storage/keydir
+import types
+import ../storage
+import ../storage/datafile
+import ../storage/keydir
 
-export kvsTypes, datafile
+export types, datafile
 
 type
   UserSyncMode* = enum
@@ -46,14 +46,14 @@ proc open*(path: string, fileId: uint32 = 1'u32, config: SimpleConfig = defaultC
   result.config = config
 
   # Convert UserSyncMode to storage SyncMode
-  var storageSyncMode = kvsTypes.syncImmediate
+  var storageSyncMode = syncImmediate
   case config.syncMode
   of UserSyncMode.None:
-    storageSyncMode = kvsTypes.syncBuffered
+    storageSyncMode = syncBuffered
   of UserSyncMode.Sync:
-    storageSyncMode = kvsTypes.syncImmediate
+    storageSyncMode = syncImmediate
   of UserSyncMode.Fsync:
-    storageSyncMode = kvsTypes.syncImmediate
+    storageSyncMode = syncImmediate
 
   result.dataFile = open(path, fileId, storageSyncMode,
                          shouldFsync = (config.syncMode == UserSyncMode.Fsync),

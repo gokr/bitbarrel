@@ -3,8 +3,8 @@
 ## Provides convenient access to the low-level storage primitives
 ## Re-exports storage modules with consistent naming and documentation
 
-import storage/[datafile, record, keydir, writebuffer, crc32]
-import kvs/types
+import ../storage/[datafile, record, keydir, writebuffer, crc32]
+import types
 
 # Re-export all types and constructors
 export types, datafile, record, keydir, writebuffer, crc32

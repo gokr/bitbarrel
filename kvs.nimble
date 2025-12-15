@@ -43,10 +43,19 @@ task demoBasic, "Run basic CRUD demo":
 task demoSample, "Run detailed demo":
   exec "nim c -r examples/simple_kv_demo.nim"
 
+task demoTuning, "Run performance tuning demo":
+  exec "nim c -r examples/performance_tuning_demo.nim"
+
 # Task for benchmarking
 
-task bench, "Run performance benchmark":
-  exec "nim c -d:release -r bench/simple_bench.nim"
+task bench, "Run comprehensive benchmark suite":
+  exec "nim c -d:release -r --path:src bench/unified_benchmark.nim"
+
+task benchQuick, "Run quick benchmark (1000 ops)":
+  exec "nim c -d:release -r --path:src bench/unified_benchmark.nim quick"
+
+task benchComprehensive, "Run comprehensive benchmark (100K ops)":
+  exec "nim c -d:release -r --path:src bench/unified_benchmark.nim comprehensive"
 
 task benchCrunchy, "Run performance benchmark with crunchy CRC32":
   exec "nim c -d:release -d:useCrunchy -r bench/simple_bench.nim"
