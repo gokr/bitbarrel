@@ -109,3 +109,37 @@ type
     maxIncremental*: int
     compressionEnabled*: bool
 
+  # Barrel configuration (high-level API)
+  UserSyncMode* = enum
+    None = "none"       # No sync (fastest, risk of data loss)
+    Sync = "sync"       # Sync to OS buffer
+    Fsync = "fsync"     # Sync to disk (safest)
+
+  BarrelMode* = enum
+    bmNormal   # Hash table - O(1) lookup, no ordering
+    bmCritBit  # CritBit tree - O(key_len), supports range/prefix queries
+    bmRanged   # Lazy-loaded hash partitions for massive datasets
+
+  BarrelConfig* = object
+    # Storage config
+    writeBufferSize*: int
+    syncMode*: UserSyncMode
+    autoCompact*: bool
+    compactThreshold*: float
+    # Index mode
+    mode*: BarrelMode
+    # Range mode options (only used if mode == bmRanged)
+    numRanges*: int           # Hash partitions (default: 100)
+    maxLoadedRanges*: int     # Max partitions in memory (default: 10)
+
+  # Range partition types (for bmRanged mode)
+  RangeId* = uint32
+
+  RangeMetadata* = object
+    id*: RangeId
+    keyCount*: int64
+    lastAccess*: int64
+    hintPath*: string
+    isLoaded*: bool
+    isDirty*: bool
+

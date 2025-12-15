@@ -1,49 +1,57 @@
-## Simple High-Level BitBarrel API
+## BitBarrel High-Level API
 ##
-## Provides a simplified interface for key-value storage operations
-## Based on the SimpleBB demo, but enhanced with configuration options
+## Provides a unified interface for key-value storage operations
+## with support for multiple index modes: Normal (hash), CritBit (ordered), and Ranged (partitioned)
 
-import std/[times, options]
+import std/[times, options, os]
 import types
 import ../storage
 import ../storage/datafile
 import ../storage/keydir
+import ../storage/critbitindex
+import ../storage/rangeindex
+import ../storage/rangecache
+import ../storage/rangehint
 
 export types, datafile
 
 type
-  UserSyncMode* = enum
-    None = "none"
-    Sync = "sync"
-    Fsync = "fsync"
-
-  SimpleConfig* = object
-    writeBufferSize*: int
-    syncMode*: UserSyncMode
-    autoCompact*: bool
-    compactThreshold*: float  # Compact when tombstone ratio exceeds this
-
-  SimpleBB* = ref object
+  BarrelObj = object
+    path*: string
     dataFile: DataFile
-    keyDir: KeyDir
     fileId: uint32
-    config: SimpleConfig
+    config: BarrelConfig
     closed: bool
+    mode: BarrelMode
+    # Mode-specific indexes
+    keyDir: KeyDir              # Used for bmNormal
+    critBit: CritBitIndex       # Used for bmCritBit
+    # bmRanged fields
+    rangeIndex: RangeIndex      # Range partition metadata
+    rangeCache: RangeCache      # LRU cache for loaded ranges
 
-proc defaultConfig*(): SimpleConfig =
-  ## Returns default configuration for SimpleBB
-  result = SimpleConfig(
+  Barrel* = ref BarrelObj
+
+proc defaultBarrelConfig*(): BarrelConfig =
+  ## Returns default configuration for Barrel
+  result = BarrelConfig(
     writeBufferSize: 64 * 1024,  # 64KB
     syncMode: UserSyncMode.Sync,
     autoCompact: true,
-    compactThreshold: 0.3
+    compactThreshold: 0.3,
+    mode: bmNormal,
+    numRanges: 100,
+    maxLoadedRanges: 10
   )
 
-proc open*(path: string, fileId: uint32 = 1'u32, config: SimpleConfig = defaultConfig()): SimpleBB =
-  ## Open a simple key-value store with optional configuration
-  result = SimpleBB()
+proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
+  ## Open a barrel with optional configuration
+  result = Barrel()
+  result.path = path
   result.fileId = fileId
   result.config = config
+  result.mode = config.mode
+  result.closed = false
 
   # Convert UserSyncMode to storage SyncMode
   var storageSyncMode = syncImmediate
@@ -58,20 +66,125 @@ proc open*(path: string, fileId: uint32 = 1'u32, config: SimpleConfig = defaultC
   result.dataFile = open(path, fileId, storageSyncMode,
                          shouldFsync = (config.syncMode == UserSyncMode.Fsync),
                          bufferSize = config.writeBufferSize)
-  result.keyDir = init()
-  result.closed = false
 
-proc open*(path: string, config: SimpleConfig): SimpleBB =
-  ## Open a simple key-value store with configuration (no fileId needed)
-  open(path, 1'u32, config)
+  # Initialize index based on mode
+  case config.mode
+  of bmNormal:
+    result.keyDir = keydir.init()
+  of bmCritBit:
+    result.critBit = critbitindex.init()
+  of bmRanged:
+    # Get data directory from path
+    let dataDir = if parentDir(path) == "": "." else: parentDir(path)
 
-proc close*(barrel: SimpleBB) =
-  ## Close the key-value store
+    # Ensure ranges directory exists
+    if not ensureRangeDir(dataDir):
+      raise newException(IOError, "Failed to create ranges directory")
+
+    # Initialize range index (for tracking metadata)
+    result.rangeIndex = initRangeIndex(config.numRanges, dataDir)
+
+    # Initialize range cache
+    result.rangeCache = rangecache.init(config.maxLoadedRanges, config.numRanges, dataDir)
+
+proc openBarrel*(path: string, config: BarrelConfig): Barrel =
+  ## Open a barrel with configuration (no fileId needed)
+  openBarrel(path, 1'u32, config)
+
+proc close*(barrel: Barrel) =
+  ## Close the barrel
   if not barrel.closed:
     barrel.dataFile.close()
+    case barrel.mode
+    of bmNormal:
+      barrel.keyDir.deinit()
+    of bmCritBit:
+      barrel.critBit.deinit()
+    of bmRanged:
+      # Flush and cleanup range cache
+      discard barrel.rangeCache.flushAllRanges()
+      barrel.rangeCache.deinit()
+      barrel.rangeIndex.deinit()
     barrel.closed = true
 
-proc set*(barrel: SimpleBB, key: string, value: string): bool =
+proc isClosed*(barrel: Barrel): bool =
+  ## Check if the barrel is closed
+  barrel.closed
+
+# Helper to get entry from index (mode-independent)
+proc indexGet(barrel: Barrel, key: string): Option[KeyDirEntry] =
+  case barrel.mode
+  of bmNormal:
+    barrel.keyDir.get(key)
+  of bmCritBit:
+    barrel.critBit.get(key)
+  of bmRanged:
+    # Two-step lookup
+    let rangeId = computeRangeId(key, barrel.config.numRanges)
+    let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
+    if rangeKeyDir.isSome():
+      rangeKeyDir.get()[].get(key)
+    else:
+      none(KeyDirEntry)
+
+# Helper to add entry to index (mode-independent)
+proc indexAdd(barrel: Barrel, key: string, entry: KeyDirEntry) =
+  case barrel.mode
+  of bmNormal:
+    barrel.keyDir.add(key, entry)
+  of bmCritBit:
+    barrel.critBit.add(key, entry)
+  of bmRanged:
+    # Two-step add
+    let rangeId = computeRangeId(key, barrel.config.numRanges)
+    let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
+    if rangeKeyDir.isSome():
+      rangeKeyDir.get()[].add(key, entry)
+      barrel.rangeIndex.markRangeDirty(rangeId)
+      barrel.rangeIndex.updateRangeKeyCount(rangeId, 1)
+
+# Helper to get all keys from index
+proc indexKeys(barrel: Barrel): seq[string] =
+  case barrel.mode
+  of bmNormal:
+    result = barrel.keyDir.keys()
+  of bmCritBit:
+    result = barrel.critBit.keys()
+  of bmRanged:
+    # For ranged mode, we need to iterate all ranges
+    # This is expensive - use with caution for large datasets
+    result = @[]
+    for rangeId in 0..<barrel.config.numRanges:
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key in rangeKeyDir.get()[].keys():
+          result.add(key)
+
+# Helper to clear index
+proc indexClear(barrel: Barrel) =
+  case barrel.mode
+  of bmNormal:
+    barrel.keyDir.clear()
+  of bmCritBit:
+    barrel.critBit.clear()
+  of bmRanged:
+    # Clear all ranges
+    barrel.rangeCache.evictAll()
+    barrel.rangeIndex = initRangeIndex(barrel.config.numRanges,
+                                        parentDir(barrel.path))
+
+# Helper to get index length
+proc indexLen(barrel: Barrel): int =
+  case barrel.mode
+  of bmNormal:
+    barrel.keyDir.len()
+  of bmCritBit:
+    barrel.critBit.len()
+  of bmRanged:
+    # Get total from range index metadata
+    barrel.rangeIndex.getTotalKeys().int
+
+proc set*(barrel: Barrel, key: string, value: string): bool =
   ## Set a key-value pair
   if barrel.closed:
     return false
@@ -87,17 +200,17 @@ proc set*(barrel: SimpleBB, key: string, value: string): bool =
       timestamp: timestamp,
       recordSize: info.recordSize
     )
-    barrel.keyDir.add(key, entry)
+    barrel.indexAdd(key, entry)
     return true
   except:
     return false
 
-proc get*(barrel: SimpleBB, key: string): string =
+proc get*(barrel: Barrel, key: string): string =
   ## Get a value by key (returns empty string if not found)
   if barrel.closed:
     return ""
 
-  let found = barrel.keyDir.get(key)
+  let found = barrel.indexGet(key)
   if found.isSome():
     let entry = found.get()
     let recordInfo = RecordInfo(
@@ -114,7 +227,7 @@ proc get*(barrel: SimpleBB, key: string): string =
   else:
     return ""
 
-proc delete*(barrel: SimpleBB, key: string): bool =
+proc delete*(barrel: Barrel, key: string): bool =
   ## Delete a key (using tombstone)
   if barrel.closed:
     return false
@@ -131,20 +244,19 @@ proc delete*(barrel: SimpleBB, key: string): bool =
       timestamp: timestamp,
       recordSize: info.recordSize
     )
-    barrel.keyDir.add(key, entry)
+    barrel.indexAdd(key, entry)
     return true
   except:
     return false
 
-proc exists*(barrel: SimpleBB, key: string): bool =
+proc exists*(barrel: Barrel, key: string): bool =
   ## Check if a key exists (and is not deleted)
   if barrel.closed:
     return false
 
-  let found = barrel.keyDir.get(key)
+  let found = barrel.indexGet(key)
   if found.isSome():
     let entry = found.get()
-    # Check if this is a tombstone (empty value)
     let recordInfo = RecordInfo(
       recordPos: entry.recordPos,
       valuePos: entry.valuePos,
@@ -158,17 +270,15 @@ proc exists*(barrel: SimpleBB, key: string): bool =
       return false
   return false
 
-proc count*(barrel: SimpleBB): int =
+proc count*(barrel: Barrel): int =
   ## Get number of non-deleted keys in store
   if barrel.closed:
     return 0
 
-  # Since we can't easily distinguish tombstones in KeyDir,
-  # we count only non-empty values
   var count = 0
-  let keys = barrel.keyDir.keys()
+  let keys = barrel.indexKeys()
   for key in keys:
-    let found = barrel.keyDir.get(key)
+    let found = barrel.indexGet(key)
     if found.isSome():
       let entry = found.get()
       let recordInfo = RecordInfo(
@@ -185,15 +295,15 @@ proc count*(barrel: SimpleBB): int =
         discard
   return count
 
-proc listKeys*(barrel: SimpleBB): seq[string] =
+proc listKeys*(barrel: Barrel): seq[string] =
   ## List all non-deleted keys in the store
   result = @[]
   if barrel.closed:
     return
 
-  let keys = barrel.keyDir.keys()
+  let keys = barrel.indexKeys()
   for key in keys:
-    let found = barrel.keyDir.get(key)
+    let found = barrel.indexGet(key)
     if found.isSome():
       let entry = found.get()
       let recordInfo = RecordInfo(
@@ -209,20 +319,117 @@ proc listKeys*(barrel: SimpleBB): seq[string] =
       except:
         discard
 
-proc clear*(barrel: SimpleBB): bool =
-  ## Clear all keys by creating a fresh data file
+proc clear*(barrel: Barrel): bool =
+  ## Clear all keys (values remain in file but won't be accessible)
   if barrel.closed:
     return false
 
-  # Simple approach: just clear the KeyDir
-  # Values remain in file but won't be accessible
   try:
-    barrel.keyDir = init()
+    barrel.indexClear()
     return true
   except:
     return false
 
-proc isClosed*(barrel: SimpleBB): bool =
-  ## Check if the BitBarrel is closed
-  return barrel.closed
+# CritBit mode specific operations (range queries)
 
+proc keysWithPrefix*(barrel: Barrel, prefix: string): seq[string] =
+  ## Get all keys that start with the given prefix (sorted)
+  ## Only efficient in bmCritBit mode
+  if barrel.closed:
+    return @[]
+
+  case barrel.mode
+  of bmCritBit:
+    result = barrel.critBit.keysWithPrefix(prefix)
+  else:
+    # For non-CritBit modes, fall back to filtering all keys
+    result = @[]
+    for key in barrel.indexKeys():
+      if key.len >= prefix.len and key[0..<prefix.len] == prefix:
+        result.add(key)
+
+proc keysInRange*(barrel: Barrel, startKey: string, endKey: string): seq[string] =
+  ## Get all keys in the range [startKey, endKey) (sorted)
+  ## Only efficient in bmCritBit mode
+  if barrel.closed:
+    return @[]
+
+  case barrel.mode
+  of bmCritBit:
+    result = barrel.critBit.keysInRange(startKey, endKey)
+  else:
+    # For non-CritBit modes, fall back to filtering all keys
+    result = @[]
+    for key in barrel.indexKeys():
+      if key >= startKey and key < endKey:
+        result.add(key)
+
+proc countWithPrefix*(barrel: Barrel, prefix: string): int =
+  ## Count keys with given prefix
+  if barrel.closed:
+    return 0
+
+  case barrel.mode
+  of bmCritBit:
+    result = barrel.critBit.countWithPrefix(prefix)
+  else:
+    result = 0
+    for key in barrel.indexKeys():
+      if key.len >= prefix.len and key[0..<prefix.len] == prefix:
+        inc result
+
+# Utility functions
+
+proc getMode*(barrel: Barrel): BarrelMode =
+  ## Get the index mode of the barrel
+  barrel.mode
+
+proc getConfig*(barrel: Barrel): BarrelConfig =
+  ## Get the configuration of the barrel
+  barrel.config
+
+proc getPath*(barrel: Barrel): string =
+  ## Get the data file path
+  barrel.path
+
+proc indexCount*(barrel: Barrel): int =
+  ## Get the number of entries in the index (including tombstones)
+  barrel.indexLen()
+
+# Ranged mode specific operations
+
+proc flushRanges*(barrel: Barrel): int =
+  ## Flush all dirty ranges to disk (only for bmRanged mode)
+  ## Returns number of ranges flushed
+  if barrel.closed or barrel.mode != bmRanged:
+    return 0
+  barrel.rangeCache.flushAllRanges()
+
+proc loadedRangeCount*(barrel: Barrel): int =
+  ## Get number of currently loaded ranges (only for bmRanged mode)
+  if barrel.mode != bmRanged:
+    return 0
+  barrel.rangeCache.stats().loaded
+
+proc rangeStats*(barrel: Barrel): tuple[loaded: int, maxRanges: int, totalKeys: int64] =
+  ## Get range statistics (only for bmRanged mode)
+  if barrel.mode != bmRanged:
+    return (0, 0, 0'i64)
+  let cacheStats = barrel.rangeCache.stats()
+  (loaded: cacheStats.loaded,
+   maxRanges: cacheStats.maxRanges,
+   totalKeys: barrel.rangeIndex.getTotalKeys())
+
+# Backward compatibility aliases (deprecated, will be removed)
+type
+  SimpleBB* {.deprecated: "Use Barrel instead".} = Barrel
+  SimpleConfig* {.deprecated: "Use BarrelConfig instead".} = BarrelConfig
+
+proc defaultConfig*(): BarrelConfig {.deprecated: "Use defaultBarrelConfig instead".} =
+  defaultBarrelConfig()
+
+proc open*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel {.deprecated: "Use openBarrel instead".} =
+  openBarrel(path, fileId, config)
+
+proc open*(path: string, config: BarrelConfig): Barrel {.deprecated: "Use openBarrel instead".} =
+  openBarrel(path, config)
