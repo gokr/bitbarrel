@@ -1,13 +1,13 @@
-# NimKVS - High-Performance Bitcask Key/Value Store
+# NimKVS - Bitcask Key/Value Store
 
-A simple but performant key/value store implemented in Nim using the Bitcask storage model.
+A key/value store implemented in Nim using the Bitcask storage model.
 
 ## ✅ Current Status
 
 - **Test Suite**: 65/65 tests passing (100%)
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Stability**: Stress-tested with 25K+ keys
-- **Crash Recovery**: Ultra-fast recovery with hint files (40K+ keys/sec)
+- **Crash Recovery**: Fast recovery with hint files (40K+ keys/sec)
 - **Merge/Compaction**: Background threading for space reclamation
 - **Read Buffering**: LRU cache for improved read performance
 - **Write Buffering**: Configurable sync modes (none/sync/fsync)
@@ -15,8 +15,8 @@ A simple but performant key/value store implemented in Nim using the Bitcask sto
 
 ## Features
 
-- ✅ **Append-only storage** for optimal write performance
-- ✅ **In-memory hash index** for O(1) read operations
+- ✅ **Append-only storage** for efficient write performance
+- ✅ **In-memory hash index** for fast read operations
 - ✅ **CRC32 checksums** for data integrity
 - ✅ **Crash recovery** with checkpoint system
 - ✅ **Fast recovery** at 40,000+ keys/sec
@@ -108,7 +108,7 @@ See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
 ### Current Performance (Release Build, Linux x86_64)
 
 **Write Performance:**
-- None sync: ~250K ops/sec (minimum durability, maximum speed)
+- None sync: ~250K ops/sec (minimum durability, highest speed)
 - Sync mode: ~245K ops/sec (OS-level durability)
 - Fsync mode: ~11.5K ops/sec (disk-level durability)
 
@@ -126,7 +126,7 @@ See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
 
 **Buffer Size Impact:**
 - 4KB buffer: ~119K ops/sec
-- 64KB-256KB buffer: ~230K ops/sec (optimal range)
+- 64KB-256KB buffer: ~230K ops/sec (recommended range)
 - 1MB buffer: ~188K ops/sec
 
 ### CRC32 Implementation Performance
@@ -172,10 +172,10 @@ nimble benchCrunchy
 | Recovery throughput | 40K keys/sec | With hint files |
 
 **Performance Tips:**
-- Use `none` sync for maximum speed (data at risk on crash)
+- Use `none` sync for highest speed (data at risk on crash)
 - Use `sync` for balanced performance/durability
-- Use `fsync` for critical data (slower but safest)
-- Buffer size 64KB-256KB gives optimal performance
+- Use `fsync` for critical data (slower but safer)
+- Buffer size 64KB-256KB provides good performance
 - Mixed workloads benefit from read-ahead caching
 
 ## Repository Structure
@@ -323,7 +323,7 @@ On read, CRC32 is verified and exception raised on mismatch.
 
 ### Performance Optimizations ✅
 - ✅ Automatic merge/compaction with background threads
-- ✅ Hint file generation for ultra-fast recovery
+- ✅ Hint file generation for fast recovery
 - ✅ Space reclamation
 - ✅ Read-ahead LRU buffering
 - ✅ Write buffering with configurable sync modes
@@ -405,4 +405,4 @@ MIT License
 
 ---
 
-**Status**: Production-ready with full feature set! All 65 tests passing. High performance, crash recovery with hint files, and automatic compaction implemented.
+**Status**: Complete implementation with all features. All 65 tests passing.

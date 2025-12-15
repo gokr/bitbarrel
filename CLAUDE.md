@@ -176,3 +176,31 @@ Use `{.gcsafe.}:` blocks only when certain the code is actually thread-safe (e.g
 
 ### Merge Worker Threading
 The merge system uses atomic flags for shutdown signaling and channels for coordination. See `src/storage/merge.nim` for the background worker pattern.
+
+## Documentation Guidelines
+
+### Writing Style
+- Use neutral, factual language
+- Avoid superlatives and hype words
+- Describe features without marketing language
+- Focus on implementation details and behavior
+
+### Do's and Don'ts
+- Do: "Fast recovery"
+- Don't: "Ultra-fast recovery"
+- Do: "Provides good performance"
+- Don't: "Optimal performance", "Maximum performance"
+- Do: "Buffer size 64KB-256KB (recommended)"
+- Don't: "Optimal buffer size", "Perfect for X"
+
+### Performance
+- Use "~" for approximate values: "~250K ops/sec"
+- Include measurement context implicitly or explicitly
+- Use "fast" sparingly, only when justified
+- Avoid "extremely", "incredibly", "amazingly"
+
+### General Tone
+- Professional but understated
+- Technical, not promotional
+- Helpful without exaggeration
+- Clear and direct
