@@ -1,15 +1,17 @@
-# KVS Tutorial: Building a High-Performance Key-Value Store
+# KVS Tutorial: High-Performance Key-Value Store
 
 This tutorial walks you through using the Bitcask-based key-value store (KVS) implementation in Nim. By the end, you'll understand how to use the storage engine, run benchmarks, and stress-test the system.
 
-## What's New in Phase 3
+## Key Features
 
-Phase 3 brings significant performance and reliability improvements:
+The KVS provides these core capabilities:
 
-- **Hint Files**: Ultra-fast recovery (up to 10x faster)
-- **Background Merge**: Automatic space reclamation without blocking
-- **Read Buffering**: LRU cache for repeated reads
+- **Fast Recovery**: Hint files enable ultra-fast recovery (up to 10x faster)
+- **Background Merge**: Automatic space reclamation without blocking operations
+- **Read Buffering**: LRU cache for improved read performance
 - **Write Buffering**: Configurable sync modes for different durability needs
+- **Thread Safety**: Concurrent access support with proper locking
+- **Data Integrity**: CRC32 checksums for all records
 
 ## Table of Contents
 
@@ -51,12 +53,12 @@ nimble test
 nim c -r tests/test_storage.nim
 nim c -r tests/test_keydir.nim
 nim c -r tests/test_integration.nim
-nim c -r tests/test_merge.nim      # Phase 3: Merge tests
-nim c -r tests/test_hintfile.nim   # Phase 3: Hint file tests
-nim c -r tests/test_recovery.nim   # Enhanced with hint support
+nim c -r tests/test_merge.nim      # Merge/compaction tests
+nim c -r tests/test_hintfile.nim   # Hint file tests
+nim c -r tests/test_recovery.nim   # Recovery with hint support
 ```
 
-Expected output: All 65 tests should pass ✓
+Expected output: All tests should pass ✓
 
 ## Basic Concepts
 
@@ -99,12 +101,12 @@ This KVS uses the Bitcask storage model:
 
 ## Running Demos
 
-### Basic Demo (samples/basic_demo.nim)
+### Basic Demo (examples/basic_demo.nim)
 
 Demonstrates CRUD operations:
 
 ```bash
-nim c -r samples/basic_demo.nim
+nim c -r examples/basic_demo.nim
 ```
 
 **What it does:**
@@ -277,23 +279,24 @@ Avg read latency:  ~0.009 ms
 4. **Batch operations**: Group writes when possible (especially for remote clients)
 5. **Adjust write buffering**: Tune buffer size and sync frequency for your workload
 
-### Bottlenecks and Limitations
-
-**Previous Bottlenecks (Now Fixed):**
-1. ✅ Added write buffering: Configurable batching reduces I/O
-2. ✅ Added read-ahead buffering: LRU cache for hot data
-3. ✅ Enhanced merge: Background space reclamation
+### Performance Characteristics
 
 **Current Optimizations:**
-1. Write buffering (10-100x speedup potential)
-2. Read-ahead buffering (significant for repeated reads)
-3. Hint files (10x faster recovery)
-4. Background merge (no blocking compaction)
+1. Write buffering: Configurable batching reduces I/O overhead
+2. Read-ahead buffering: LRU cache for frequently accessed data
+3. Hint files: Fast recovery from crashes
+4. Background merge: Automatic space reclamation without blocking
 
-**Future Improvements:**
-1. Network protocol implementation (Phase 4)
-2. Additional performance tuning
-3. Async I/O for network layer
+**Implementation Features:**
+1. Thread-safe operations with proper locking
+2. CRC32 checksums for data integrity
+3. Configurable sync modes for different durability requirements
+4. Automatic file rotation at configurable size limits
+
+**Areas for Future Enhancement:**
+1. Network protocol for remote access
+2. Additional performance tuning options
+3. Async I/O for network operations
 
 ## Library Usage
 
@@ -619,7 +622,7 @@ ulimit -n 65536
 Compile with debug symbols and runtime checks:
 
 ```bash
-nim c -d:debug -r samples/basic_demo.nim
+nim c -d:debug -r examples/basic_demo.nim
 ```
 
 This enables:

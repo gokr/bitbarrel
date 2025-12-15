@@ -204,3 +204,12 @@ The merge system uses atomic flags for shutdown signaling and channels for coord
 - Technical, not promotional
 - Helpful without exaggeration
 - Clear and direct
+
+## Tutorial
+
+See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive documentation on using the KVS system, including:
+- API usage examples
+- Performance benchmarks
+- Configuration options
+- Best practices
+- Troubleshooting guide

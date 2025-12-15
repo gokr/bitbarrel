@@ -1,6 +1,6 @@
 ## Basic KVS Demo - Simple GET/SET operations
 ##
-## Run with: nim c -r samples/basic_demo.nim
+## Run with: nim c -r examples/basic_demo.nim
 
 import os
 import times

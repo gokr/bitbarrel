@@ -11,6 +11,11 @@ tests/*
 !tests/*.nim
 !tests/*.cfg
 !tests/*.nims
+# Root binaries
+/kvs
+/unified_benchmark
+/simple_bench
+/stress_test
 
 # Nim build artifacts
 nimcache/

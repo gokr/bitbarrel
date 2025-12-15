@@ -99,7 +99,7 @@ task fullTest, "Run full test suite":
   exec "nim c -r tests/test_recovery.nim"
   echo ""
   echo "=== Running Demos ==="
-  exec "nim c -r samples/basic_demo.nim"
+  exec "nim c -r examples/basic_demo.nim"
   echo ""
   echo "=== All Tests Completed Successfully ==="
 
@@ -109,10 +109,9 @@ task clean, "Clean up generated data files":
   exec "rm -f test_*.data"
   exec "rm -f tests/*.data"
   exec "rm -f bench/*.data"
-  exec "rm -f samples/*.data"
   exec "rm -f examples/*.data"
   # Remove compiled test binaries
   exec "rm -f tests/test_storage tests/test_keydir tests/test_integration tests/test_recovery"
   exec "rm -f bench/simple_bench bench/stress_test"
-  exec "rm -f samples/basic_demo samples/simple_kv_demo"
+  exec "rm -f examples/basic_demo examples/simple_kv_demo"
   echo "Cleaned up generated data files and binaries"

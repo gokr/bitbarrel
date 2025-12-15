@@ -244,7 +244,7 @@ nimble test-integration       # Integration tests only
 # Run demos
 nimble demo-basic             # Basic CRUD demo
 nimble demo                   # Detailed demo
-nim c -r samples/basic_demo.nim
+nim c -r examples/basic_demo.nim
 
 # Benchmark
 nimble bench                  # Performance benchmark
@@ -336,7 +336,7 @@ On read, CRC32 is verified and exception raised on mismatch.
 ## Documentation
 
 - **[docs/TUTORIAL.md](docs/TUTORIAL.md)**: Comprehensive tutorial with examples
-- **[samples/README.md](samples/README.md)**: Demo documentation
+- **[examples/README.md](examples/README.md)**: Demo documentation
 - **[TEST_RESULTS.md](TEST_RESULTS.md)**: Test suite results
 - **[FEEDBACK.md](FEEDBACK.md)**: Code review and improvements
 - **[PLAN.md](PLAN.md)**: Implementation plan and roadmap
