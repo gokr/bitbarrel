@@ -300,7 +300,7 @@ Planned for post-MVP, when basic system is stable:
 ```
 nim-bitbarrel/
 ├── src/
-│   ├── kvs.nim                 # Main module
+│   ├── bitbarrel.nim                 # Main module
 │   ├── storage/
 │   │   ├── datafile.nim        # Data file format
 │   │   ├── keydir.nim          # In-memory index

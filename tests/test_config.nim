@@ -83,10 +83,10 @@ logging:
 
   test "Environment variable overrides":
     # Set some environment variables
-    putEnv("KVS_SERVER_PORT", "7777")
-    putEnv("KVS_STORAGE_DATA_DIR", "/env/data")
-    putEnv("KVS_LOGGING_LEVEL", "warn")
-    putEnv("KVS_MERGE_ENABLED", "false")
+    putEnv("BITBARREL_SERVER_PORT", "7777")
+    putEnv("BITBARREL_STORAGE_DATA_DIR", "/env/data")
+    putEnv("BITBARREL_LOGGING_LEVEL", "warn")
+    putEnv("BITBARREL_MERGE_ENABLED", "false")
 
     var config = getDefaultConfig()
 
@@ -101,10 +101,10 @@ logging:
 
     finally:
       # Clean up environment
-      delEnv("KVS_SERVER_PORT")
-      delEnv("KVS_STORAGE_DATA_DIR")
-      delEnv("KVS_LOGGING_LEVEL")
-      delEnv("KVS_MERGE_ENABLED")
+      delEnv("BITBARREL_SERVER_PORT")
+      delEnv("BITBARREL_STORAGE_DATA_DIR")
+      delEnv("BITBARREL_LOGGING_LEVEL")
+      delEnv("BITBARREL_MERGE_ENABLED")
 
   test "Configuration validation":
     var config = getDefaultConfig()
@@ -188,7 +188,7 @@ server:
     writeFile(tempFile, yamlContent)
 
     # Set environment variable
-    putEnv("KVS_SERVER__ADDRESS", "1.1.1.1")
+    putEnv("BITBARREL_SERVER__ADDRESS", "1.1.1.1")
 
     try:
       let config = initConfig(tempFile)
@@ -200,7 +200,7 @@ server:
 
     finally:
       removeFile(tempFile)
-      delEnv("KVS_SERVER__ADDRESS")
+      delEnv("BITBARREL_SERVER__ADDRESS")
 
 suite "Configuration Integration Tests":
 
@@ -223,7 +223,7 @@ logging:
     writeFile(tempFile, yamlContent)
 
     # Set environment variable
-    putEnv("KVS_SERVER_MAX_CONNECTIONS", "2000")
+    putEnv("BITBARREL_SERVER_MAX_CONNECTIONS", "2000")
 
     try:
       # Initialize configuration
@@ -241,4 +241,4 @@ logging:
 
     finally:
       removeFile(tempFile)
-      delEnv("KVS_SERVER_MAX_CONNECTIONS")
+      delEnv("BITBARREL_SERVER_MAX_CONNECTIONS")

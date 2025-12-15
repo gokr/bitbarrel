@@ -44,10 +44,10 @@ OPTIONS:
   -v, --version          Show version information
 
 EXAMPLES:
-  barrel server                            # Start server with default config
-  kvs -c prod.yaml server               # Start server with custom config
-  kvs -d /data -p 9090 server           # Override data dir and port
-  BITBARREL_SERVER_PORT=9090 barrel server      # Override via environment variable
+  bitbarrel server                            # Start server with default config
+  bitbarrel -c prod.yaml server               # Start server with custom config
+  bitbarrel -d /data -p 9090 server           # Override data dir and port
+  BITBARREL_SERVER_PORT=9090 bitbarrel server      # Override via environment variable
 """
 
 proc showVersion*() =

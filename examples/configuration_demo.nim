@@ -66,7 +66,7 @@ proc demonstrateFullConfig*() =
   ## Demonstrate full BitBarrelConfig usage for advanced applications
   subsectionHeader("Full BitBarrelConfig Usage - For Advanced Applications")
 
-  echo "ℹ️  Full BitBarrelConfig provides comprehensive control over all KVS settings"
+  echo "ℹ️  Full BitBarrelConfig provides comprehensive control over all BitBarrel settings"
   echo "   Perfect for server deployments and production use cases."
   echo ""
 
@@ -97,14 +97,14 @@ proc demonstrateFullConfig*() =
   echo ""
 
   # Set some environment variables
-  putEnv("KVS_SERVER_PORT", "9090")
-  putEnv("KVS_STORAGE_DATA_DIR", "./examples/data/env_override")
-  putEnv("KVS_PERFORMANCE_WORKER_THREADS", "8")
+  putEnv("BITBARREL_SERVER_PORT", "9090")
+  putEnv("BITBARREL_STORAGE_DATA_DIR", "./examples/data/env_override")
+  putEnv("BITBARREL_PERFORMANCE_WORKER_THREADS", "8")
 
   echo "Set environment variables:"
-  echo "   KVS_SERVER_PORT=9090"
-  echo "   KVS_STORAGE_DATA_DIR=./examples/data/env_override"
-  echo "   KVS_PERFORMANCE_WORKER_THREADS=8"
+  echo "   BITBARREL_SERVER_PORT=9090"
+  echo "   BITBARREL_STORAGE_DATA_DIR=./examples/data/env_override"
+  echo "   BITBARREL_PERFORMANCE_WORKER_THREADS=8"
   echo ""
 
   try:
@@ -119,12 +119,12 @@ proc demonstrateFullConfig*() =
     error(&"Error: {e.msg}")
 
   # Clean up environment variables
-  delEnv("KVS_SERVER_PORT")
-  delEnv("KVS_STORAGE_DATA_DIR")
-  delEnv("KVS_PERFORMANCE_WORKER_THREADS")
+  delEnv("BITBARREL_SERVER_PORT")
+  delEnv("BITBARREL_STORAGE_DATA_DIR")
+  delEnv("BITBARREL_PERFORMANCE_WORKER_THREADS")
 
 proc demonstrateConfigurationInAction*() =
-  ## Show how configuration affects actual KVS operations
+  ## Show how configuration affects actual BitBarrel operations
   subsectionHeader("Configuration in Action - Real Operations")
 
   echo "ℹ️  Seeing how different configurations affect actual operations"
@@ -200,8 +200,8 @@ proc demonstrateBestPractices*() =
   echo ""
 
   echo "✓ Use environment variables for deployment:"
-  info("   KVS_SERVER_PORT=9090")
-  info("   KVS_STORAGE_DATA_DIR=/mnt/bitbarrel/data")
+  info("   BITBARREL_SERVER_PORT=9090")
+  info("   BITBARREL_STORAGE_DATA_DIR=/mnt/bitbarrel/data")
   info("   # These override YAML configuration")
   echo ""
 

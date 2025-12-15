@@ -12,7 +12,7 @@ import strformat
 import strutils except formatSize
 import times
 import demo_utils
-import ../src/kvs
+import ../src/bitbarrel
 
 type
   PerformanceTest* = object
@@ -245,34 +245,34 @@ proc printPerformanceInsights*() =
   subsectionHeader("Performance Insights & Best Practices")
 
   echo "✅ Sync Mode Selection:"
-  info("  • None模式 - 最高性能，但进程崩溃会丢失最后未同步的数据")
-  info("  • Sync模式 - 平衡点，每写同步到操作系统")
-  info("  • Fsync模式 - 最大安全性，写操作会等待磁盘I/O完成")
+  info("  • None mode - Highest performance, but unsynced data lost on process crash")
+  info("  • Sync mode - Balanced choice, synced to OS on each write")
+  info("  • Fsync mode - Maximum safety, writes wait for disk I/O completion")
 
   echo "\n✅ Buffer Size Tuning:"
-  info("  • 小缓冲区(16KB): 低延迟，适合低负载应用")
-  info("  • 中等缓冲区(256KB): 平衡性能和内存使用")
-  info("  • 大缓冲区(1MB): 高吞吐量，适合批量写入")
+  info("  • Small buffer (16KB): Low latency, suitable for low-load applications")
+  info("  • Medium buffer (256KB): Balanced performance and memory usage")
+  info("  • Large buffer (1MB): High throughput, suitable for bulk writes")
 
   echo "\n✅ Batching Benefits:"
-  info("  • 批量操作减少系统调用开销")
-  info("  • 10-100是最佳批量大小范围")
-  info("  • 过大批次会增加单个操作的延迟")
+  info("  • Batch operations reduce system call overhead")
+  info("  • 10-100 is the optimal batch size range")
+  info("  • Oversized batches increase individual operation latency")
 
   echo "\n✅ Memory Trade-offs:"
-  info("  • KeyDir占用: ~50字节/键")
-  info("  • 100万键 ≈ 500MB内存")
-  info("  • 建议: 100万-500万keys作为实际限制")
+  info("  • KeyDir overhead: ~50 bytes per key")
+  info("  • 1 million keys ≈ 500MB memory")
+  info("  • Recommendation: 1-5 million keys as practical limit")
 
   echo "\n✅ Disk Usage:"
-  info("  • Bitcask特点: 1.0-1.5倍数据大小(追加式开销)")
-  info("  → 定期compaction可回收空间")
-  info("  → 适合SSD硬盘(顺序写入)")
+  info("  • Bitcask characteristic: 1.0-1.5x data size (append-only overhead)")
+  info("  → Regular compaction reclaims space")
+  info("  → Suitable for SSD drives (sequential writes)")
 
 proc main() =
-  sectionHeader("KVS Performance Tuning Demo")
+  sectionHeader("BitBarrel Performance Tuning Demo")
 
-  echo "This demo demonstrates real KVS performance characteristics using actual APIs."
+  echo "This demo demonstrates real BitBarrel performance characteristics using actual APIs."
   echo "It measures actual behavior, not theoretical values.\n"
 
   echo "⚡  Note: Results will vary based on your hardware.\n"

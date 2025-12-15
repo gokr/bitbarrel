@@ -35,7 +35,7 @@ BitBarrel provides these core capabilities:
 ### Compile Nimble Package
 
 ```bash
-cd path/to/kvstore
+cd path/to/bitbarrel
 nimble build
 ```
 
@@ -590,7 +590,7 @@ Memory: More efficient per key (~40B vs ~48B)
 **1. Test compilation fails**
 ```bash
 # Make sure you're in the project root
-cd path/to/kvstore
+cd path/to/bitbarrel
 
 # Check Nim version
 nim --version  # Should be >= 2.0

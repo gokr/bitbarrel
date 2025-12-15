@@ -18,7 +18,7 @@ BitBarrel is a high-performance Bitcask-style key-value storage engine written i
 
 ```bash
 nimble install           # Install dependencies
-nimble build             # Build the kvs binary
+nimble build             # Build the bitbarrel binary
 nimble test              # Run all tests (65 tests)
 nimble clean             # Remove generated data files and binaries
 
@@ -97,8 +97,8 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 
 ```
 src/
-├── kvs.nim              # Main library entry point
-├── kvs/
+├── bitbarrel.nim              # Main library entry point
+├── bitbarrel/
 │   ├── simpleapi.nim    # High-level API (SimpleBitBarrel)
 │   ├── lowlevelapi.nim  # Low-level API
 │   ├── config.nim       # Configuration types

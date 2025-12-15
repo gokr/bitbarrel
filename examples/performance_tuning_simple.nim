@@ -4,7 +4,7 @@
 ##
 
 import os, times, strformat
-import ../src/kvs
+import ../src/bitbarrel
 
 var testCount = 0
 

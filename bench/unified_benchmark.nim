@@ -77,17 +77,17 @@ proc runWriteBenchmark(config: BenchmarkConfig, syncMode: UserSyncMode, bufferSi
   cfg.syncMode = syncMode
   cfg.writeBufferSize = bufferSize
 
-  let kvs = openDatabase(dbFile, cfg)
+  let bb = openDatabase(dbFile, cfg)
 
   let start = cpuTime()
 
   for i in 0..<config.profile.operations:
     let key = "key_" & $i
     let value = "value_" & $i
-    discard kvs.set(key, value)
+    discard bb.set(key, value)
 
   let totalTime = cpuTime() - start
-  kvs.close()
+  bb.close()
   removeFile(dbFile)
 
   result = BenchmarkResult(
@@ -149,25 +149,25 @@ proc testReadPerformance(): BenchmarkResult =
   printHeader("Read Performance Test")
 
   let dbFile = "bench_unified_read_test.dat"
-  let kvs = openDatabase(dbFile)
+  let bb = openDatabase(dbFile)
 
   # Write test data first
   let numKeys = 10000
   for i in 0..<numKeys:
     let key = "read_key_" & $i
     let value = "value_" & $i
-    discard kvs.set(key, value)
+    discard bb.set(key, value)
 
   # Now read performance
   let keys = (0..<numKeys).mapIt("read_key_" & $it)
 
   let start = cpuTime()
   for key in keys:
-    let value = kvs.get(key)
+    let value = bb.get(key)
     discard value.len  # Ensure read
   let totalTime = cpuTime() - start
 
-  kvs.close()
+  bb.close()
   removeFile(dbFile)
 
   result = BenchmarkResult(
@@ -189,7 +189,7 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
   printHeader("Mixed Workload Test (80% Read / 20% Write)")
 
   let dbFile = "bench_unified_mixed.dat"
-  let kvs = openDatabase(dbFile)
+  let bb = openDatabase(dbFile)
 
   let readRatio = 0.8
   let writeOps = int(config.profile.operations.float * (1 - readRatio))
@@ -199,7 +199,7 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
   for i in 0..<readOps:
     let key = "mixed_key_" & $i
     let value = "value_" & $i
-    discard kvs.set(key, value)
+    discard bb.set(key, value)
 
   let start = cpuTime()
 
@@ -211,19 +211,19 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
     if rand(1.0) < readRatio:
       # Read operation
       let key = "mixed_key_" & $(i mod readOps)
-      let value = kvs.get(key)
+      let value = bb.get(key)
       discard value.len
       readsDone += 1
     else:
       # Write operation
       let key = "mixed_write_" & $i
       let value = "write_value_" & $i
-      discard kvs.set(key, value)
+      discard bb.set(key, value)
       writesDone += 1
     i += 1
 
   let totalTime = cpuTime() - start
-  kvs.close()
+  bb.close()
   removeFile(dbFile)
 
   result = BenchmarkResult(
