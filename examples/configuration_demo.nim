@@ -1,7 +1,7 @@
 ## BitBarrel Configuration Demo
 ##
 ## Demonstrates how to properly use the BitBarrel configuration system
-## Shows both SimpleConfig (for basic use) and full BitBarrelConfig (for advanced use)
+## Shows BarrelConfig usage for different use cases
 ##
 ## Run with: nim c -r examples/configuration_demo.nim
 
@@ -11,16 +11,16 @@ import strutils
 import demo_utils
 import ../src/bitbarrel
 
-proc demonstrateSimpleConfig*() =
-  ## Demonstrate SimpleConfig usage for basic applications
-  subsectionHeader("SimpleConfig Usage - For Basic Applications")
+proc demonstrateBarrelConfig*() =
+  ## Demonstrate BarrelConfig usage for basic applications
+  subsectionHeader("BarrelConfig Usage - For Basic Applications")
 
-  echo "ℹ️  SimpleConfig is perfect for most applications that need basic control"
+  echo "ℹ️  BarrelConfig is perfect for most applications that need basic control"
   echo "   over sync mode, write buffer size, and auto-compaction."
   echo ""
 
   # Example 1: Default configuration
-  info("Example 1: Using default SimpleConfig")
+  info("Example 1: Using default BarrelConfig")
   var db1 = openBarrel("examples/data/simple_default.db")
   defer: db1.close()
 
@@ -30,7 +30,7 @@ proc demonstrateSimpleConfig*() =
   echo ""
 
   # Example 2: Custom configuration for performance
-  info("Example 2: Custom SimpleConfig for high performance")
+  info("Example 2: Custom BarrelConfig for high performance")
   var cfg = defaultConfig()
   cfg.writeBufferSize = 1024 * 1024  # 1MB write buffer
   cfg.syncMode = UserSyncMode.None  # Don't sync on every write
@@ -46,7 +46,7 @@ proc demonstrateSimpleConfig*() =
   echo ""
 
   # Example 3: Configuration for durability
-  info("Example 3: SimpleConfig for maximum durability")
+  info("Example 3: BarrelConfig for maximum durability")
   var durableCfg = defaultConfig()
   durableCfg.syncMode = UserSyncMode.Fsync  # Fsync on every write
   durableCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
@@ -181,12 +181,12 @@ proc demonstrateBestPractices*() =
   ## Show configuration best practices
   subsectionHeader("Configuration Best Practices")
 
-  echo "✓ Use SimpleConfig for most applications:"
+  echo "✓ Use BarrelConfig for most applications:"
   info("   import bitbarrel/simpleapi")
   info("   var db = openBarrel('myapp.db')")
   echo ""
 
-  echo "✓ Customize SimpleConfig for specific needs:"
+  echo "✓ Customize BarrelConfig for specific needs:"
   info("   var cfg = defaultConfig()")
   info("   cfg.syncMode = UserSyncMode.Fsync  # For durability")
   info("   cfg.writeBufferSize = 1024 * 1024  # 1MB buffer")
@@ -235,7 +235,7 @@ proc main() =
   echo "It does NOT reimplement configuration logic - it USES the existing BitBarrel APIs!"
   echo ""
 
-  demonstrateSimpleConfig()
+  demonstrateBarrelConfig()
   separator()
 
   demonstrateFullConfig()
@@ -250,7 +250,7 @@ proc main() =
   echo "✨ Configuration demo completed!"
   echo ""
   echo "Key takeaways:"
-  success("• Use SimpleConfig for most applications")
+  success("• Use BarrelConfig for most applications")
   success("• Use full BitBarrelConfig for server deployments")
   success("• Environment variables override configuration files")
   success("• Sync mode affects durability vs performance")
