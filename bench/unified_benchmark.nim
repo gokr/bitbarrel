@@ -4,8 +4,8 @@
 ## Usage: unified_benchmark [quick|standard|comprehensive]
 
 import os, times, strformat, math, strutils, sugar, sequtils, random
-import bitbarrel
-from bitbarrel/types import BarrelMode
+import ../src/bitbarrel
+from ../src/bitbarrel/types import BarrelMode
 
 type
   BenchmarkResult = object
@@ -244,6 +244,119 @@ proc testMixedWorkload(config: BenchmarkConfig): BenchmarkResult =
   echo &"  Average Latency: {result.avgLatency:.3f} ms"
   echo ""
 
+proc testBarrelModes(config: BenchmarkConfig) =
+  printHeader("Barrel Modes Comparison")
+
+  let columns = ["Mode", "Ops/sec", "Avg Latency (ms)", "Total Time (ms)", "Notes"]
+  printTableHeader(columns)
+
+  var bestResult: BenchmarkResult
+  bestResult.opsPerSec = -1
+
+  # Test bmNormal mode
+  let dbFileNormal = "bench_mode_normal.dat"
+  var cfgNormal = defaultConfig()
+  cfgNormal.mode = BarrelMode.bmNormal
+  var bbNormal = openDatabase(dbFileNormal, cfgNormal)
+
+  let startNormal = cpuTime()
+  for i in 0..<config.profile.operations:
+    let key = "key_" & $i
+    let value = "value_" & $i
+    discard bbNormal.set(key, value)
+  let timeNormal = cpuTime() - startNormal
+  bbNormal.close()
+  removeFile(dbFileNormal)
+
+  let normalResult = BenchmarkResult(
+    name: "Normal Mode",
+    opsPerSec: config.profile.operations.float / timeNormal,
+    avgLatency: (timeNormal * 1000) / config.profile.operations.float,
+    totalTime: timeNormal * 1000,
+    mode: "bmNormal",
+    bufferMode: "O(1) hash"
+  )
+
+  if normalResult.opsPerSec > bestResult.opsPerSec:
+    bestResult = normalResult
+
+  printTableRow([normalResult.mode, $int(normalResult.opsPerSec),
+                 &"{normalResult.avgLatency:.3f}", $int(normalResult.totalTime),
+                 "Hash table, simplest"])
+
+  # Test bmCritBit mode
+  let dbFileCritBit = "bench_mode_critbit.dat"
+  var cfgCritBit = defaultConfig()
+  cfgCritBit.mode = BarrelMode.bmCritBit
+  var bbCritBit = openDatabase(dbFileCritBit, cfgCritBit)
+
+  let startCritBit = cpuTime()
+  for i in 0..<config.profile.operations:
+    let key = "key_" & $i
+    let value = "value_" & $i
+    discard bbCritBit.set(key, value)
+  let timeCritBit = cpuTime() - startCritBit
+  bbCritBit.close()
+  removeFile(dbFileCritBit)
+
+  let critBitResult = BenchmarkResult(
+    name: "CritBit Mode",
+    opsPerSec: config.profile.operations.float / timeCritBit,
+    avgLatency: (timeCritBit * 1000) / config.profile.operations.float,
+    totalTime: timeCritBit * 1000,
+    mode: "bmCritBit",
+    bufferMode: "O(k) tree"
+  )
+
+  if critBitResult.opsPerSec > bestResult.opsPerSec:
+    bestResult = critBitResult
+
+  printTableRow([critBitResult.mode, $int(critBitResult.opsPerSec),
+                 &"{critBitResult.avgLatency:.3f}", $int(critBitResult.totalTime),
+                 "Ordered, range queries"])
+
+  # Test bmRanged mode
+  let dbFileRanged = "bench_mode_ranged.dat"
+  var cfgRanged = defaultConfig()
+  cfgRanged.mode = BarrelMode.bmRanged
+  cfgRanged.numRanges = 50
+  cfgRanged.maxLoadedRanges = 10
+  var bbRanged = openDatabase(dbFileRanged, cfgRanged)
+
+  let startRanged = cpuTime()
+  for i in 0..<config.profile.operations:
+    let key = "key_" & $i
+    let value = "value_" & $i
+    discard bbRanged.set(key, value)
+  let timeRanged = cpuTime() - startRanged
+  bbRanged.close()
+  removeFile(dbFileRanged)
+
+  let rangedResult = BenchmarkResult(
+    name: "Ranged Mode",
+    opsPerSec: config.profile.operations.float / timeRanged,
+    avgLatency: (timeRanged * 1000) / config.profile.operations.float,
+    totalTime: timeRanged * 1000,
+    mode: "bmRanged",
+    bufferMode: "Lazy load"
+  )
+
+  if rangedResult.opsPerSec > bestResult.opsPerSec:
+    bestResult = rangedResult
+
+  printTableRow([rangedResult.mode, $int(rangedResult.opsPerSec),
+                 &"{rangedResult.avgLatency:.3f}", $int(rangedResult.totalTime),
+                 "Billions of keys, LRU"])
+
+  printTableFooter(sum(columns.mapIt(it.len + 3)))
+  echo ""
+  echo &"🏆 Best barrel mode: {bestResult.mode} ({int(bestResult.opsPerSec)} ops/sec)"
+  echo ""
+  echo "Note: bmNormal is fastest for simple lookups"
+  echo "      bmCritBit supports range queries and prefix searches"
+  echo "      bmRanged handles datasets larger than RAM"
+  echo ""
+
 proc printSummary(results: seq[BenchmarkResult]) =
   printHeader("Benchmark Summary")
 
@@ -302,6 +415,7 @@ proc main() =
   # Run tests
   testSyncModes(config)
   testBufferSizes(config)
+  testBarrelModes(config)
   let readResult = testReadPerformance()
   allResults.add(readResult)
   let mixedResult = testMixedWorkload(config)
