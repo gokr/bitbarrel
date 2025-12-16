@@ -22,6 +22,24 @@ nimcache/
 *.nim.out
 *.exe
 
-# Data files from benchmarks
+# Data files
 *.data
-*.logTHOUGHTS.md
+*.log
+*.rhint
+*.hint
+
+# Test data directories
+test_*_data/
+ranges/
+examples/data/
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
