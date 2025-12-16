@@ -5,6 +5,7 @@
 import std/[os, streams, strformat, strutils, tables]
 import yaml
 import types
+import ../storage/compression
 
 # Forward declare configuration types to avoid circular imports
 type
@@ -21,6 +22,7 @@ type
     maxValueSize*: int64
     syncMode*: SyncMode
     fsyncInterval*: int
+    compression*: CompressionConfig
 
   PerformanceConfig* = object
     workerThreads*: int
@@ -130,6 +132,19 @@ proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
           return default
     return default
 
+  proc getYamlBool(key: string, default: bool): bool =
+    for k, v in fields.pairs:
+      if k.content == key and v.kind == yScalar:
+        let content = v.content.toLowerAscii()
+        return content == "true" or content == "yes" or content == "1"
+    return default
+
+  proc parseCompressionLevel(s: string): CompressionLevel =
+    case s.toLowerAscii():
+      of "fast": result = clFast
+      of "best": result = clBest
+      else: result = clDefault
+
   result.dataDir = getYamlString("data_dir", "./data")
   result.maxFileSize = getYamlInt64("max_file_size", 1024 * 1024 * 1024)
   result.maxKeySize = getYamlInt64("max_key_size", 64 * 1024)
@@ -139,6 +154,48 @@ proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
   result.syncMode = parseSyncMode(syncMode)
 
   result.fsyncInterval = getYamlInt("fsync_interval", 100)
+
+  # Parse compression configuration if present
+  var compressionNode: YamlNode
+  for k, v in fields.pairs:
+    if k.content == "compression":
+      compressionNode = v
+      break
+
+  if compressionNode != nil and compressionNode.kind == yMapping:
+    let compFields = compressionNode.fields
+
+    proc getYamlBoolNested(key: string, default: bool): bool =
+      for k, v in compFields.pairs:
+        if k.content == key and v.kind == yScalar:
+          let content = v.content.toLowerAscii()
+          return content == "true" or content == "yes" or content == "1"
+      return default
+
+    proc getYamlIntNested(key: string, default: int): int =
+      for k, v in compFields.pairs:
+        if k.content == key and v.kind == yScalar:
+          try:
+            return parseInt(v.content)
+          except:
+            return default
+      return default
+
+    proc getYamlStringNested(key: string, default: string = ""): string =
+      for k, v in compFields.pairs:
+        if k.content == key and v.kind == yScalar:
+          return v.content
+      return default
+
+    result.compression.enabled = getYamlBoolNested("enabled", false)
+    result.compression.threshold = getYamlIntNested("threshold", 256)
+    let levelStr = getYamlStringNested("level", "default")
+    result.compression.level = parseCompressionLevel(levelStr)
+  else:
+    # Default compression configuration
+    result.compression.enabled = compressionEnabled  # Based on compile-time flag
+    result.compression.threshold = 256
+    result.compression.level = clDefault
 
 proc parsePerformanceConfig*(yamlNode: YamlNode): PerformanceConfig =
   if yamlNode.kind != yMapping:

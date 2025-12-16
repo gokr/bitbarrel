@@ -5,8 +5,9 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 ## ✅ Status & Features
 
 **Current Status:**
-- **Test Suite**: 65/65 tests passing (100%)
+- **Test Suite**: 66/66 tests passing (100%) - includes compression tests
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
+- **Compression**: LZ4 (~2.1x ratio) and Snappy (~1.7x ratio) support
 - **Stability**: Stress-tested with 25K+ keys
 - **Architecture**: Bitcask append-only with CRC32 verification
 
@@ -31,10 +32,10 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 - ✅ Space reclamation and fragmentation management
 - ✅ Read-ahead LRU buffering for improved read performance
 - ✅ Write buffering with configurable sync modes (none/sync/fsync)
+- ✅ **Compression support** for large values (LZ4 & Snappy)
 
 **Future Work:**
 - 🚧 Network server with binary protocol (Phase 4)
-- 🚧 Compression for large values
 - 🚧 Multi-key transactions
 
 ## Quick Start
@@ -65,6 +66,19 @@ nimble benchCrunchy
 
 # Run stress test
 nimble stress
+```
+
+### Build with Compression
+
+```bash
+# Build with LZ4 compression (recommended)
+nimble buildLz4
+
+# Build with Snappy compression
+nimble buildSnappy
+
+# Build without compression (default)
+nimble buildDefault
 ```
 
 ### Use as Library

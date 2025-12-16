@@ -17,6 +17,7 @@ type
     writeBuffer*: ptr WriteBuffer  # Optional write buffer
     syncMode*: SyncMode          # Sync strategy
     shouldFsync*: bool           # Whether to call fsync
+    compressionConfig*: ptr CompressionConfig  # Compression configuration
 
   RecordInfo* = object
     recordPos*: uint64   # Position of the record (after CRC32)
@@ -62,7 +63,8 @@ proc open*(path: string, fileId: uint32): DataFile =
     fileId: fileId,
     size: size,
     syncMode: syncImmediate,
-    shouldFsync: true
+    shouldFsync: true,
+    compressionConfig: nil
   )
   initLock(result.lock)
 
@@ -103,7 +105,8 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     fileId: fileId,
     size: size,
     syncMode: syncMode,
-    shouldFsync: shouldFsync
+    shouldFsync: shouldFsync,
+    compressionConfig: nil
   )
   initLock(result.lock)
 
@@ -149,7 +152,7 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
   # If we have a write buffer, use it
   if df.writeBuffer != nil:
     let record = Record(key: key, value: value, timestamp: timestamp)
-    let encoded = record.encode()
+    let encoded = record.encode(df.compressionConfig)
     var crcVal = crc32(encoded)
 
     # Use a callback-based approach to get RecordInfo after writing
@@ -158,7 +161,8 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     withLock(df.lock):
       let recordPos = df.size
       let recordDataPos = recordPos + 4  # After CRC32
-      let valuePos = recordDataPos + 8 + 4 + key.len.uint64
+      # New format: timestamp:8 + keyLen:4 + key + valLen:4 + flags:1 + algorithm:1
+      let valuePos = recordDataPos + 8 + 4 + key.len.uint64 + 4 + 1 + 1
 
       df.size = df.size + 4.uint64 + encoded.len.uint64
 
@@ -196,7 +200,7 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     )
 
     # Encode outside lock for better concurrency
-    let encoded = record.encode()
+    let encoded = record.encode(df.compressionConfig)
     var crcVal = crc32(encoded)
 
     withLock(df.lock):
@@ -221,9 +225,10 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
         when defined(posix):
           discard fsync(df.file.getFileHandle())
 
-      # Calculate where the actual value starts (after record data CRC32 + timestamp + keyLen + key)
+      # Calculate where the actual value starts (new format includes flags and algorithm bytes)
       let recordDataPos = recordPos + 4  # After CRC32
-      let valuePos = recordDataPos + 8 + 4 + key.len.uint64  # timestamp + keyLen + key
+      # New format: timestamp:8 + keyLen:4 + key + valLen:4 + flags:1 + algorithm:1
+      let valuePos = recordDataPos + 8 + 4 + key.len.uint64 + 4 + 1 + 1
 
       result = RecordInfo(
         recordPos: recordDataPos,

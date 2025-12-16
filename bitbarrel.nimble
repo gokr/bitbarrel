@@ -12,6 +12,8 @@ bin           = @["bitbarrel"]
 requires "nim >= 2.2.6"
 requires "crunchy >= 0.1.0"
 requires "yaml >= 2.1.0"
+requires "supersnappy"      # For optional Snappy support
+requires "https://github.com/gokr/lz4wrapper" # For optional LZ4 support
 
 # Task for testing
 
@@ -20,6 +22,7 @@ task test, "Run all tests":
   exec "nim c -r tests/test_keydir.nim"
   exec "nim c -r tests/test_integration.nim"
   exec "nim c -r tests/test_record.nim"
+  exec "nim c -r tests/test_compression.nim"
   exec "nim c -r tests/test_error_handling.nim"
   exec "nim c -r tests/test_recovery.nim"
 
@@ -45,6 +48,9 @@ task demoSample, "Run detailed demo":
 
 task demoTuning, "Run performance tuning demo":
   exec "nim c -r examples/performance_tuning_demo.nim"
+
+task demoCompression, "Run compression demo":
+  exec "nim c -r examples/compression_demo.nim"
 
 # Task for benchmarking
 
@@ -84,6 +90,7 @@ task quickTest, "Run quick test suite":
   exec "nim c -r tests/test_keydir.nim"
   exec "nim c -r tests/test_integration.nim"
   exec "nim c -r tests/test_record.nim"
+  exec "nim c -r tests/test_compression.nim"
   exec "nim c -r tests/test_error_handling.nim"
   exec "nim c -r tests/test_recovery.nim"
 
@@ -95,6 +102,7 @@ task fullTest, "Run full test suite":
   exec "nim c -r tests/test_keydir.nim"
   exec "nim c -r tests/test_integration.nim"
   exec "nim c -r tests/test_record.nim"
+  exec "nim c -r tests/test_compression.nim"
   exec "nim c -r tests/test_error_handling.nim"
   exec "nim c -r tests/test_recovery.nim"
   echo ""
@@ -115,3 +123,17 @@ task clean, "Clean up generated data files":
   exec "rm -f bench/simple_bench bench/stress_test"
   exec "rm -f examples/basic_demo examples/simple_kv_demo"
   echo "Cleaned up generated data files and binaries"
+
+# Build with compression support
+
+task buildLz4, "Build with LZ4 compression support":
+  echo "Building BitBarrel with LZ4 compression..."
+  exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
+
+task buildSnappy, "Build with Snappy compression support":
+  echo "Building BitBarrel with Snappy compression..."
+  exec "nim c -d:snappyCompression -d:release src/bitbarrel.nim"
+
+task buildDefault, "Build without compression (default)":
+  echo "Building BitBarrel without compression..."
+  exec "nim c -d:release src/bitbarrel.nim"

@@ -12,13 +12,13 @@ import storage
 export types, config, simpleapi, lowlevelapi, storage
 
 # Convenience aliases for common operations
-proc openDatabase*(path: string, config: SimpleConfig = defaultConfig()): SimpleBB =
+proc openDatabase*(path: string, config: BarrelConfig = defaultBarrelConfig()): Barrel =
   ## Alias for simpleapi.open - convenient top-level function
   simpleapi.open(path, config)
 
-proc newDatabaseConfig*(): SimpleConfig =
-  ## Alias for defaultConfig - create new configuration
-  defaultConfig()
+proc newDatabaseConfig*(): BarrelConfig =
+  ## Alias for defaultBarrelConfig - create new configuration
+  defaultBarrelConfig()
 
 # Binary mode - only when executed directly
 when isMainModule:

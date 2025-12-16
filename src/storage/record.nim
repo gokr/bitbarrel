@@ -1,22 +1,68 @@
 ## Record format and encoding for Bitcask
 
 import std/endians
+import std/strutils
 import ../bitbarrel/types
 import ./crc32
+import ./compression
 
 # Re-export crc32 for backwards compatibility
 export crc32
+
+# Compression flags
+const
+  COMPRESS_FLAG* = 0b00000001  # Bit 0: compression enabled
 
 type
   Record* = object
     key*: string
     value*: string
     timestamp*: int64
+    compressed*: bool  # Indicates if value is compressed
+    algorithm*: uint8  # Algorithm ID (0=none, 1=LZ4, 2=Snappy)
 
-proc encode*(record: Record): string =
+proc encode*(record: Record; compressionConfig: ptr CompressionConfig = nil): string =
   ## Encode a record using portable binary format (little-endian)
-  ## Format: [timestamp:8][keyLen:4][key][valLen:4][value]
-  result = newString(8 + 4 + record.key.len + 4 + record.value.len)
+  ## Format: [timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:1][value]
+
+  # Use default compression config if none provided
+  var threshold = 256
+  var compressionEnabledConfig = false
+
+  if compressionConfig != nil:
+    compressionEnabledConfig = compressionConfig[].enabled
+    threshold = compressionConfig[].threshold
+  else:
+    compressionEnabledConfig = compressionEnabled
+
+  # Determine if we should compress the value
+  var shouldCompressValue = false
+  var compressedValue: seq[byte] = @[]
+  var finalValue: seq[byte] = @[]
+  var flags: uint8 = 0
+  var algoId: uint8 = 0
+
+  # Check if value should be compressed
+  if compressionEnabledConfig and shouldCompress(record.value.toOpenArrayByte(0, record.value.high), threshold):
+    try:
+      compressedValue = compress(record.value.toOpenArrayByte(0, record.value.high))
+      # Only use compression if it's beneficial
+      if isCompressionBeneficial(record.value.len, compressedValue.len):
+        shouldCompressValue = true
+        finalValue = compressedValue
+        flags = flags or COMPRESS_FLAG
+        algoId = algorithmId.uint8
+      else:
+        finalValue = cast[seq[byte]](record.value)
+    except CompressionError:
+      # Fall back to uncompressed if compression fails
+      finalValue = cast[seq[byte]](record.value)
+  else:
+    finalValue = cast[seq[byte]](record.value)
+
+  # Calculate total size
+  let totalSize = 8 + 4 + record.key.len + 4 + 1 + 1 + finalValue.len
+  result = newString(totalSize)
   var pos = 0
 
   # Timestamp (8 bytes, little-endian)
@@ -37,19 +83,28 @@ proc encode*(record: Record): string =
     copyMem(addr result[pos], addr record.key[0], record.key.len)
   pos += record.key.len
 
-  # Value length (4 bytes, little-endian)
+  # Value length (4 bytes, little-endian) - stores the *original* uncompressed size
   var valLen: uint32
-  var srcValLen = record.value.len.uint32
+  var srcValLen = record.value.len.uint32  # Original size, not compressed
   littleEndian32(addr valLen, addr srcValLen)
   copyMem(addr result[pos], addr valLen, 4)
   pos += 4
 
-  # Value (raw bytes, no endianness conversion needed)
-  if record.value.len > 0:
-    copyMem(addr result[pos], addr record.value[0], record.value.len)
+  # Flags (1 byte)
+  result[pos] = char(flags)
+  pos += 1
+
+  # Algorithm ID (1 byte)
+  result[pos] = char(algoId)
+  pos += 1
+
+  # Value (raw bytes - may be compressed)
+  if finalValue.len > 0:
+    copyMem(addr result[pos], addr finalValue[0], finalValue.len)
 
 proc decode*(data: string): Record =
   ## Decode a record from portable binary format (little-endian)
+  ## Handles both old format (no flags/algo) and new format
   var pos = 0
 
   # Read timestamp (8 bytes, little-endian)
@@ -76,24 +131,60 @@ proc decode*(data: string): Record =
   let key = data[pos..<(pos+keyLen.int)]
   pos += keyLen.int
 
-  # Read value length (4 bytes, little-endian)
+  # Read value length (4 bytes, little-endian) - stores uncompressed size
   if data.len - pos < 4:
     raise newException(ValueError, "Invalid record: missing value length")
   var valLen: uint32
   var rawValLen: uint32
   copyMem(addr rawValLen, addr data[pos], 4)
   littleEndian32(addr valLen, addr rawValLen)
+  let originalValSize = valLen.int
   pos += 4
 
-  # Read value (raw bytes)
-  if data.len - pos < valLen.int:
+  # Check if we have flags and algorithm (new format)
+  var flags: uint8 = 0
+  var algoId: uint8 = 0
+  var isCompressed = false
+
+  # If there's enough data for flags and algorithm, read them
+  # Otherwise, assume old format (uncompressed)
+  if data.len - pos >= 2:
+    flags = uint8(data[pos])
+    pos += 1
+    algoId = uint8(data[pos])
+    pos += 1
+    isCompressed = (flags and COMPRESS_FLAG) != 0
+  else:
+    # Old format - treat remaining data as uncompressed value
+    isCompressed = false
+
+  # Read value (raw bytes - may be compressed)
+  if data.len - pos < 0:
     raise newException(ValueError, "Invalid record: value data incomplete")
-  let value = data[pos..<(pos+valLen.int)]
+
+  let storedValue = data[pos..data.high]
+  var finalValue: string
+
+  if isCompressed:
+    try:
+      let decompressed = decompress(storedValue.toOpenArrayByte(0, storedValue.high), originalValSize)
+      finalValue = cast[string](decompressed)
+    except CompressionError as e:
+      raise newException(ValueError, "Decompression failed: " & e.msg)
+  else:
+    # Check if size matches expected for uncompressed data
+    if storedValue.len != originalValSize and algoId == 0:
+      # This might be old format where stored size is actual size
+      finalValue = storedValue
+    else:
+      finalValue = storedValue
 
   result = Record(
     key: key,
-    value: value,
-    timestamp: timestamp
+    value: finalValue,
+    timestamp: timestamp,
+    compressed: isCompressed,
+    algorithm: algoId
   )
 
 proc validate*(record: Record): bool =

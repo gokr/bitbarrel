@@ -32,6 +32,17 @@ type
     syncBatched     # Sync every N writes
     syncTimeBased    # Sync every X milliseconds
 
+  # Compression configuration
+  CompressionLevel* = enum
+    clDefault        # Default compression level
+    clFast          # Fast compression (less efficient)
+    clBest          # Best compression (slower)
+
+  CompressionConfig* = object
+    enabled*: bool             # Enable/disable compression
+    threshold*: int            # Minimum size to attempt compression (default: 256)
+    level*: CompressionLevel   # Compression level
+
   BufferedEntry* = object
     key*: string
     value*: string
