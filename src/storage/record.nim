@@ -1,7 +1,6 @@
 ## Record format and encoding for Bitcask
 
-import std/endians
-import std/strutils
+import std/[endians, strutils, times]
 import ../bitbarrel/types
 import ./crc32
 import ./compression
@@ -201,3 +200,40 @@ proc isTombstone*(record: Record): bool =
   ## Check if record is a tombstone (deleted record)
   ## We use empty value to indicate deletion
   return record.value.len == 0
+
+# TTL encoding/decoding functions
+# We use a simple approach: store expiration in the high bits, not in timestamp itself
+const
+  EXPIRATION_SHIFT = 48  # Shift amount for expiration (48 bits = 2^48/1000 ~ 8 years)
+  TIMESTAMP_MASK  = 0x0000FFFFFFFFFFFFF'i64
+
+proc encodeTimestamp*(ts: int64, ttlSeconds: int): int64 =
+  ## Encode timestamp with TTL in seconds
+  ## Original timestamp in low bits, expiration in high bits
+  if ttlSeconds == 0:
+    return ts  # No expiration
+
+  let expiration = ts div 1000 + ttlSeconds  # Expiration time in seconds
+  result = (ts and TIMESTAMP_MASK) or (expiration shl EXPIRATION_SHIFT)
+
+proc decodeTimestamp*(encoded: int64): tuple[ts: int64, hasExpiration: bool, expiration: int64] =
+  ## Decode: returns timestamp, hasExpiration, expirationTimeSeconds
+  let ts = encoded and TIMESTAMP_MASK
+  let expiration = encoded shr EXPIRATION_SHIFT
+
+  let hasExp = expiration > 0
+  result = (ts, hasExp, expiration)
+
+proc isExpired*(encodedTimestamp: int64): bool =
+  ## Check if record is expired (uses current time)
+  let (_, hasExp, expiration) = decodeTimestamp(encodedTimestamp)
+  result = hasExp and (getTime().toUnix() >= expiration)
+
+proc getRemainingTtl*(encodedTimestamp: int64): int =
+  ## Get remaining TTL in seconds (0 if no expiration or expired)
+  let (_, hasExp, expiration) = decodeTimestamp(encodedTimestamp)
+  if not hasExp:
+    return 0
+
+  let now = getTime().toUnix()
+  result = if expiration > now: expiration - now else: 0

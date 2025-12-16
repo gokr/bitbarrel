@@ -1,72 +1,66 @@
-# BitBarrel Implementation Status
+# BitBarrel TODO - Next Development Steps
 
-This document tracks the current implementation status and remaining tasks.
+## Current Status
+- Phase 3 (Merge, Recovery, Hint Files): ✅ COMPLETED
+- Compression (LZ4): ✅ COMPLETED
+- Barrel Modes (Normal/CritBit/Ranged): ✅ COMPLETED
+- Range Queries: ✅ COMPLETED (via bmCritBit mode)
+- Test suite: 65/65 passing
 
-## Completed Features ✅
+## Priority 1: Network Protocol Layer (Phase 4) - NEXT
 
-### Core Storage Engine
-- ✅ Bitcask-style append-only log implementation
-- ✅ In-memory hash index (KeyDir) with O(1) lookups
-- ✅ Binary record format with CRC32 checksums
-- ✅ Thread-safe operations with proper locking
-- ✅ Data integrity verification
+### Using MummyX (../mummy)
+MummyX is a production-ready, multithreaded HTTP/WebSocket server:
+- Single I/O thread + TaskPools (25x throughput improvement)
+- Thread-safe design matching BitBarrel's patterns
+- WebSocket binary protocol support
+- No async/await complexity (uses threads)
 
-### Advanced Features
-- ✅ Background merge/compaction with threading
-- ✅ Hint files for fast recovery
-- ✅ Write buffering with configurable sync modes
-- ✅ Read-ahead buffering with LRU cache
-- ✅ Crash recovery and partial write handling
-- ✅ Checkpoint system for KeyDir snapshots
+### Implementation Tasks
+- [ ] Add MummyX dependency to bitbarrel.nimble
+- [ ] Create `src/network/server.nim` - MummyX-based server
+  - [ ] WebSocket upgrade handler for binary protocol
+  - [ ] Connection lifecycle management
+- [ ] Design and implement binary BitBarrel protocol over WebSocket
+  - [ ] Message framing: [type:1][keyLen:2][key][valLen:4][value]
+  - [ ] Command types: GET=1, SET=2, DELETE=3, PING=9
+  - [ ] Response format: [status:1][seq:4][data]
+- [ ] Create client library with connection pooling
+  - [ ] `src/network/client.nim` - WebSocket client
+  - [ ] Connection pool management
+  - [ ] Automatic reconnection logic
+- [ ] Add integration tests for network layer
 
-### APIs
-- ✅ High-level SimpleAPI for easy usage
-- ✅ Low-level API for fine-grained control
-- ✅ Configuration system with YAML support
+### Optional: REST API
+- [ ] Add simple REST endpoints for compatibility
+  - GET /kv/{key}, PUT /kv/{key}, DELETE /kv/{key}
+  - Health check endpoint: GET /status
 
-### Testing (14 test suites)
-- ✅ Comprehensive test coverage for all components
-- ✅ Error handling and corruption detection
-- ✅ Integration tests
-- ✅ Performance benchmarks
-- ✅ Stress testing suite
+## Priority 2: TTL and Expiration (Phase 4)
 
-### Documentation
-- ✅ Comprehensive tutorial (TUTORIAL.md)
-- ✅ API examples and demos
-- ✅ Build and usage instructions
+### Implementation Analysis
+Records already have `timestamp` field (int64) - we can encode expiration in high bits.
 
-## Current Limitations & Future Enhancements
+### Implementation Plan
+- [ ] Encode expiration using high bits of timestamp (reserve top 8 bits)
+- [ ] Modify `Record.encode()` to include expiration info
+- [ ] Modify `Record.decode()` to extract expiration info
+- [ ] Update merge engine to filter expired records
+- [ ] Add API methods: `set(key, value, ttl)`, `get(key)`, `ttl(key)`
+- [ ] Passive expiration only (during reads/merge) - no timer overhead
+- [ ] Add TTL tests
 
-### Network Layer
-- [ ] Network protocol implementation for remote access
-- [ ] Client-server architecture
-- [ ] Authentication and security
-- [ ] Connection pooling
+## Priority 3: Performance & Monitoring (Phase 5)
 
-### Performance Optimizations
-- [ ] Additional tuning for specific workloads
-- [ ] Memory usage optimization
-- [ ] Advanced compression (LZ4/Zstd)
-- [ ] Prometheus metrics endpoint
+### Prometheus Metrics
+- [ ] Add `/metrics` endpoint (using MummyX)
+- [ ] Track: ops/sec, latency histograms, KeyDir size, storage metrics
+- [ ] Built-in profiling with configurable sampling
 
-### Production Features
-- [ ] CLI and daemon mode
-- [ ] Systemd service integration
-- [ ] Backup and restore utilities
-- [ ] Monitoring and alerting
-
-### Advanced Data Features
-- [ ] TTL (Time-To-Live) support
-- [ ] Range queries and iteration
-- [ ] Secondary indexes
-- [ ] Atomic multi-key operations
-
-### Clustering
-- [ ] Replication (master-replica or multi-master)
-- [ ] Consistent hashing for data distribution
-- [ ] Failure detection and recovery
-- [ ] Cross-datacenter replication
+## Future: Clustering (Raft) (Phase 6)
+- [ ] Raft consensus protocol implementation
+- [ ] Leader election and log replication
+- [ ] Use WebSocket for inter-node communication
 
 ## Project Statistics
 

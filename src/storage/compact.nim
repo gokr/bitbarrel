@@ -1,61 +1,61 @@
-## Merge/Compaction System for BitBarrel
+## Compact/Compaction System for BitBarrel
 ##
 ## This module handles compaction of data files to reclaim space
 ## from deleted and duplicate records.
 
 import std/[os, times, strformat, strutils, tables, options, locks, algorithm, atomics, typedthreads]
-import ../bitbarrel/types, datafile, keydir
+import ../bitbarrel/types, datafile, keydir, record
 
 # Re-export types from bitbarrel/types for convenience (use qualified names to avoid os.FileInfo conflict)
-export types.FileState, types.FileInfo, types.MergeStats, types.MergeConfig
+export types.FileState, types.FileInfo, types.CompactStats, types.CompactConfig
 
 type
-  MergeRequest* = object
-    ## A request to merge specific files
+  CompactRequest* = object
+    ## A request to compact specific files
     files*: seq[types.FileInfo]
     requestTime*: Time
 
-  MergeControllerObj* = object
-    config*: types.MergeConfig
+  CompactControllerObj* = object
+    config*: types.CompactConfig
     dataDir*: string                  # Data directory for file operations
     activeFiles*: seq[types.FileInfo]
     completedFiles*: seq[types.FileInfo]
-    mergeInProgress*: bool
-    stats*: types.MergeStats
-    mergeLock*: Lock
+    compactInProgress*: bool
+    stats*: types.CompactStats
+    compactLock*: Lock
     keyDir*: KeyDir
-    # Background merge support
+    # Background compact support
     shutdownFlag*: Atomic[bool]       # Signal to stop background thread
-    mergeThread*: Thread[ptr MergeControllerObj]  # Background worker thread
+    compactThread*: Thread[ptr CompactControllerObj]  # Background worker thread
     hasWorker*: bool                  # Whether background thread is running
-    pendingMerge*: bool               # Whether a merge is pending
-    pendingFiles*: seq[types.FileInfo]  # Files to merge in background
-    mergeCondition*: Cond             # Condition for signaling merge
+    pendingCompact*: bool               # Whether a compact is pending
+    pendingFiles*: seq[types.FileInfo]  # Files to compact in background
+    compactCondition*: Cond             # Condition for signaling compact
 
-  MergeController* = ref MergeControllerObj
+  CompactController* = ref CompactControllerObj
 
-  MergePriority* = object
+  CompactPriority* = object
     score*: float
     fileInfo*: types.FileInfo
     reason*: string
 
 # Forward declarations
-proc newMergeController*(config: types.MergeConfig, keyDir: KeyDir, dataDir: string): MergeController
-proc calculateMergePriority*(controller: MergeController, file: types.FileInfo): MergePriority
-proc selectFilesForMerge*(controller: MergeController): seq[types.FileInfo]
-proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): bool
+proc newCompactController*(config: types.CompactConfig, keyDir: KeyDir, dataDir: string): CompactController
+proc calculateCompactPriority*(controller: CompactController, file: types.FileInfo): CompactPriority
+proc selectFilesForCompact*(controller: CompactController): seq[types.FileInfo]
+proc performCompact*(controller: CompactController, files: seq[types.FileInfo]): bool
 
 # Implementation
 
-proc newMergeController*(config: types.MergeConfig, keyDir: KeyDir, dataDir: string): MergeController =
-  result = MergeController()
+proc newCompactController*(config: types.CompactConfig, keyDir: KeyDir, dataDir: string): CompactController =
+  result = CompactController()
   result.config = config
   result.keyDir = keyDir
   result.dataDir = dataDir
   result.activeFiles = @[]
   result.completedFiles = @[]
-  result.mergeInProgress = false
-  result.stats = types.MergeStats(
+  result.compactInProgress = false
+  result.stats = types.CompactStats(
     filesProcessed: 0,
     recordsScanned: 0,
     recordsKept: 0,
@@ -65,19 +65,19 @@ proc newMergeController*(config: types.MergeConfig, keyDir: KeyDir, dataDir: str
     timeStarted: getTime(),
     timeCompleted: getTime()
   )
-  initLock(result.mergeLock)
-  initCond(result.mergeCondition)
+  initLock(result.compactLock)
+  initCond(result.compactCondition)
   result.shutdownFlag.store(false)
   result.hasWorker = false
-  result.pendingMerge = false
+  result.pendingCompact = false
   result.pendingFiles = @[]
 
-proc calculateMergePriority*(controller: MergeController, file: types.FileInfo): MergePriority =
-  ## Calculate priority score for file to determine merge order
+proc calculateCompactPriority*(controller: CompactController, file: types.FileInfo): CompactPriority =
+  ## Calculate priority score for file to determine compact order
   ## Higher score = higher priority for merging
 
   if not controller.config.enabled:
-    return MergePriority(score: 0.0, fileInfo: file, reason: "Merge disabled")
+    return CompactPriority(score: 0.0, fileInfo: file, reason: "Compact disabled")
 
   var score = 0.0
   var reasons: seq[string]
@@ -99,7 +99,7 @@ proc calculateMergePriority*(controller: MergeController, file: types.FileInfo):
 
   # File count consideration: Prefer merging when there are many files
   let fileCount = controller.activeFiles.len
-  if fileCount >= controller.config.minFilesToMerge:
+  if fileCount >= controller.config.minFilesToCompact:
     score += float(fileCount / 10) * 0.1
     reasons.add(&"File count: {fileCount}")
 
@@ -108,32 +108,32 @@ proc calculateMergePriority*(controller: MergeController, file: types.FileInfo):
   score += min(float(fileAge.inHours) / 24.0, 7.0) / 7.0 * 0.1
   reasons.add(&"Age: {fileAge.inDays}d")
 
-  MergePriority(score: score, fileInfo: file, reason: reasons.join(", "))
+  CompactPriority(score: score, fileInfo: file, reason: reasons.join(", "))
 
-proc selectFilesForMerge*(controller: MergeController): seq[types.FileInfo] =
-  ## Select files that should be merged based on policy
+proc selectFilesForCompact*(controller: CompactController): seq[types.FileInfo] =
+  ## Select files that should be compactd based on policy
 
-  if not controller.config.enabled or controller.activeFiles.len < controller.config.minFilesToMerge:
+  if not controller.config.enabled or controller.activeFiles.len < controller.config.minFilesToCompact:
     return @[]
 
-  var candidates: seq[MergePriority]
+  var candidates: seq[CompactPriority]
 
   for file in controller.activeFiles:
     if file.state == types.fsImmutable and file.deleteCount + file.duplicateCount > 0:
-      let priority = calculateMergePriority(controller, file)
+      let priority = calculateCompactPriority(controller, file)
       if priority.score > 0:
         candidates.add(priority)
 
   # Sort by priority score (highest first)
-  candidates.sort(proc(a, b: MergePriority): int = cmp(b.score, a.score))
+  candidates.sort(proc(a, b: CompactPriority): int = cmp(b.score, a.score))
 
-  # Select top files to merge
-  let maxFiles = min(controller.activeFiles.len, 5)  # Limit concurrent merge size
+  # Select top files to compact
+  let maxFiles = min(controller.activeFiles.len, 5)  # Limit concurrent compact size
   result = @[]
   for i in 0..<min(maxFiles, candidates.len):
     result.add(candidates[i].fileInfo)
 
-proc findDuplicates*(controller: MergeController, keyDir: var KeyDir, file: types.FileInfo): tuple[
+proc findDuplicates*(controller: CompactController, keyDir: var KeyDir, file: types.FileInfo): tuple[
   duplicates: int, total: int, tombstones: int, scanTime: float
 ] =
   ## Scan a data file to find duplicate and tombstone records
@@ -175,25 +175,25 @@ proc findDuplicates*(controller: MergeController, keyDir: var KeyDir, file: type
 
   return (duplicates, total, tombstones, scanTime)
 
-proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): bool =
-  ## Perform the actual merge operation
+proc performCompact*(controller: CompactController, files: seq[types.FileInfo]): bool =
+  ## Perform the actual compact operation
   ## Returns true if successful, false if failed
 
   if files.len == 0:
     return false
 
-  let newFileId = if files.len > 0: files[0].id + 1000 else: 1000  # Use high IDs for merged files
+  let newFileId = if files.len > 0: files[0].id + 1000 else: 1000  # Use high IDs for compactd files
   let newPath = controller.dataDir / &"{newFileId:06d}.data"
   let tempPath = newPath & ".tmp"
 
-  controller.mergeInProgress = true
+  controller.compactInProgress = true
   controller.stats.timeStarted = getTime()
   controller.stats.filesProcessed = files.len
 
   var newFileSize: uint64 = 0
 
   try:
-    # Create new data file for merged output
+    # Create new data file for compactd output
     var newDataFile = datafile.open(tempPath, newFileId)
     var fileStats = Table[string, int]()
 
@@ -221,6 +221,11 @@ proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): boo
 
           # Skip tombstones
           if value.len == 0:
+            continue
+
+          # Skip expired records
+          if isExpired(timestamp):
+            controller.stats.recordsDropped += 1
             continue
 
           # Check for duplicate using latest timestamp
@@ -290,17 +295,17 @@ proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): boo
         removeFile(file.path)
 
   except Exception as e:
-    echo &"Error during merge: {e.msg}"
+    echo &"Error during compact: {e.msg}"
     # Clean up temp file if it exists
     if fileExists(tempPath):
       removeFile(tempPath)
-    controller.mergeInProgress = false
+    controller.compactInProgress = false
     return false
 
-  controller.mergeInProgress = false
+  controller.compactInProgress = false
   controller.stats.timeCompleted = getTime()
 
-  echo &"Merge completed successfully!"
+  echo &"Compact completed successfully!"
   echo &"   Records kept: {controller.stats.recordsKept}"
   echo &"   Records dropped: {controller.stats.recordsDropped}"
   echo &"   Files processed: {controller.stats.filesProcessed}"
@@ -308,93 +313,93 @@ proc performMerge*(controller: MergeController, files: seq[types.FileInfo]): boo
 
   return true
 
-proc triggerMerge*(controller: MergeController) =
-  ## Trigger a manual merge operation
-  withLock(controller.mergeLock):
-    if controller.activeFiles.len >= controller.config.minFilesToMerge:
-      let filesToMerge = selectFilesForMerge(controller)
-      if filesToMerge.len > 0:
-        discard performMerge(controller, filesToMerge)
+proc triggerCompact*(controller: CompactController) =
+  ## Trigger a manual compact operation
+  withLock(controller.compactLock):
+    if controller.activeFiles.len >= controller.config.minFilesToCompact:
+      let filesToCompact = selectFilesForCompact(controller)
+      if filesToCompact.len > 0:
+        discard performCompact(controller, filesToCompact)
 
-proc getMergeStats*(controller: MergeController): types.MergeStats =
-  ## Get current merge statistics
+proc getCompactStats*(controller: CompactController): types.CompactStats =
+  ## Get current compact statistics
   ## Returns a copy to avoid race conditions
-  withLock(controller.mergeLock):
+  withLock(controller.compactLock):
     result = controller.stats
 
-# Background merge worker functions
+# Background compact worker functions
 
-proc mergeWorker*(controllerPtr: ptr MergeControllerObj) {.thread.} =
-  ## Background worker thread for merge operations
-  let controller = cast[MergeController](controllerPtr)
+proc compactWorker*(controllerPtr: ptr CompactControllerObj) {.thread.} =
+  ## Background worker thread for compact operations
+  let controller = cast[CompactController](controllerPtr)
 
   while not controller.shutdownFlag.load():
-    var filesToMerge: seq[types.FileInfo] = @[]
+    var filesToCompact: seq[types.FileInfo] = @[]
 
-    withLock(controller.mergeLock):
+    withLock(controller.compactLock):
       if controller.shutdownFlag.load():
         break
 
-      # Wait for merge signal
-      if not controller.pendingMerge:
-        controller.mergeCondition.wait(controller.mergeLock)
+      # Wait for compact signal
+      if not controller.pendingCompact:
+        controller.compactCondition.wait(controller.compactLock)
 
       # Check again after waking
       if controller.shutdownFlag.load():
         break
 
-      if controller.pendingMerge:
-        filesToMerge = controller.pendingFiles
-        controller.pendingMerge = false
+      if controller.pendingCompact:
+        filesToCompact = controller.pendingFiles
+        controller.pendingCompact = false
         controller.pendingFiles = @[]
 
-    # Perform merge outside lock
-    if filesToMerge.len > 0:
-      discard performMerge(controller, filesToMerge)
+    # Perform compact outside lock
+    if filesToCompact.len > 0:
+      discard performCompact(controller, filesToCompact)
 
-proc startMergeWorker*(controller: MergeController) =
-  ## Start the background merge worker thread
+proc startCompactWorker*(controller: CompactController) =
+  ## Start the background compact worker thread
   if not controller.hasWorker:
     controller.shutdownFlag.store(false)
-    createThread(controller.mergeThread, mergeWorker, addr controller[])
+    createThread(controller.compactThread, compactWorker, addr controller[])
     controller.hasWorker = true
 
-proc stopMergeWorker*(controller: MergeController) =
-  ## Stop the background merge worker thread and wait for it to finish
+proc stopCompactWorker*(controller: CompactController) =
+  ## Stop the background compact worker thread and wait for it to finish
   if controller.hasWorker:
-    withLock(controller.mergeLock):
+    withLock(controller.compactLock):
       controller.shutdownFlag.store(true)
-      controller.mergeCondition.signal()
-    joinThread(controller.mergeThread)
+      controller.compactCondition.signal()
+    joinThread(controller.compactThread)
     controller.hasWorker = false
 
-proc queueMerge*(controller: MergeController, files: seq[types.FileInfo]) =
-  ## Queue files for background merge (non-blocking)
-  withLock(controller.mergeLock):
-    if not controller.pendingMerge and files.len > 0:
+proc queueCompact*(controller: CompactController, files: seq[types.FileInfo]) =
+  ## Queue files for background compact (non-blocking)
+  withLock(controller.compactLock):
+    if not controller.pendingCompact and files.len > 0:
       controller.pendingFiles = files
-      controller.pendingMerge = true
-      controller.mergeCondition.signal()
+      controller.pendingCompact = true
+      controller.compactCondition.signal()
 
-proc triggerBackgroundMerge*(controller: MergeController) =
-  ## Trigger a background merge operation (non-blocking)
-  ## Selects files automatically and queues them for merge
-  withLock(controller.mergeLock):
-    if not controller.pendingMerge and not controller.mergeInProgress:
-      if controller.activeFiles.len >= controller.config.minFilesToMerge:
-        let filesToMerge = selectFilesForMerge(controller)
-        if filesToMerge.len > 0:
-          controller.pendingFiles = filesToMerge
-          controller.pendingMerge = true
-          controller.mergeCondition.signal()
+proc triggerBackgroundCompact*(controller: CompactController) =
+  ## Trigger a background compact operation (non-blocking)
+  ## Selects files automatically and queues them for compact
+  withLock(controller.compactLock):
+    if not controller.pendingCompact and not controller.compactInProgress:
+      if controller.activeFiles.len >= controller.config.minFilesToCompact:
+        let filesToCompact = selectFilesForCompact(controller)
+        if filesToCompact.len > 0:
+          controller.pendingFiles = filesToCompact
+          controller.pendingCompact = true
+          controller.compactCondition.signal()
 
-proc isMergePending*(controller: MergeController): bool =
-  ## Check if a merge is currently pending
-  withLock(controller.mergeLock):
-    result = controller.pendingMerge
+proc isCompactPending*(controller: CompactController): bool =
+  ## Check if a compact is currently pending
+  withLock(controller.compactLock):
+    result = controller.pendingCompact
 
-proc shutdown*(controller: MergeController) =
+proc shutdown*(controller: CompactController) =
   ## Clean shutdown - stop worker and clean up resources
-  controller.stopMergeWorker()
-  deinitLock(controller.mergeLock)
-  deinitCond(controller.mergeCondition)
+  controller.stopCompactWorker()
+  deinitLock(controller.compactLock)
+  deinitCond(controller.compactCondition)

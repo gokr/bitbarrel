@@ -254,7 +254,7 @@ try:
     )
     barrel.indexAdd(key, entry)
     return true
-except:
+  except:
     return false
 
 proc get*(barrel: Barrel, key: string): string =

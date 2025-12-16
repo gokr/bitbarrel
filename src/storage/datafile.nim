@@ -4,7 +4,8 @@ import std/[os, times, locks]
 when defined(posix):
   import std/posix
 import ../bitbarrel/types
-from record import crc32, Record, encode, decode
+from record import Record, encode, decode
+from ./crc32 import crc32
 from writebuffer import WriteBuffer, initWriteBuffer, startWorker, stopWorker, addEntry
 
 type

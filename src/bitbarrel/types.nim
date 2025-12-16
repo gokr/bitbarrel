@@ -63,15 +63,15 @@ type
     cmdScan = 0x05
     cmdStats = 0x06
 
-  # Merge configuration
-  MergeConfig* = object
+  # Compaction configuration
+  CompactConfig* = object
     enabled*: bool
     maxFileSize*: uint64
-    minFilesToMerge*: int
+    minFilesToCompact*: int
     triggerThreshold*: float
-    maxMergeThreads*: int
-    mergeInterval*: int
-    mergeIntervalBytes*: int64
+    maxCompactThreads*: int
+    compactInterval*: int
+    compactIntervalBytes*: int64
     skipThreshold*: int
 
   FileState* = enum
@@ -92,7 +92,7 @@ type
     duplicateCount*: int         # Superseded records
     liveRecords*: int            # Active (non-deleted) records
 
-  MergeStats* = object
+  CompactStats* = object
     filesProcessed*: int
     recordsScanned*: int
     recordsKept*: int
@@ -137,6 +137,10 @@ type
     syncMode*: UserSyncMode
     autoCompact*: bool
     compactThreshold*: float
+    # TTL configuration
+    defaultTtl*: int        # Default TTL in seconds (0 = no expiration)
+    checkExpirationOnRead*: bool  # Check expiration during get() calls
+    deleteExpiredOnRead*: bool   # Write tombstone when expired record is read
     # Index mode
     mode*: BarrelMode
     # Range mode options (only used if mode == bmRanged)
