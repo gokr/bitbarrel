@@ -65,7 +65,7 @@ proc demonstrateSyncModes*() =
   fastConfig.syncMode = UserSyncMode.None
   fastConfig.writeBufferSize = 1024 * 1024  # 1MB buffer
 
-  var fastDb = openDatabase("examples/data/fast_sync_test.db", fastConfig)
+  var fastDb = openBarrel("examples/data/fast_sync_test.db", fastConfig)
   defer: fastDb.close()
 
   let fastTime = runPerformanceTest(fastDb, PerformanceTest(
@@ -80,7 +80,7 @@ proc demonstrateSyncModes*() =
   normalConfig.syncMode = UserSyncMode.Sync
   normalConfig.writeBufferSize = 256 * 1024  # 256KB buffer
 
-  var normalDb = openDatabase("examples/data/normal_sync_test.db", normalConfig)
+  var normalDb = openBarrel("examples/data/normal_sync_test.db", normalConfig)
   defer: normalDb.close()
 
   let normalTime = runPerformanceTest(normalDb, PerformanceTest(
@@ -95,7 +95,7 @@ proc demonstrateSyncModes*() =
   safeConfig.syncMode = UserSyncMode.Fsync
   safeConfig.writeBufferSize = 32 * 1024  # 32KB buffer
 
-  var safeDb = openDatabase("examples/data/safe_sync_test.db", safeConfig)
+  var safeDb = openBarrel("examples/data/safe_sync_test.db", safeConfig)
   defer: safeDb.close()
 
   let safeTime = runPerformanceTest(safeDb, PerformanceTest(
@@ -130,7 +130,7 @@ proc demonstrateBufferSizes*() =
     config.syncMode = UserSyncMode.None  # No sync to isolate buffer effect
     config.writeBufferSize = bufSize
 
-    let db = openDatabase(&"examples/data/buf_{bufSize}.db", config)
+    let db = openBarrel(&"examples/data/buf_{bufSize}.db", config)
     defer: db.close()
 
     let time = runPerformanceTest(db, PerformanceTest(
@@ -158,7 +158,7 @@ proc demonstrateBatching*() =
     config.syncMode = UserSyncMode.None
     config.writeBufferSize = 512 * 1024
 
-    let db = openDatabase(&"examples/data/batch_{batchSize}.db", config)
+    let db = openBarrel(&"examples/data/batch_{batchSize}.db", config)
     defer: db.close()
 
     var timer = startTimer()
@@ -190,7 +190,7 @@ proc demonstrateRealWorldScenario*() =
   config.syncMode = UserSyncMode.Sync  # Balanced durability
   config.writeBufferSize = 128 * 1024
 
-  let db = openDatabase("examples/data/realworld.db", config)
+  let db = openBarrel("examples/data/realworld.db", config)
   defer: db.close()
 
   # Pre-populate with data

@@ -12,7 +12,8 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 
 **Core Features (Completed):**
 - ✅ Append-only storage for efficient write performance
-- ✅ In-memory hash index for O(1) read operations
+- ✅ Three index modes: Hash table (O(1)), CritBit tree (ordered), and Ranged (lazy-loaded partitions)
+- ✅ Range queries and prefix searches (CritBit mode)
 - ✅ CRC32 checksums for data integrity
 - ✅ Binary record encoding/decoding with validation
 - ✅ Basic CRUD operations (GET/SET/DELETE)
@@ -32,7 +33,7 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 - ✅ Write buffering with configurable sync modes (none/sync/fsync)
 
 **Future Work:**
-- 🚧 Network server with binary protocol
+- 🚧 Network server with binary protocol (Phase 4)
 - 🚧 Compression for large values
 - 🚧 Multi-key transactions
 
@@ -110,6 +111,83 @@ var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
 ```
 
 See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
+
+### Barrel Modes
+
+BitBarrel supports three different index modes to optimize for different use cases:
+
+#### bmNormal Mode (Default)
+Hash table-based index for O(1) lookups. Best for simple key-value operations where ordering is not needed.
+
+```nim
+import bitbarrel
+from bitbarrel/types import BarrelMode
+
+var cfg = defaultBarrelConfig()
+cfg.mode = BarrelMode.bmNormal  # Default mode
+
+var db = openBarrel("mydb", cfg)
+db.set("key", "value")
+echo db.get("key")  # "value"
+```
+
+**Performance**: O(1) lookup, ~50 bytes per key overhead
+**Use case**: General-purpose key-value storage, caching, session storage
+
+#### bmCritBit Mode
+CritBit tree-based index that keeps keys sorted. Supports range queries and prefix searches with all keys in memory.
+
+```nim
+import bitbarrel
+from bitbarrel/types import BarrelMode
+
+var cfg = defaultBarrelConfig()
+cfg.mode = BarrelMode.bmCritBit
+
+var db = openBarrel("mydb", cfg)
+
+# Store some keys
+db.set("user:1", "Alice")
+db.set("user:2", "Bob")
+db.set("user:3", "Charlie")
+
+# Range query - get all keys between "user:1" and "user:3"
+let users = db.keysInRange("user:1", "user:3")
+# Returns: @["user:1", "user:2", "user:3"]
+
+# Prefix search - get all keys starting with "user:"
+let allUsers = db.keysWithPrefix("user:")
+# Returns: @["user:1", "user:2", "user:3"]
+```
+
+**Performance**: O(k) where k is key length, supports ordered iteration
+**Use case**: Leaderboards, time-series data, prefix searches, ordered traversal
+
+#### bmRanged Mode
+Lazy-loaded hash partitions for massive datasets that don't fit in memory. Only active partitions are loaded into memory.
+
+```nim
+import bitbarrel
+from bitbarrel/types import BarrelMode
+
+var cfg = defaultBarrelConfig()
+cfg.mode = BarrelMode.bmRanged
+cfg.numRanges = 100      # 100 hash partitions
+cfg.maxLoadedRanges = 10  # Keep max 10 partitions in memory
+
+var db = openBarrel("bigdb", cfg)
+
+# Store billions of keys - only active partitions stay in memory
+db.set("key:1", "value1")
+db.set("key:999999999", "value2")
+
+# Check range loading stats
+let stats = db.rangeStats()
+echo "Loaded partitions: ", stats.loaded
+```
+
+**Performance**: O(1) lookup with ~1ms partition loading overhead when needed
+**Use case**: Datasets with billions of keys, limited RAM, bursty access patterns
 
 ## Performance
 

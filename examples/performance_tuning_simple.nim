@@ -28,7 +28,7 @@ proc testSyncModes() =
   configNone.syncMode = barrel.UserSyncMode.None
   configNone.writeBufferSize = 128 * 1024
 
-  let db1 = barrel.openDatabase("examples/data/perf_none.dat", configNone)
+  let db1 = barrel.openBarrel("examples/data/perf_none.dat", configNone)
   let start = cpuTime()
   for i in 0..<testSize:
     discard db1.set(&"key{i}", &"value{i}")
@@ -41,7 +41,7 @@ proc testSyncModes() =
   configFsync.syncMode = barrel.UserSyncMode.Fsync
   configFsync.writeBufferSize = 128 * 1024
 
-  let db2 = barrel.openDatabase("examples/data/perf_fsync.dat", configFsync)
+  let db2 = barrel.openBarrel("examples/data/perf_fsync.dat", configFsync)
   let start2 = cpuTime()
   for i in 0..<testSize:
     discard db2.set(&"key2_{i}", &"value2_{i}")
@@ -74,7 +74,7 @@ proc testBuffers() =
   cfgSmall.syncMode = barrel.UserSyncMode.None
   cfgSmall.writeBufferSize = 4 * 1024
 
-  let db1 = barrel.openDatabase("examples/data/perf_small.dat", cfgSmall)
+  let db1 = barrel.openBarrel("examples/data/perf_small.dat", cfgSmall)
   let start = cpuTime()
   for i in 0..<testSize:
     discard db1.set(&"buf_key{i}", &"buf_value{i}")
@@ -86,7 +86,7 @@ proc testBuffers() =
   cfgLarge.syncMode = barrel.UserSyncMode.None
   cfgLarge.writeBufferSize = 1024 * 1024
 
-  let db2 = barrel.openDatabase("examples/data/perf_large.dat", cfgLarge)
+  let db2 = barrel.openBarrel("examples/data/perf_large.dat", cfgLarge)
   let start2 = cpuTime()
   for i in 0..<testSize:
     discard db2.set(&"buf_key{i}", &"buf_value{i}")

@@ -5,6 +5,7 @@
 
 import os, times, strformat, math, strutils, sugar, sequtils, random
 import bitbarrel
+from bitbarrel/types import BarrelMode
 
 type
   BenchmarkResult = object

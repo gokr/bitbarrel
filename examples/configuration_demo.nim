@@ -21,7 +21,7 @@ proc demonstrateSimpleConfig*() =
 
   # Example 1: Default configuration
   info("Example 1: Using default SimpleConfig")
-  var db1 = openDatabase("examples/data/simple_default.db")
+  var db1 = openBarrel("examples/data/simple_default.db")
   defer: db1.close()
 
   discard db1.set("user:1", "Alice")
@@ -37,7 +37,7 @@ proc demonstrateSimpleConfig*() =
   cfg.autoCompact = true
   cfg.compactThreshold = 0.4  # Compact at 40% tombstones
 
-  var db2 = openDatabase("examples/data/simple_fast.db", cfg)
+  var db2 = openBarrel("examples/data/simple_fast.db", cfg)
   defer: db2.close()
 
   discard db2.set("session:1", "data-xxxx")
@@ -51,7 +51,7 @@ proc demonstrateSimpleConfig*() =
   durableCfg.syncMode = UserSyncMode.Fsync  # Fsync on every write
   durableCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
 
-  var db3 = openDatabase("examples/data/safe.db", durableCfg)
+  var db3 = openBarrel("examples/data/safe.db", durableCfg)
   defer: db3.close()
 
   discard db3.set("important:1", "critical-data-1")
@@ -140,7 +140,7 @@ proc demonstrateConfigurationInAction*() =
   fastCfg.writeBufferSize = 256 * 1024
 
   var fastTimer = startTimer()
-  var fastDb = openDatabase("examples/data/fast.db", fastCfg)
+  var fastDb = openBarrel("examples/data/fast.db", fastCfg)
   defer: fastDb.close()
 
   for i in 0..<1000:
@@ -159,7 +159,7 @@ proc demonstrateConfigurationInAction*() =
   safeCfg.writeBufferSize = 32 * 1024
 
   var safeTimer = startTimer()
-  var safeDb = openDatabase("examples/data/safe.db", safeCfg)
+  var safeDb = openBarrel("examples/data/safe.db", safeCfg)
   defer: safeDb.close()
 
   for i in 0..<1000:
@@ -183,14 +183,14 @@ proc demonstrateBestPractices*() =
 
   echo "✓ Use SimpleConfig for most applications:"
   info("   import bitbarrel/simpleapi")
-  info("   var db = openDatabase('myapp.db')")
+  info("   var db = openBarrel('myapp.db')")
   echo ""
 
   echo "✓ Customize SimpleConfig for specific needs:"
   info("   var cfg = defaultConfig()")
   info("   cfg.syncMode = UserSyncMode.Fsync  # For durability")
   info("   cfg.writeBufferSize = 1024 * 1024  # 1MB buffer")
-  info("   var db = openDatabase('myapp.db', cfg)")
+  info("   var db = openBarrel('myapp.db', cfg)")
   echo ""
 
   echo "✓ Use full config for server deployment:"

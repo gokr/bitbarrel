@@ -101,20 +101,20 @@ BitBarrel is positioned as a **developer-friendly, high-performance key-value st
 
 ## Strategic Feature Roadmap
 
-### Phase 3.5: Scaling and Distribution (NEW HIGH PRIORITY)
+### Phase 3.5: Scaling and Distribution (NEW HIGH PRIORITY) ✅ IMPLEMENTED
 
 Based on recent architectural planning, two major scaling capabilities have been identified that fundamentally expand BitBarrel's market position and competitive differentiation.
 
-#### 0. **Two-Step Range-Based Lookup** ⭐ HIGHEST IMPACT
+#### 0. **Two-Step Range-Based Lookup (bmRanged Mode)** ⭐ HIGHEST IMPACT ✅ IMPLEMENTED
 **Why:** Enables BitBarrel to handle billions of keys while maintaining its core resource efficiency advantage
 **Innovation:** Novel adaptation of Bitcask architecture to support datasets 100× larger than RAM
 **Business Impact:** Expands addressable market from small/medium to large-scale deployments
 
-**Implementation Highlights:**
+**Implementation Status:** ✅ COMPLETED
 - Hash-based key partitioning into configurable ranges (default: 100)
 - Lazy-loaded range KeyDirs with LRU cache management
-- Per-table configuration: "normal" mode (all in RAM) vs "range" mode (two-step)
-- Backward compatible API - existing code works unchanged
+- Three modes: bmNormal (hash), bmCritBit (ordered), bmRanged (lazy-loaded partitions)
+- Comprehensive test coverage: 30 tests across all modes
 
 **Competitive Positioning:**
 - **Redis:** Must fit entire dataset in RAM ($$$$)
@@ -203,7 +203,7 @@ These features transform BitBarrel from:
 - Cloud deployments
 - Microservices communication
 
-#### 2. **Range Queries (SCAN)** ⭐ HIGH IMPACT
+#### 2. **Range Queries (SCAN)** ⭐ HIGH IMPACT ✅ IMPLEMENTED
 **Why:** SQL-like iteration without complexity
 **Implementation:**
 - Key prefix scanning
@@ -211,16 +211,24 @@ These features transform BitBarrel from:
 - Sorted key storage during merge
 - Lazy evaluation for large result sets
 
+**Implementation Status:** ✅ COMPLETED via bmCritBit Mode
+- CritBit tree-based index keeps all keys sorted
+- `keysWithPrefix()` for prefix searches
+- `keysInRange()` for range queries
+- `countWithPrefix()` for efficient counting
+
 **How it differentiates:**
 - Bitcask doesn't normally support scans
-- Novel approach: Leverage merge to create sorted segments
+- Novel approach: Use CritBit tree for ordered storage
 - More efficient than full table scans in SQL
+- All keys remain in memory for fast queries
 
 **Use cases unlocked:**
 - Pagination
 - Prefix-based queries
 - Data export/migration
 - Analytics on key patterns
+- Leaderboards and time-series data
 
 #### 3. **TTL and Expiration**
 **Why:** Essential for caching, session management

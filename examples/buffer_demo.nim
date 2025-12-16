@@ -4,7 +4,7 @@ import ../src/bitbarrel
 const NUM_OPS = 10000
 
 proc testDirectWrites(): float64 =
-  let db = openDatabase("bench_direct")
+  let db = openBarrel("bench_direct")
   let start = cpuTime()
   for i in 0..<NUM_OPS:
     discard db.set(&"key{i}", &"value{i}")
@@ -17,7 +17,7 @@ proc testBufferedWrites(): float64 =
   cfg.syncMode = UserSyncMode.Sync
   cfg.writeBufferSize = 64 * 1024
 
-  let db = openDatabase("bench_buffered", cfg)
+  let db = openBarrel("bench_buffered", cfg)
   let start = cpuTime()
   for i in 0..<NUM_OPS:
     discard db.set(&"key{i}", &"value{i}")

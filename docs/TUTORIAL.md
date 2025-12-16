@@ -6,6 +6,8 @@ This tutorial walks you through using the Bitcask-style key-value store (BitBarr
 
 BitBarrel provides these core capabilities:
 
+- **Three Index Modes**: Choose from hash table (O(1)), CritBit tree (ordered), or lazy-loaded partitions
+- **Range Queries**: Prefix searches and range scans (CritBit mode)
 - **Fast Recovery**: Hint files enable ultra-fast recovery (up to 10x faster)
 - **Background Merge**: Automatic space reclamation without blocking operations
 - **Read Buffering**: LRU cache for improved read performance
@@ -308,7 +310,7 @@ The high-level API provides a simple interface for most use cases:
 import bitbarrel
 
 # Basic usage
-var db = openDatabase("mydb")
+var db = openBarrel("mydb")
 db.set("user:1", "Alice")
 db.set("user:2", "Bob")
 echo db.get("user:1")  # "Alice"
@@ -332,7 +334,7 @@ cfg.autoCompact = true
 cfg.compactThreshold = 0.3  # Compact when 30% are deletions
 
 # Open database with custom config
-var db = openDatabase("mykv", cfg)
+var db = openBarrel("mykv", cfg)
 
 # Use the database normally
 db.set("test", "value")
@@ -351,7 +353,7 @@ db.close()
 ```nim
 import bitbarrel
 
-var db = openDatabase("mydb")
+var db = openBarrel("mydb")
 
 # Basic CRUD
 db.set("key", "value")           # Returns bool for success
@@ -372,6 +374,116 @@ echo db.isClosed()  # false
 
 db.close()
 ```
+
+### Barrel Modes
+
+BitBarrel provides three different index modes to optimize for different use cases. Each mode has different performance characteristics and memory requirements.
+
+#### bmNormal Mode (Default)
+
+The default mode uses a hash table for O(1) lookups. This is ideal for simple key-value operations where key ordering is not needed.
+
+**Key characteristics:**
+- **Lookup**: O(1) time complexity
+- **Memory**: ~50 bytes per key
+- **Ordering**: None - keys are not sorted
+
+```nim
+import bitbarrel
+from bitbarrel/types import BarrelMode, BarrelConfig, defaultBarrelConfig
+
+# Use default bmNormal mode
+var cfg = defaultBarrelConfig()
+# cfg.mode is already bmNormal by default
+
+var db = openBarrel("myapp.db", cfg)
+db.set("session:abc123", "user_data")
+let data = db.get("session:abc123")
+echo data  # "user_data"
+```
+
+**Best for**: Caching, session storage, general key-value operations
+
+#### bmCritBit Mode
+
+This mode uses a CritBit tree to keep all keys sorted in memory. It enables range queries and prefix searches.
+
+**Key characteristics:**
+- **Lookup**: O(k) where k is key length
+- **Memory**: Similar to bmNormal but with tree overhead
+- **Ordering**: Keys are sorted lexicographically
+- **Features**: Range queries, prefix searches, ordered iteration
+
+```nim
+import bitbarrel
+from bitbarrel/types import BarrelMode, BarrelConfig, defaultBarrelConfig
+
+# Configure for CritBit mode
+var cfg = defaultBarrelConfig()
+cfg.mode = BarrelMode.bmCritBit
+
+var db = openBarrel("timeseries.db", cfg)
+
+# Store timestamped data
+db.set("2024-01-01:temp", "22.5")
+db.set("2024-01-02:temp", "23.1")
+db.set("2024-01-03:temp", "21.8")
+
+# Range query: Get all temperature readings for January
+let januaryData = db.keysInRange("2024-01-01", "2024-01-31")
+for key in januaryData:
+  echo key, " = ", db.get(key)
+
+# Prefix search: Get all keys of type "temp"
+let tempKeys = db.keysWithPrefix("2024-01-:temp")
+echo "Temperature readings: ", tempKeys.len
+
+# Count keys with prefix (faster than retrieving all keys)
+let count = db.countWithPrefix("2024-01-")
+echo "Total January records: ", count
+```
+
+**Best for**: Time-series data, leaderboards, ordered data, prefix matching
+
+#### bmRanged Mode
+
+This mode uses lazy-loaded hash partitions for datasets that are too large to fit in memory. Only actively used partitions are loaded into RAM.
+
+**Key characteristics:**
+- **Lookup**: O(1) plus possible partition loading overhead (~1ms)
+- **Memory**: Configurable - only loaded partitions consume memory
+- **Partitions**: Keys are distributed across multiple ranges using consistent hashing
+- **Features**: Automatic loading/unloading of partitions based on access patterns
+
+```nim
+import bitbarrel
+from bitbarrel/types import BarrelMode, BarrelConfig, defaultBarrelConfig
+
+# Configure for Ranged mode
+var cfg = defaultBarrelConfig()
+cfg.mode = BarrelMode.bmRanged
+cfg.numRanges = 100        # Create 100 partitions
+cfg.maxLoadedRanges = 10   # Keep only 10 partitions in memory at once
+
+var db = openBarrel("analytics.db", cfg)
+
+# Store millions/billions of keys
+db.set("user:1:action:view", "product:12345")
+db.set("user:999999:action:purchase", "product:67890")
+
+# Partition statistics
+let stats = db.rangeStats()
+echo "Loaded partitions: ", stats.loaded
+# Loaded partitions: 2 (only partitions for user:1 and user:999999)
+echo "Max partitions: ", stats.maxRanges
+echo "Total keys: ", stats.totalKeys
+
+# Flush all loaded partitions to disk (useful before shutdown)
+let flushed = db.flushRanges()
+echo "Flushed partitions: ", flushed
+```
+
+**Best for**: Analytics data, user activity logs, large datasets with bursty access patterns
 
 ## Advanced Usage
 
@@ -495,7 +607,6 @@ proc verifyData(dataFile: DataFile, keyDir: var KeyDir) =
 ```nim
 import json
 import bitbarrel
-from bitbarrel/simpleapi import SimpleBitBarrel
 
 type
   User* = object
@@ -503,11 +614,11 @@ type
     email*: string
     age*: int
 
-proc saveUser(db: SimpleBitBarrel, userId: string, user: User): bool =
+proc saveUser(db: Barrel, userId: string, user: User): bool =
   let jsonStr = $$user  # Quick JSON conversion
   return db.set("user:" & userId, jsonStr)
 
-proc loadUser(db: SimpleBitBarrel, userId: string): Option[User] =
+proc loadUser(db: Barrel, userId: string): Option[User] =
   let jsonStr = db.get("user:" & userId)
   if jsonStr.len > 0:
     try:
@@ -521,7 +632,7 @@ proc loadUser(db: SimpleBitBarrel, userId: string): Option[User] =
       result = none(User)
 
 # Usage
-var db = openDatabase("users.db")
+var db = openBarrel("users.db")
 let user = User(name: "Alice", email: "alice@example.com", age: 30)
 discard db.saveUser("12345", user)
 
