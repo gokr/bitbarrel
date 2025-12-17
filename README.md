@@ -5,20 +5,21 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 ## ✅ Status & Features
 
 **Current Status:**
-- **Test Suite**: 66/66 tests passing (100%) - includes compression tests
+- **Test Suite**: 18 test files with 237+ test cases, all passing
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Compression**: LZ4 (~2.1x ratio) and Snappy (~1.7x ratio) support
 - **Stability**: Stress-tested with 25K+ keys
-- **Architecture**: Bitcask append-only with CRC32 verification
+- **Architecture**: Bitcask append-only with optional CRC32 verification
 
 **Core Features (Completed):**
 - ✅ Append-only storage for efficient write performance
 - ✅ Three index modes: Hash table (O(1)), CritBit tree (ordered), and Ranged (lazy-loaded partitions)
 - ✅ Range queries and prefix searches (CritBit mode)
-- ✅ CRC32 checksums for data integrity
+- ✅ Optional CRC32 checksums for data integrity
 - ✅ Binary record encoding/decoding with validation
 - ✅ Basic CRUD operations (GET/SET/DELETE)
 - ✅ Thread-safe KeyDir operations
+- ✅ Compression support for large values (LZ4 & Snappy)
 
 **Reliability Features:**
 - ✅ Crash recovery with checkpoint system
@@ -32,11 +33,10 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 - ✅ Space reclamation and fragmentation management
 - ✅ Read-ahead LRU buffering for improved read performance
 - ✅ Write buffering with configurable sync modes (none/sync/fsync)
-- ✅ **Compression support** for large values (LZ4 & Snappy)
+- ✅ Time-to-live (TTL) support for automatic expiration
 
 **Future Work:**
 - 🚧 Network server with binary protocol (Phase 4)
-- 🚧 Multi-key transactions
 
 ## Quick Start
 
@@ -93,7 +93,7 @@ The BitBarrel can be installed via nimble and used as a library in your projects
 import bitbarrel
 
 var db = openDatabase("mydb")
-db.set("key", "value")
+discard db.set("key", "value")
 echo db.get("key")  # "value"
 db.close()
 ```
@@ -141,7 +141,7 @@ var cfg = defaultBarrelConfig()
 cfg.mode = BarrelMode.bmNormal  # Default mode
 
 var db = openBarrel("mydb", cfg)
-db.set("key", "value")
+discard db.set("key", "value")
 echo db.get("key")  # "value"
 ```
 
@@ -161,9 +161,9 @@ cfg.mode = BarrelMode.bmCritBit
 var db = openBarrel("mydb", cfg)
 
 # Store some keys
-db.set("user:1", "Alice")
-db.set("user:2", "Bob")
-db.set("user:3", "Charlie")
+discard db.set("user:1", "Alice")
+discard db.set("user:2", "Bob")
+discard db.set("user:3", "Charlie")
 
 # Range query - get all keys between "user:1" and "user:3"
 let users = db.keysInRange("user:1", "user:3")
@@ -192,8 +192,8 @@ cfg.maxLoadedRanges = 10  # Keep max 10 partitions in memory
 var db = openBarrel("bigdb", cfg)
 
 # Store billions of keys - only active partitions stay in memory
-db.set("key:1", "value1")
-db.set("key:999999999", "value2")
+discard db.set("key:1", "value1")
+discard db.set("key:999999999", "value2")
 
 # Check range loading stats
 let stats = db.rangeStats()
@@ -467,7 +467,6 @@ nimble full-test
 Planned features for production use:
 
 - **Network layer**: Async server/client with binary protocol
-- **Compression**: LZ4/Zstd for large values
 - **Transactions**: Limited multi-key operations
 - **Replication**: Master-replica for HA
 - **Monitoring**: Metrics and health checks
@@ -485,9 +484,9 @@ This is a learning project demonstrating:
 
 Key areas for improvement:
 - Network protocol implementation
-- Compression for large values
 - Multi-key transaction support
 - Monitoring and metrics
+- Advanced backup/snapshot capabilities
 
 Refer to [FEEDBACK.md](FEEDBACK.md) for specific improvement items.
 
