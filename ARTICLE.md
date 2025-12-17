@@ -69,15 +69,15 @@ cfg.mode = BarrelMode.bmCritBit
 
 var tsDb = openBarrel("timeseries.db", cfg)
 
-// Store hourly readings
-tsDb.set("temp:2024-01-15T10:00", "23.5")
-tsDb.set("temp:2024-01-15T11:00", "24.1")
-tsDb.set("temp:2024-01-15T12:00", "24.8")
+# Store hourly readings
+discard tsDb.set("temp:2024-01-15T10:00", "23.5")
+discard tsDb.set("temp:2024-01-15T11:00", "24.1")
+discard tsDb.set("temp:2024-01-15T12:00", "24.8")
 
-// Get all readings from Jan 15
+# Get all readings from Jan 15
 let readings = tsDb.keysInRange("temp:2024-01-15", "temp:2024-01-16")
 
-// Count humidity sensors without loading values
+# Count humidity sensors without loading values
 let count = tsDb.countWithPrefix("humidity:")
 ```
 
@@ -96,11 +96,11 @@ cfg.maxLoadedRanges = 10  # Keep 10 in memory
 
 var analyticsDb = openBarrel("analytics.db", cfg)
 
-// Store billions of events—only active partitions stay in memory
-analyticsDb.set("event:user:12345:click:1234567890", "{url: /product/42}")
-analyticsDb.set("event:user:67890:view:1234567891", "{url: /category/electronics}")
+# Store billions of events—only active partitions stay in memory
+discard analyticsDb.set("event:user:12345:click:1234567890", "{url: /product/42}")
+discard analyticsDb.set("event:user:67890:view:1234567891", "{url: /category/electronics}")
 
-// Partition stats
+# Partition stats
 let stats = analyticsDb.rangeStats()
 echo "Loaded partitions: ", stats.loaded
 ```
@@ -117,17 +117,16 @@ from bitbarrel/barrel import UserSyncMode
 
 var cfg = defaultBarrelConfig()
 
-// Maximum speed, minimal durability (good for caches)
+# Maximum speed, minimal durability (good for caches)
 cfg.syncMode = UserSyncMode.None
 
-// Balanced performance (data safe from application crashes)
+# Balanced performance (data safe from application crashes)
 cfg.syncMode = UserSyncMode.Sync
 
-// Maximum durability (data safe from power loss)
+# Maximum durability (data safe from power loss)
 cfg.syncMode = UserSyncMode.Fsync
 
-cfg.writeBuffering = true  // Batch writes automatically
-cfg.writeBufferSize = 64 * 1024  // 64KB buffer
+cfg.writeBufferSize = 64 * 1024  # 64KB buffer
 ```
 
 **Write Performance**:
@@ -149,13 +148,13 @@ Hint file format: [keyLen][key][fileId][position][timestamp]
 Instead of stop-the-world compaction, BitBarrel performs merging in the background using a priority-based algorithm that considers deletion rates and file sizes.
 
 ```nim
-// Configurable thresholds
+# Configurable thresholds
 var cfg = defaultBarrelConfig()
 cfg.mergeEnabled = true
-cfg.mergeThreshold = 0.5  // Merge when 50% of file is garbage
-cfg.mergeMaxFiles = 4    // Merge up to 4 files at once
+cfg.mergeThreshold = 0.5  # Merge when 50% of file is garbage
+cfg.mergeMaxFiles = 4    # Merge up to 4 files at once
 
-// Background thread handles merge automatically
+# Background thread handles merge automatically
 ```
 
 ### Compression Support
@@ -173,13 +172,13 @@ nimble buildSnappy  # Snappy compression
 All operations are thread-safe using fine-grained locking. Each record includes a CRC32 checksum for corruption detection.
 
 ```nim
-// Multiple threads can safely operate on the same barrel
+# Multiple threads can safely operate on the same barrel
 parallel:
   for i in 0..999:
-    db.set(fmt"key:{i}", fmt"value:{i}")
+    discard db.set(fmt"key:{i}", fmt"value:{i}")
 
-// Corrupted data is detected and rejected
-let value = db.get("key")  // CRC32 verified automatically
+# Corrupted data is detected and rejected
+let value = db.get("key")  # CRC32 verified automatically
 ```
 
 ## Core Principles
@@ -233,7 +232,7 @@ var sessions = openBarrel("sessions.db", cacheConfig())
 var users = openBarrel("users.db", criticalConfig())
 var analytics = openBarrel("analytics.db", batchConfig())
 
-// Each can have different sync modes, buffer sizes, and merge policies
+# Each can have different sync modes, buffer sizes, and merge policies
 proc cacheConfig(): BarrelConfig =
   result = defaultBarrelConfig()
   result.syncMode = UserSyncMode.None
@@ -242,7 +241,6 @@ proc cacheConfig(): BarrelConfig =
 proc criticalConfig(): BarrelConfig =
   result = defaultBarrelConfig()
   result.syncMode = UserSyncMode.Fsync
-  result.writeBuffering = false
 
 proc batchConfig(): BarrelConfig =
   result = defaultBarrelConfig()
@@ -400,15 +398,15 @@ graph LR
 
 ```nim
 var sessionCfg = defaultBarrelConfig()
-sessionCfg.syncMode = UserSyncMode.None  // Sessions can be regenerated
+sessionCfg.syncMode = UserSyncMode.None  # Sessions can be regenerated
 sessionCfg.writeBufferSize = 256 * 1024
 
 var sessions = openBarrel("sessions.db", sessionCfg)
 
 proc handleRequest(req: Request) =
   let session = sessions.get(req.sessionId)
-  // ... process request ...
-  sessions.set(req.sessionId, updatedSession)
+  # ... process request ...
+  discard sessions.set(req.sessionId, updatedSession)
 ```
 
 **Why BitBarrel**: O(1) lookups match session access patterns, and losing sessions on crash is acceptable.
@@ -417,14 +415,14 @@ proc handleRequest(req: Request) =
 
 ```nim
 var tsCfg = defaultBarrelConfig()
-tsCfg.mode = BarrelMode.bmCritBit  // Sorted by key
+tsCfg.mode = BarrelMode.bmCritBit  # Sorted by key
 
 var metrics = openBarrel("metrics.db", tsCfg)
 
 # Store metrics with timestamp keys
 let now = epochTime().int64
-metrics.set(fmt"cpu:{now}", "{usage: 45.2}")
-metrics.set(fmt"memory:{now}", "{usage: 8192MB}")
+discard metrics.set(fmt"cpu:{now}", "{usage: 45.2}")
+discard metrics.set(fmt"memory:{now}", "{usage: 8192MB}")
 
 # Query time range
 let start = now - 3600    # Last hour
@@ -445,7 +443,7 @@ analyticsCfg.maxLoadedRanges = 20
 var events = openBarrel("analytics.db", analyticsCfg)
 
 # Collect events from many users
-events.set(fmt"event:{userId}:{eventType}:{timestamp}", eventData)
+discard events.set(fmt"event:{userId}:{eventType}:{timestamp}", eventData)
 
 # Query specific user's events
 let userEvents = events.keysWithPrefix(fmt"event:{userId}:")
@@ -485,14 +483,14 @@ var criticalCfg = defaultBarrelConfig()
 criticalCfg.syncMode = UserSyncMode.Fsync
 
 var orders = openBarrel("orders.db", criticalCfg)
-orders.set(orderId, orderData)  // Guaranteed durable
+discard orders.set(orderId, orderData)  # Guaranteed durable
 
 # Cache data - speed over durability
 var cacheCfg = defaultBarrelConfig()
-cacheCfg.syncMode = UserSyncMode.None  // 20x faster
+cacheCfg.syncMode = UserSyncMode.None  # 20x faster
 
 var cache = openBarrel("cache.db", cacheCfg)
-cache.set(key, expensiveComputation())  // Fast but volatile
+discard cache.set(key, expensiveComputation())  # Fast but volatile
 ```
 
 ### Compression for Large Values
@@ -504,8 +502,8 @@ nimble buildLz4
 var db = openBarrel("documents.db")
 
 # Large JSON documents compress well
-let largeDoc = readFile("big_document.json")  // 1MB uncompressed
-db.set("doc:1", largeDoc)  // Stores as ~500KB with LZ4
+let largeDoc = readFile("big_document.json")  # 1MB uncompressed
+discard db.set("doc:1", largeDoc)  # Stores as ~500KB with LZ4
 ```
 
 ## Conclusion
