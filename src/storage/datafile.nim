@@ -109,7 +109,8 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     size: size,
     syncMode: syncMode,
     shouldFsync: shouldFsync,
-    compressionConfig: nil
+    compressionConfig: nil,
+    validateCrc: validateCrc
   )
   initLock(result.lock)
 
@@ -266,9 +267,10 @@ proc readRecord*(df: var DataFile, recordInfo: RecordInfo): (string, string, int
     df.file.setFilePos(oldPos)
 
   # Verify CRC32 and decode outside lock for better concurrency
-  let computedCrc = crc32(recordData)
-  if storedCrc != computedCrc:
-    raise newException(IOError, "CRC32 mismatch: data corruption detected")
+  if df.validateCrc:
+    let computedCrc = crc32(recordData)
+    if storedCrc != computedCrc:
+      raise newException(IOError, "CRC32 mismatch: data corruption detected")
 
   # Decode the record
   let record = decode(recordData)

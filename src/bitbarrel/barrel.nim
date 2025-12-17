@@ -73,7 +73,8 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
 
   result.dataFile = open(path, fileId, storageSyncMode,
                          shouldFsync = (config.syncMode == UserSyncMode.Fsync),
-                         bufferSize = config.writeBufferSize)
+                         bufferSize = config.writeBufferSize,
+                         validateCrc = config.validateCrc)
 
   # Initialize index based on mode
   case config.mode
