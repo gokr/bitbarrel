@@ -5,7 +5,7 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 ## ✅ Status & Features
 
 **Current Status:**
-- **Test Suite**: 18 test files with 237+ test cases, all passing
+- **Test Suite**: 19 test files with 228 test cases, all passing
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Compression**: LZ4 (~2.1x ratio) and Snappy (~1.7x ratio) support
 - **Stability**: Stress-tested with 25K+ keys
@@ -28,15 +28,15 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 - ✅ Configurable recovery options
 
 **Performance Features:**
-- ✅ Automatic merge/compaction with background threading
-- ✅ Hint file generation for ultra-fast recovery
+- ✅ Automatic compaction with background threading
+- ✅ Hint file generation for fast recovery
 - ✅ Space reclamation and fragmentation management
-- ✅ Read-ahead LRU buffering for improved read performance
+- ✅ Read-ahead LRU buffering for read performance
 - ✅ Write buffering with configurable sync modes (none/sync/fsync)
 - ✅ Time-to-live (TTL) support for automatic expiration
 
 **Future Work:**
-- 🚧 Network server with binary protocol (Phase 4)
+- 🚧 Network server with binary protocol
 
 ## Quick Start
 
@@ -208,7 +208,7 @@ echo "Loaded partitions: ", stats.loaded
 ### Current Performance (Release Build, Linux x86_64)
 
 **Write Performance:**
-- None sync: ~250K ops/sec (minimum durability, highest speed)
+- None sync: ~250K ops/sec (minimum durability, fast writes)
   * With write buffering enabled, data is accumulated and written sequentially
   * Ideal for batch operations, logging, and non-critical data
 - Sync mode: ~245K ops/sec (OS-level durability)
@@ -243,13 +243,13 @@ echo "Loaded partitions: ", stats.loaded
 
 **Key Performance Notes:**
 - **Writes can be faster than reads**: With buffering enabled and None sync mode, writes are buffered and written sequentially, while reads always require disk access
-- **Pure reads are fastest**: Without write contention, reads achieve ~180K ops/sec
-- **High-level API is faster**: The Barrel API with write buffering outperforms direct low-level API calls
+- **Pure read performance**: Without write contention, reads achieve ~180K ops/sec
+- **High-level API performance**: The Barrel API with write buffering provides good performance for typical workloads
 - **Sync mode trade-offs**: Choose None for speed, Sync for application safety, Fsync for data integrity
 
 ### CRC32 Implementation Performance
 
-Two CRC32 implementations are available, controlled at compile time:
+Two optional CRC32 implementations are available, controlled at compile time:
 
 **Original (Default)**: Lookup table-based CRC32 in pure Nim
 - **Faster** for this workload: ~600 ops/sec writes, ~100K ops/sec reads
@@ -278,7 +278,7 @@ nimble benchCrunchy
 
 | Metric | Current | Notes |
 |--------|---------|-------|
-| Write throughput (none sync) | 250K ops/sec | Maximum performance |
+| Write throughput (none sync) | 250K ops/sec | Fastest writes, buffered |
 | Write throughput (sync) | 245K ops/sec | OS-level durability |
 | Write throughput (fsync) | 11.5K ops/sec | Disk-level durability |
 | Read throughput | 180K ops/sec | Both sequential and random |
@@ -290,7 +290,7 @@ nimble benchCrunchy
 | Recovery throughput | 40K keys/sec | With hint files |
 
 **Performance Tips:**
-- Use `none` sync for highest speed (data at risk on crash)
+- Use `none` sync for fastest writes (data at risk on crash)
 - Use `sync` for balanced performance/durability
 - Use `fsync` for critical data (slower but safer)
 - Buffer size 64KB-256KB provides good performance
@@ -330,16 +330,25 @@ bitbarrel/
 │   ├── simple_bench.nim     # Performance benchmark
 │   └── stress_test.nim      # Stress testing suite
 ├── tests/                   # Test suites
-│   ├── test_storage.nim     # Storage tests (✅ 3/3)
-│   ├── test_keydir.nim      # KeyDir tests (✅ 7/7)
-│   ├── test_integration.nim # Integration tests (✅ 3/3)
-│   ├── test_recovery.nim    # Recovery tests (✅ 17/17)
-│   ├── test_merge.nim       # Merge system tests (✅ 13/13)
-│   ├── test_hintfile.nim    # Hint file tests (✅ 11/11)
-│   ├── test_hintfile_recovery.nim # Hint recovery tests (✅ 4/4)
-│   ├── test_writebuffer.nim # Write buffer tests (✅ 8/8)
-│   ├── test_readbuffer.nim  # Read buffer tests (✅ 15/15)
-│   ├── test_error_handling.nim # Error handling tests
+│   ├── test_barrel.nim      # Barrel API tests (30 tests)
+│   ├── test_compact.nim     # Compaction tests (13 tests)
+│   ├── test_compression.nim # Compression tests (8 tests)
+│   ├── test_config.nim      # Configuration tests (9 tests)
+│   ├── test_error_handling.nim # Error handling tests (11 tests)
+│   ├── test_hintfile.nim    # Hint file tests (11 tests)
+│   ├── test_hintfile_recovery.nim # Hint recovery tests (4 tests)
+│   ├── test_integration.nim # Integration tests (3 tests)
+│   ├── test_keydir.nim      # KeyDir tests (11 tests)
+│   ├── test_merge.nim       # Merge system tests (13 tests)
+│   ├── test_protocol.nim    # Protocol tests (17 tests)
+│   ├── test_readbuffer.nim  # Read buffer tests (15 tests)
+│   ├── test_record.nim      # Record format tests (23 tests)
+│   ├── test_recovery.nim    # Recovery tests (18 tests)
+│   ├── test_session.nim     # Session tests (11 tests)
+│   ├── test_storage.nim     # Storage tests (3 tests)
+│   ├── test_ttl.nim         # TTL tests (16 tests)
+│   ├── test_writebuffer.nim # Write buffer tests (6 tests)
+│   ├── test_writebuffer_simple.nim # Simple write buffer tests (6 tests)
 │   └── TEST_RESULTS.md      # Detailed test report
 ├── docs/                    # Documentation
 │   ├── TUTORIAL.md          # Comprehensive tutorial
@@ -351,80 +360,6 @@ bitbarrel/
 └── README.md               # This file
 ```
 
-## Available Commands
-
-```bash
-# Run tests
-nimble test                    # All tests
-nimble test-storage           # Storage tests only
-nimble test-keydir            # KeyDir tests only
-nimble test-recovery          # Recovery tests only
-nimble test-integration       # Integration tests only
-
-# Run demos
-nimble demo-basic             # Basic CRUD demo
-nimble demo                   # Detailed demo
-nim c -r examples/basic_demo.nim
-
-# Benchmark
-nimble bench                  # Performance benchmark
-
-# Stress test
-nimble stress                 # Stress testing suite
-
-# Quick verification
-nimble quick-test             # Tests only
-nimble full-test              # Tests + demos
-
-# Cleanup
-nimble clean                  # Remove test files
-```
-
-## Architecture
-
-This implementation uses the **Bitcask storage model**:
-
-### Data Flow
-
-1. **Write Path:**
-   ```
-   Application → appendRecord() → DataFile → Disk
-                          ↓
-                    Update KeyDir (in-memory index)
-   ```
-
-2. **Read Path:**
-   ```
-   Application → KeyDir lookup → Record location → readRecord() → Value
-   ```
-
-### Core Components
-
-1. **DataFile**: Handles append-only writes and random reads
-   - File: `src/storage/datafile.nim`
-   - Functions: `open()`, `appendRecord()`, `readRecord()`
-   - Features: CRC32 checksums, integrity verification
-
-2. **KeyDir**: Thread-safe in-memory hash index
-   - File: `src/storage/keydir.nim`
-   - Type: `Table[string, KeyDirEntry]`
-   - Features: Lock-free reads, locked writes, atomic updates
-
-3. **Record**: Binary encoding/decoding
-   - File: `src/storage/record.nim`
-   - Format: `[timestamp][key_len][key][val_len][value]`
-   - Features: Variable-length encoding, validation
-
-### Data Integrity
-
-Each record written includes:
-- CRC32 checksum for corruption detection
-- Timestamp for conflict resolution
-- Key and value length prefixes for safe parsing
-
-On read, CRC32 is verified and exception raised on mismatch.
-
-
 ## Documentation
 
 - **[docs/TUTORIAL.md](docs/TUTORIAL.md)**: Comprehensive tutorial with examples
@@ -433,67 +368,15 @@ On read, CRC32 is verified and exception raised on mismatch.
 - **[FEEDBACK.md](FEEDBACK.md)**: Code review and improvements
 - **[PLAN.md](PLAN.md)**: Implementation plan and roadmap
 
-## Performance Characteristics
-
-**Measured on:** Linux x86_64, SSD, Nim 2.2.6 (Release Build)
-
-[See updated performance data above]
-
-## Development
-
-### Running Tests During Development
-
-```bash
-# Quick test cycle
-nim c -r tests/test_storage.nim
-nim c -r tests/test_keydir.nim
-nim c -r tests/test_integration.nim
-nim c -r tests/test_recovery.nim
-
-# Full verification
-nimble full-test
-```
-
-### Adding New Features
-
-1. Write tests first (TDD approach)
-2. Implement in appropriate module
-3. Update relevant demos
-4. Run full test suite
-5. Update documentation
 
 ## Future Enhancements
 
-Planned features for production use:
-
-- **Network layer**: Async server/client with binary protocol
-- **Transactions**: Limited multi-key operations
-- **Replication**: Master-replica for HA
+- **Network layer**: Server/client with binary protocol
 - **Monitoring**: Metrics and health checks
 - **Backup**: Online snapshot capability
 
-See [PLAN.md](PLAN.md) for detailed roadmap.
-
-## Contributing
-
-This is a learning project demonstrating:
-- Systems programming in Nim
-- Bitcask storage model implementation
-- Test-Driven Development (TDD)
-- Performance optimization techniques
-
-Key areas for improvement:
-- Network protocol implementation
-- Multi-key transaction support
-- Monitoring and metrics
-- Advanced backup/snapshot capabilities
-
-Refer to [FEEDBACK.md](FEEDBACK.md) for specific improvement items.
+See [TODO.md](TODO.md) for detailed roadmap.
 
 ## License
 
 MIT License
-
----
-
-**Status**: Complete implementation with all features. All 65 tests passing.

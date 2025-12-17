@@ -14,6 +14,7 @@ requires "crunchy >= 0.1.0"
 requires "yaml >= 2.1.0"
 requires "supersnappy"      # For optional Snappy support
 requires "https://github.com/gokr/lz4wrapper" # For optional LZ4 support
+requires "https://github.com/gokr/mummy"      # WebSocket/HTTP server
 
 # Task for testing
 
@@ -71,17 +72,17 @@ task benchCrunchy, "Run performance benchmark with crunchy CRC32":
 task stress, "Run stress tests":
   exec "nim c -d:release -r bench/stress_test.nim"
 
-# Task for building server
+# Tasks for network server and client
 
-task server, "Build BitBarrel server":
-  echo "Server implementation coming in Phase 2"
-  # exec "nim c -d:release src/server.nim"
+task server, "Build and run BitBarrel network server":
+  exec "nim c -d:release --mm:orc --threads:on -o:bitbarrel_server src/network/server_main.nim && ./bitbarrel_server"
 
-# Task for building client
+task client, "Build BitBarrel network client library":
+  exec "nim c -d:release --mm:orc --threads:on -o:bitbarrel_client src/network/client.nim"
 
-task client, "Build BitBarrel client":
-  echo "Client implementation coming in Phase 2"
-  # exec "nim c -d:release src/client.nim"
+task testNetwork, "Run network layer tests":
+  exec "nim c -r --mm:orc --threads:on tests/test_protocol.nim"
+  exec "nim c -r --mm:orc --threads:on tests/test_session.nim"
 
 # Quick test - runs all tests
 
