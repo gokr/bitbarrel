@@ -314,7 +314,7 @@ bitbarrel/
 │   │   ├── record.nim       # Record encoding
 │   │   ├── recovery.nim     # Crash recovery engine
 │   │   ├── checkpoint.nim   # Checkpoint system
-│   │   ├── merge.nim        # Merge/compaction with background threads
+│   │   ├── compact.nim       # Compaction system
 │   │   ├── hintfile.nim     # Hint files for fast recovery
 │   │   ├── writebuffer.nim  # Write buffering system
 │   │   └── readbuffer.nim   # Read-ahead LRU buffering
@@ -339,7 +339,7 @@ bitbarrel/
 │   ├── test_hintfile_recovery.nim # Hint recovery tests (4 tests)
 │   ├── test_integration.nim # Integration tests (3 tests)
 │   ├── test_keydir.nim      # KeyDir tests (11 tests)
-│   ├── test_merge.nim       # Merge system tests (13 tests)
+│   ├── test_compact.nim     # Compaction tests (13 tests)
 │   ├── test_protocol.nim    # Protocol tests (17 tests)
 │   ├── test_readbuffer.nim  # Read buffer tests (15 tests)
 │   ├── test_record.nim      # Record format tests (23 tests)

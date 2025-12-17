@@ -8,7 +8,7 @@ BitBarrel is a high-performance Bitcask-style key-value storage engine written i
 - Append-only log files with O(1) reads via in-memory hash index
 - CRC32 data integrity verification
 - Crash recovery with hint files for fast startup (40K+ keys/sec)
-- Background merge/compaction with threading
+- Background compaction with threading
 - Configurable durability (immediate, buffered, batched, time-based sync modes)
 - Write buffering and read-ahead caching
 
@@ -52,7 +52,7 @@ Tests use Nim's `unittest` module. Located in `tests/`:
 | `test_integration.nim` | GET/SET/DELETE workflow, persistence |
 | `test_error_handling.nim` | Corruption detection, boundary conditions |
 | `test_recovery.nim` | Recovery engine, checkpoints, hint files |
-| `test_merge.nim` | Merge/compaction, background threading |
+| `test_compact.nim` | Compaction system tests (13 tests) |
 | `test_writebuffer.nim` | Write buffer sync modes |
 | `test_readbuffer.nim` | Read buffering/caching |
 | `test_hintfile.nim` | Hint file I/O |
@@ -80,7 +80,7 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 | `keydir.nim` | In-memory hash index (key → file position) |
 | `datafile.nim` | Append-only file I/O with headers |
 | `record.nim` | Binary record format: `[CRC32][timestamp][keyLen][key][valLen][value]` |
-| `merge.nim` | Background compaction with priority scoring |
+| `compact.nim` | Single-file compaction system |
 | `recovery.nim` | Crash recovery, KeyDir reconstruction |
 | `hintfile.nim` | Fast recovery metadata (key positions only) |
 | `writebuffer.nim` | Write batching with 4 sync modes |
@@ -91,7 +91,7 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 1. **Writes**: Append to active data file, update KeyDir in memory
 2. **Reads**: KeyDir lookup (O(1)) → single disk seek + read
 3. **Deletes**: Write tombstone record (empty value)
-4. **Compaction**: Background merge eliminates tombstones and duplicates
+4. **Compaction**: Background process eliminates tombstones and expired records
 
 ## Project Structure
 
@@ -108,7 +108,7 @@ src/
 │   ├── keydir.nim       # In-memory hash index
 │   ├── datafile.nim     # Data file management
 │   ├── record.nim       # Record serialization
-│   ├── merge.nim        # Compaction engine
+│   ├── compact.nim       # Compaction system
 │   ├── recovery.nim     # Crash recovery
 │   ├── writebuffer.nim  # Write buffering
 │   ├── hintfile.nim     # Hint files
@@ -153,7 +153,7 @@ examples/                # Demo programs
 
 ## Thread Safety
 
-The BitBarrel uses threading for background operations (merge/compaction). Key patterns:
+The BitBarrel uses threading for background operations (compaction). Key patterns:
 
 ### Lock-Protected Data Structures
 - **KeyDir**: Uses `Lock` for concurrent access to the hash index
@@ -174,8 +174,8 @@ proc someThreadedProc*() {.gcsafe.} =
 
 Use `{.gcsafe.}:` blocks only when certain the code is actually thread-safe (e.g., lock-protected access).
 
-### Merge Worker Threading
-The merge system uses atomic flags for shutdown signaling and channels for coordination. See `src/storage/merge.nim` for the background worker pattern.
+### Compaction Worker Threading
+The compaction system uses atomic flags for shutdown signaling. See `src/storage/compact.nim` for the background worker pattern.
 
 ## Documentation Guidelines
 
