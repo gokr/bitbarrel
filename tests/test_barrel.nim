@@ -1,7 +1,7 @@
 ## Tests for Barrel API with multiple index modes
 
 import std/[unittest, os, strutils, sequtils, algorithm, options]
-import ../src/bitbarrel/simpleapi
+import ../src/bitbarrel/barrel
 import ../src/bitbarrel/types
 import ../src/storage/critbitindex
 

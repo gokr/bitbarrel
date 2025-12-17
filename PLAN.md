@@ -713,11 +713,11 @@ Files created:
 **Example Structure**:
 ```nim
 # CORRECT - Using BitBarrel APIs
-import ../src/bitbarrel/simpleapi
-from ../src/bitbarrel/simpleapi import UserSyncMode
+import ../src/bitbarrel/barrel
+from ../src/bitbarrel/config import UserSyncMode
 
-# SimpleConfig usage
-var cfg = defaultConfig()
+# BarrelConfig usage
+var cfg = defaultBarrelConfig()
 cfg.syncMode = UserSyncMode.Fsync
 var db = openDatabase("myapp.db", cfg)
 ```

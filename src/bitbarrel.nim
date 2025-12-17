@@ -5,16 +5,16 @@
 ## When run as binary, starts the CLI application
 
 # Library exports
-import bitbarrel/[types, config, simpleapi, lowlevelapi]
+import bitbarrel/[types, config, barrel, lowlevelapi]
 import storage
 
 # Export everything users might need
-export types, config, simpleapi, lowlevelapi, storage
+export types, config, barrel, lowlevelapi, storage
 
 # Convenience aliases for common operations
 proc openDatabase*(path: string, config: BarrelConfig = defaultBarrelConfig()): Barrel =
-  ## Alias for simpleapi.open - convenient top-level function
-  simpleapi.open(path, config)
+  ## Alias for barrel.openBarrel - convenient top-level function
+  barrel.openBarrel(path, config)
 
 proc newDatabaseConfig*(): BarrelConfig =
   ## Alias for defaultBarrelConfig - create new configuration

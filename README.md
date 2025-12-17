@@ -102,9 +102,9 @@ db.close()
 
 ```nim
 import bitbarrel
-from bitbarrel/simpleapi import UserSyncMode, defaultConfig
+from bitbarrel/config import UserSyncMode
 
-var cfg = defaultConfig()
+var cfg = defaultBarrelConfig()
 cfg.syncMode = UserSyncMode.Fsync
 cfg.writeBufferSize = 1024 * 1024  # 1MB buffer
 
@@ -117,8 +117,8 @@ var db = openDatabase("mydb", cfg)
 For advanced use cases, you can use the low-level storage API:
 
 ```nim
-# For backward compatibility or fine-grained control
-import bitbarrel/[lowlevelapi, simpleapi]
+# For fine-grained control over data files
+import bitbarrel/[lowlevelapi, barrel]
 
 var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
 # Work directly with data files
@@ -209,25 +209,43 @@ echo "Loaded partitions: ", stats.loaded
 
 **Write Performance:**
 - None sync: ~250K ops/sec (minimum durability, highest speed)
+  * With write buffering enabled, data is accumulated and written sequentially
+  * Ideal for batch operations, logging, and non-critical data
 - Sync mode: ~245K ops/sec (OS-level durability)
+  * Data is safe from application crashes
+  * Good balance of performance and safety
 - Fsync mode: ~11.5K ops/sec (disk-level durability)
+  * Data is safe from power loss
+  * Each write waits for disk confirmation
 
 **Read Performance:**
 - Sequential reads: ~180K ops/sec
 - Random access: ~178K ops/sec
+  * Reads require disk I/O via the in-memory index
+  * Performance depends on disk speed and caching
+  * Typically ~25% slower than buffered writes (None sync mode)
 
 **Mixed Workload (80% Read / 20% Write):**
-- Overall throughput: ~278K ops/sec
+- Overall throughput: ~278K ops/sec (combined operations)
+  * This averages the faster writes with slower reads
+  * Actual read performance in mixed workloads: ~140K ops/sec
+  * Write buffering and batching improve overall throughput
 
 **Latency:**
-- None/Sync writes: ~0.004ms
-- Fsync writes: ~0.086ms
-- Reads: ~0.006ms
+- None/Sync writes: ~0.004ms (buffered, asynchronous)
+- Fsync writes: 0.086ms (synchronous, confirmed)
+- Reads: ~0.006ms (random disk access via index)
 
 **Buffer Size Impact:**
 - 4KB buffer: ~119K ops/sec
 - 64KB-256KB buffer: ~230K ops/sec (recommended range)
 - 1MB buffer: ~188K ops/sec
+
+**Key Performance Notes:**
+- **Writes can be faster than reads**: With buffering enabled and None sync mode, writes are buffered and written sequentially, while reads always require disk access
+- **Pure reads are fastest**: Without write contention, reads achieve ~180K ops/sec
+- **High-level API is faster**: The Barrel API with write buffering outperforms direct low-level API calls
+- **Sync mode trade-offs**: Choose None for speed, Sync for application safety, Fsync for data integrity
 
 ### CRC32 Implementation Performance
 
@@ -264,7 +282,7 @@ nimble benchCrunchy
 | Write throughput (sync) | 245K ops/sec | OS-level durability |
 | Write throughput (fsync) | 11.5K ops/sec | Disk-level durability |
 | Read throughput | 180K ops/sec | Both sequential and random |
-| Mixed workload (80R/20W) | 278K ops/sec | Combined operations |
+| Mixed workload (80R/20W) | 278K ops/sec | Combined operations (overall ops/sec) |
 | Write latency (none/sync) | 0.004ms | Sub-millisecond |
 | Write latency (fsync) | 0.086ms | Disk sync overhead |
 | Read latency | 0.006ms | O(1) hash lookup |
@@ -286,7 +304,7 @@ bitbarrel/
 │   ├── bitbarrel.nim        # Library & CLI entry point
 │   ├── bitbarrel/           # BitBarrel API modules
 │   │   ├── types.nim        # Common types
-│   │   ├── simpleapi.nim    # High-level API
+│   │   ├── barrel.nim       # High-level Barrel API
 │   │   ├── lowlevelapi.nim  # Low-level wrapper
 │   │   ├── config.nim       # Configuration system
 │   │   └── config_parser.nim # YAML/ENV config parsing

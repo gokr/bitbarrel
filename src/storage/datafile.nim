@@ -19,6 +19,7 @@ type
     syncMode*: SyncMode          # Sync strategy
     shouldFsync*: bool           # Whether to call fsync
     compressionConfig*: ptr CompressionConfig  # Compression configuration
+    validateCrc*: bool           # Validate CRC32 on reads (default: true)
 
   RecordInfo* = object
     recordPos*: uint64   # Position of the record (after CRC32)
@@ -65,11 +66,12 @@ proc open*(path: string, fileId: uint32): DataFile =
     size: size,
     syncMode: syncImmediate,
     shouldFsync: true,
-    compressionConfig: nil
+    compressionConfig: nil,
+    validateCrc: true
   )
   initLock(result.lock)
 
-proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, bufferSize: int): DataFile =
+proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, bufferSize: int, validateCrc: bool = true): DataFile =
   ## Open a data file with configurable sync strategy
 
   # Check if file exists before opening to decide mode

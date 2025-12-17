@@ -14,7 +14,7 @@ import options
 import random
 import ../src/bitbarrel
 from ../src/bitbarrel/types import BarrelMode, BarrelConfig
-from ../src/bitbarrel/simpleapi import defaultBarrelConfig
+from ../src/bitbarrel/barrel import defaultBarrelConfig
 
 proc printHeader(title: string) =
   echo ""

@@ -113,7 +113,7 @@ echo "Loaded partitions: ", stats.loaded
 BitBarrel provides four sync modes to balance performance and durability:
 
 ```nim
-from bitbarrel/simpleapi import UserSyncMode
+from bitbarrel/barrel import UserSyncMode
 
 var cfg = defaultBarrelConfig()
 
@@ -262,10 +262,10 @@ Benefits of barrel-per-collection:
 
 ```mermaid
 graph TB
-    A[SimpleAPI] --> B[LowLevelAPI]
+    A[Barrel API] --> B[LowLevelAPI]
     B --> C[Storage Engine]
 
-    subgraph "SimpleAPI"
+    subgraph "Barrel API"
         A1[Barrel Modes]
         A2[Configuration]
         A3[High-level Operations]

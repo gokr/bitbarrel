@@ -182,7 +182,7 @@ proc demonstrateBestPractices*() =
   subsectionHeader("Configuration Best Practices")
 
   echo "✓ Use BarrelConfig for most applications:"
-  info("   import bitbarrel/simpleapi")
+  info("   import bitbarrel/barrel")
   info("   var db = openBarrel('myapp.db')")
   echo ""
 

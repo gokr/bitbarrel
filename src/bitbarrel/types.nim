@@ -137,6 +137,7 @@ type
     syncMode*: UserSyncMode
     autoCompact*: bool
     compactThreshold*: float
+    validateCrc*: bool  # Validate CRC32 on reads (default: true)
     # TTL configuration
     defaultTtl*: int        # Default TTL in seconds (0 = no expiration)
     checkExpirationOnRead*: bool  # Check expiration during get() calls

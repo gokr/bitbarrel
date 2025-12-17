@@ -91,7 +91,7 @@ kvs/
 ├── src/bitbarrel/
 │   ├── types.nim
 │   ├── config.nim
-│   ├── simpleapi.nim
+│   ├── barrel.nim
 │   ├── lowlevelapi.nim
 │   └── storage/
 │       ├── datafile.nim

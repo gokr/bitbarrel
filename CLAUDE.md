@@ -65,7 +65,7 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 
 ```
 ┌─────────────────────────────────────────────┐
-│  SimpleAPI (src/bitbarrel/simpleapi.nim)          │  High-level: open/get/set/delete
+│  Barrel API (src/bitbarrel/barrel.nim)          │  High-level: open/get/set/delete
 ├─────────────────────────────────────────────┤
 │  LowLevelAPI (src/bitbarrel/lowlevelapi.nim)      │  Direct storage access
 ├─────────────────────────────────────────────┤
@@ -99,7 +99,7 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 src/
 ├── bitbarrel.nim              # Main library entry point
 ├── bitbarrel/
-│   ├── simpleapi.nim    # High-level API (SimpleBitBarrel)
+│   ├── barrel.nim       # High-level Barrel API
 │   ├── lowlevelapi.nim  # Low-level API
 │   ├── config.nim       # Configuration types
 │   ├── config_parser.nim # YAML/ENV config parsing

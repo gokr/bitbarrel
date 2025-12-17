@@ -1,7 +1,7 @@
 ## TTL Tests
 import unittest, os, times, strformat
 
-import ../src/bitbarrel/simpleapi
+import ../src/bitbarrel/barrel
 import ../src/bitbarrel/types
 import ../src/storage/record
 

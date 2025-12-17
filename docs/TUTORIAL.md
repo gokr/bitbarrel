@@ -366,10 +366,10 @@ The high-level API supports several configuration options:
 
 ```nim
 import bitbarrel
-from bitbarrel/simpleapi import UserSyncMode, defaultConfig
+from bitbarrel/config import UserSyncMode
 
 # Create custom configuration
-var cfg = defaultConfig()
+var cfg = defaultBarrelConfig()
 cfg.writeBufferSize = 1024 * 1024  # 1MB write buffer
 cfg.syncMode = UserSyncMode.Fsync   # Force fsync on writes
 cfg.autoCompact = true
@@ -534,7 +534,7 @@ echo "Flushed partitions: ", flushed
 For fine-grained control, use the low-level API:
 
 ```nim
-import bitbarrel/[lowlevelapi, simpleapi]
+import bitbarrel/[lowlevelapi, barrel]
 
 # Work directly with data files
 var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
