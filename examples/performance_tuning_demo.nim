@@ -7,12 +7,9 @@
 ##
 ## Run with: nim c -r examples/performance_tuning_demo.nim
 
-import os
-import strformat
-import strutils except formatSize
-import times
+import std/[os, strformat, strutils except formatSize, times]
 import demo_utils
-import ../src/bitbarrel
+import bitbarrel
 
 type
   PerformanceTest* = object

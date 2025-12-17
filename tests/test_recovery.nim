@@ -13,6 +13,20 @@ proc badWrite(path: string, content: string) =
   defer: file.close()
   file.write(content)
 
+proc createTestDataFile(path: string, fileId: uint32, records: seq[Record]): bool =
+  ## Create a test data file with the given records
+  ## Returns true on success
+  try:
+    var df = datafile.open(path, fileId)
+
+    for rec in records:
+      discard df.appendRecord(rec.key, rec.value, rec.timestamp)
+
+    df.close()
+    return true
+  except:
+    return false
+
 suite "Recovery System Tests":
 
   setup:

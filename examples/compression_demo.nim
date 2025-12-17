@@ -2,9 +2,7 @@
 ## Demonstrates BitBarrel's compression capabilities
 
 import std/[strformat, times, strutils, sequtils, os]
-
-import ../src/bitbarrel/types
-import ../src/storage
+import ../src/bitbarrel/simpleapi
 
 proc showCompressionInfo() =
   echo "╔════════════════════════════════════════════════════════════╗"

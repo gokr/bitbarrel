@@ -2,14 +2,11 @@
 ##
 ## Run with: nim c -r examples/basic_demo.nim
 
-import os
-import times
-import strformat
-import options
-import ../src/bitbarrel/types
-import ../src/storage
-from ../src/storage/datafile import open
-from ../src/storage/keydir import init
+import std/[os, times, strformat, options]
+import bitbarrel/types
+import storage
+from storage/datafile import open
+from storage/keydir import init
 
 proc main() =
   echo "╔════════════════════════════════════════════╗"

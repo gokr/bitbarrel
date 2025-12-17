@@ -43,25 +43,31 @@ suite "TTL Tests":
     check decoded.ts == ts
 
   test "Check expiration":
-    let ts = getTime().toUnix() * 1000  # Current time in ms
-    let encoded = encodeTimestamp(ts, -10)  # 10 seconds ago expiration
+    let now = getTime().toUnix()
 
-    # Should be expired
+    # Create a timestamp from 20 seconds ago with 10 second TTL
+    # This means it expired 10 seconds ago
+    let pastTs = (now - 20) * 1000  # 20 seconds ago in ms
+    let encoded = encodeTimestamp(pastTs, 10)  # TTL of 10 seconds
+
+    # Should be expired (expiration time = now - 20 + 10 = now - 10)
     check isExpired(encoded) == true
 
-    # Fresh TTL
-    let fresh = encodeTimestamp(ts, 3600)  # 1 hour TTL
+    # Fresh TTL - current time with 1 hour TTL
+    let fresh = encodeTimestamp(now * 1000, 3600)
     check isExpired(fresh) == false
 
   test "Get remaining TTL":
-    let ts = getTime().toUnix() * 1000
+    let now = getTime().toUnix()
+    let ts = now * 1000
 
     # No expiration
     let noExp = encodeTimestamp(ts, 0)
     check getRemainingTtl(noExp) == 0
 
-    # Expired
-    let expired = encodeTimestamp(ts, -60)  # Expired 60 seconds ago
+    # Expired - use past timestamp with short TTL
+    let pastTs = (now - 120) * 1000  # 2 minutes ago
+    let expired = encodeTimestamp(pastTs, 60)  # 60 second TTL, expired 1 min ago
     check getRemainingTtl(expired) == 0
 
     # 5 minutes TTL
@@ -123,15 +129,19 @@ suite "TTL Tests":
     barrel.config.checkExpirationOnRead = true
     barrel.config.deleteExpiredOnRead = false
 
-    # Set with very short TTL
-    check barrel.set("short", "data", 1) == true
+    # Set with very short TTL (3 seconds)
+    check barrel.set("short", "data", 3) == true
 
     # Wait for expiration
-    sleep(2000)  # 2 seconds
+    sleep(4000)  # 4 seconds (buffer time)
 
     # Should return empty
     let value = barrel.get("short")
     check value == ""
+
+    # TTL should be 0 after expiration
+    let ttl = barrel.getTtl("short")
+    check ttl == 0
 
   test "Read expired record not deleted when deleteExpiredOnRead=false":
     barrel.config.checkExpirationOnRead = true

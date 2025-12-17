@@ -186,7 +186,19 @@ proc readRecordFromFile*(engine: RecoveryEngine, filePath: string, offset: int64
         echo &"Warning: Invalid value size {valueSize} at offset {offset}"
       return (Record(), 0, false)
 
-    # Read value
+    # Read flags (1 byte) and algorithm (1 byte) - new record format
+    var flags: uint8
+    var algorithm: uint8
+    let flagsBytesRead = file.readBuffer(addr flags, 1)
+    let algoBytesRead = file.readBuffer(addr algorithm, 1)
+    if flagsBytesRead != 1 or algoBytesRead != 1:
+      return (Record(), 0, false)
+
+    # Check if compressed (bit 0 set)
+    let isCompressed = (flags and 0x01) != 0
+
+    # Read value (stored size for compressed data may differ from original size)
+    # For now, read until end of record or use stored size
     var value = newString(valueSize)
     var valueBytesRead = 0
     if valueSize > 0:
@@ -198,7 +210,9 @@ proc readRecordFromFile*(engine: RecoveryEngine, filePath: string, offset: int64
     let record = Record(
       timestamp: ts,
       key: key,
-      value: value
+      value: value,
+      compressed: isCompressed,
+      algorithm: algorithm
     )
 
     # Validate CRC32 if enabled
@@ -212,7 +226,7 @@ proc readRecordFromFile*(engine: RecoveryEngine, filePath: string, offset: int64
           echo &"Warning: CRC32 mismatch at offset {offset}: expected {storedCrc}, got {calculatedChecksum}"
         isValid = false
 
-    let totalBytesRead = crcBytesRead + tsBytesRead + keyLenBytesRead + keyBytesRead + valLenBytesRead + valueBytesRead
+    let totalBytesRead = crcBytesRead + tsBytesRead + keyLenBytesRead + keyBytesRead + valLenBytesRead + flagsBytesRead + algoBytesRead + valueBytesRead
     return (record, totalBytesRead, isValid)
 
   except OSError as e:

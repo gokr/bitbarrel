@@ -161,6 +161,10 @@ proc decode*(data: string): Record =
   if data.len - pos < 0:
     raise newException(ValueError, "Invalid record: value data incomplete")
 
+  # For uncompressed data, validate we have enough bytes
+  if not isCompressed and data.len - pos < originalValSize:
+    raise newException(ValueError, "Invalid record: value data incomplete")
+
   let storedValue = data[pos..data.high]
   var finalValue: string
 
@@ -202,35 +206,52 @@ proc isTombstone*(record: Record): bool =
   return record.value.len == 0
 
 # TTL encoding/decoding functions
-# We use a simple approach: store expiration in the high bits, not in timestamp itself
+# Format when TTL is set:
+#   Bit 63: TTL flag (1 = has expiration)
+#   Bits 32-62: Expiration timestamp in seconds (31 bits)
+#   Bits 0-31: Original timestamp in seconds (32 bits)
+# Format when no TTL: Full 64-bit millisecond timestamp
+
 const
-  EXPIRATION_SHIFT = 48  # Shift amount for expiration (48 bits = 2^48/1000 ~ 8 years)
-  TIMESTAMP_MASK  = 0x0000FFFFFFFFFFFFF'i64
+  TTL_FLAG = 0x8000_0000_0000_0000'i64
 
 proc encodeTimestamp*(ts: int64, ttlSeconds: int): int64 =
-  ## Encode timestamp with TTL in seconds
-  ## Original timestamp in low bits, expiration in high bits
-  if ttlSeconds == 0:
-    return ts  # No expiration
+  ## Encode timestamp with optional TTL
+  ## ts: timestamp in milliseconds
+  ## ttlSeconds: TTL in seconds (0 or negative = no expiration)
+  if ttlSeconds <= 0:
+    return ts  # No TTL, store full ms timestamp
 
-  let expiration = ts div 1000 + ttlSeconds  # Expiration time in seconds
-  result = (ts and TIMESTAMP_MASK) or (expiration shl EXPIRATION_SHIFT)
+  let tsSeconds = ts div 1000
+  let expiration = tsSeconds + ttlSeconds.int64
+
+  result = TTL_FLAG or
+           ((expiration and 0x7FFFFFFF) shl 32) or
+           (tsSeconds and 0xFFFFFFFF)
 
 proc decodeTimestamp*(encoded: int64): tuple[ts: int64, hasExpiration: bool, expiration: int64] =
-  ## Decode: returns timestamp, hasExpiration, expirationTimeSeconds
-  let ts = encoded and TIMESTAMP_MASK
-  let expiration = encoded shr EXPIRATION_SHIFT
+  ## Decode timestamp and TTL information
+  ## Returns: (timestamp in ms, hasExpiration, expiration time in seconds)
+  let hasExp = (encoded and TTL_FLAG) != 0
 
-  let hasExp = expiration > 0
-  result = (ts, hasExp, expiration)
+  if not hasExp:
+    return (encoded, false, 0)
+
+  let tsSeconds = encoded and 0xFFFFFFFF'i64
+  let expiration = (encoded shr 32) and 0x7FFFFFFF'i64
+
+  result = (tsSeconds * 1000, true, expiration)
 
 proc isExpired*(encodedTimestamp: int64): bool =
-  ## Check if record is expired (uses current time)
+  ## Check if record is expired
   let (_, hasExp, expiration) = decodeTimestamp(encodedTimestamp)
-  result = hasExp and (getTime().toUnix() >= expiration)
+  if not hasExp:
+    return false
+  let now = getTime().toUnix()
+  result = now >= expiration
 
 proc getRemainingTtl*(encodedTimestamp: int64): int =
-  ## Get remaining TTL in seconds (0 if no expiration or expired)
+  ## Get remaining TTL in seconds
   let (_, hasExp, expiration) = decodeTimestamp(encodedTimestamp)
   if not hasExp:
     return 0

@@ -3,14 +3,8 @@
 ## Demonstrates simplified API with automatic KeyDir management
 ## Run with: nim c -r examples/simple_kv_demo.nim
 
-import os
-import times
-import strformat
-import options
-import ../src/bitbarrel/types
-import ../src/storage
-import ../src/storage/datafile
-from ../src/storage/keydir import init
+import std/[os, times, strformat, options]
+import bitbarrel
 
 proc formatNumber(n: int64): string =
   ## Format large numbers with commas

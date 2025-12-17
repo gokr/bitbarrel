@@ -222,5 +222,5 @@ suite "Record Module Tests":
   test "encoded size is correct":
     let record = Record(key: "abc", value: "12345", timestamp: 1'i64)
     let encoded = encode(record)
-    # Size should be: timestamp(8) + keyLen(4) + key(3) + valLen(4) + value(5) = 24
-    check encoded.len == 24
+    # Size should be: timestamp(8) + keyLen(4) + key(3) + valLen(4) + flags(1) + algo(1) + value(5) = 26
+    check encoded.len == 26

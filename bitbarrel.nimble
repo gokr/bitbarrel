@@ -41,16 +41,16 @@ task testRecovery, "Run recovery tests":
 # Tasks for running demos
 
 task demoBasic, "Run basic CRUD demo":
-  exec "nim c -r examples/basic_demo.nim"
+  exec "nim c -r --path:src examples/basic_demo.nim"
 
 task demoSample, "Run detailed demo":
-  exec "nim c -r examples/simple_kv_demo.nim"
+  exec "nim c -r --path:src examples/simple_kv_demo.nim"
 
 task demoTuning, "Run performance tuning demo":
-  exec "nim c -r examples/performance_tuning_demo.nim"
+  exec "nim c -r --path:src examples/performance_tuning_demo.nim"
 
 task demoCompression, "Run compression demo":
-  exec "nim c -r examples/compression_demo.nim"
+  exec "nim c -r --path:src examples/compression_demo.nim"
 
 # Task for benchmarking
 
