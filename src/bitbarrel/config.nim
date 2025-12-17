@@ -55,17 +55,17 @@ proc loadFromEnvironment*(config: var BitBarrelConfig) =
   if existsEnv("BITBARREL_PERFORMANCE_CACHE_SIZE"):
     config.performance.cacheSize = parseInt(getEnv("BITBARREL_PERFORMANCE_CACHE_SIZE"))
 
-  # Merge settings
-  if existsEnv("BITBARREL_MERGE_ENABLED"):
-    config.merge.enabled = parseBool(getEnv("BITBARREL_MERGE_ENABLED"))
-  if existsEnv("BITBARREL_MERGE_TRIGGER_THRESHOLD"):
-    config.merge.triggerThreshold = parseFloat(getEnv("BITBARREL_MERGE_TRIGGER_THRESHOLD"))
-  if existsEnv("BITBARREL_MERGE_MAX_MERGE_THREADS"):
-    config.merge.maxMergeThreads = parseInt(getEnv("BITBARREL_MERGE_MAX_MERGE_THREADS"))
-  if existsEnv("BITBARREL_MERGE_MERGE_INTERVAL"):
-    config.merge.mergeInterval = parseInt(getEnv("BITBARREL_MERGE_MERGE_INTERVAL"))
-  if existsEnv("BITBARREL_MERGE_MIN_FILE_SIZE"):
-    config.merge.minFileSize = parseBiggestInt(getEnv("BITBARREL_MERGE_MIN_FILE_SIZE"))
+  # Compact settings
+  if existsEnv("BITBARREL_COMPACT_ENABLED"):
+    config.compact.enabled = parseBool(getEnv("BITBARREL_COMPACT_ENABLED"))
+  if existsEnv("BITBARREL_COMPACT_TRIGGER_THRESHOLD"):
+    config.compact.triggerThreshold = parseFloat(getEnv("BITBARREL_COMPACT_TRIGGER_THRESHOLD"))
+  if existsEnv("BITBARREL_COMPACT_COMPACT_INTERVAL"):
+    config.compact.compactInterval = parseInt(getEnv("BITBARREL_COMPACT_COMPACT_INTERVAL"))
+  if existsEnv("BITBARREL_COMPACT_COMPACT_INTERVAL_BYTES"):
+    config.compact.compactIntervalBytes = parseBiggestInt(getEnv("BITBARREL_COMPACT_COMPACT_INTERVAL_BYTES"))
+  if existsEnv("BITBARREL_COMPACT_MAX_FILE_SIZE"):
+    config.compact.maxFileSize = parseBiggestInt(getEnv("BITBARREL_COMPACT_MAX_FILE_SIZE")).uint64
 
   # Recovery settings
   if existsEnv("BITBARREL_RECOVERY_ENABLED"):

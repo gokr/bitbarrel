@@ -31,12 +31,12 @@ type
     readAheadSize*: int
     cacheSize*: int
 
-  MergeConfig* = object
+  CompactConfig* = object
     enabled*: bool
     triggerThreshold*: float
-    maxMergeThreads*: int
-    mergeInterval*: int
-    minFileSize*: int64
+    compactInterval*: int
+    compactIntervalBytes*: int64
+    maxFileSize*: uint64
 
   LoggingConfig* = object
     level*: string
@@ -49,7 +49,7 @@ type
     server*: ServerConfig
     storage*: StorageConfig
     performance*: PerformanceConfig
-    merge*: MergeConfig
+    compact*: CompactConfig
     recovery*: RecoveryConfig
     logging*: LoggingConfig
 
@@ -218,9 +218,9 @@ proc parsePerformanceConfig*(yamlNode: YamlNode): PerformanceConfig =
   result.readAheadSize = getYamlInt("read_ahead_size", 64)
   result.cacheSize = getYamlInt("cache_size", 256)
 
-proc parseMergeConfig*(yamlNode: YamlNode): MergeConfig =
+proc parseCompactConfig*(yamlNode: YamlNode): CompactConfig =
   if yamlNode.kind != yMapping:
-    raise newException(ValueError, "Merge config must be a mapping")
+    raise newException(ValueError, "Compact config must be a mapping")
 
   let fields = yamlNode.fields
 
@@ -268,9 +268,9 @@ proc parseMergeConfig*(yamlNode: YamlNode): MergeConfig =
 
   result.enabled = getYamlBool("enabled", true)
   result.triggerThreshold = getYamlFloat("trigger_threshold", 0.3)
-  result.maxMergeThreads = getYamlInt("max_merge_threads", 1)
-  result.mergeInterval = getYamlInt("merge_interval", 60)
-  result.minFileSize = getYamlInt64("min_file_size", 1024 * 1024)
+  result.compactInterval = getYamlInt("compact_interval", 60)
+  result.compactIntervalBytes = getYamlInt64("compact_interval_bytes", 10 * 1024 * 1024)
+  result.maxFileSize = getYamlInt64("max_file_size", 1024 * 1024 * 1024).uint64
 
 proc parseRecoveryConfig*(yamlNode: YamlNode): RecoveryConfig =
   if yamlNode.kind != yMapping:
@@ -387,12 +387,12 @@ proc getDefaultConfig*(): BitBarrelConfig =
       readAheadSize: 64,
       cacheSize: 256
     ),
-    merge: MergeConfig(
+    compact: CompactConfig(
       enabled: true,
       triggerThreshold: 0.3,
-      maxMergeThreads: 1,
-      mergeInterval: 60,
-      minFileSize: 1024 * 1024  # 1MB
+      compactInterval: 60,
+      compactIntervalBytes: 10 * 1024 * 1024,  # 10MB
+      maxFileSize: 1024 * 1024 * 1024  # 1GB
     ),
     recovery: RecoveryConfig(
       enabled: true,
@@ -447,10 +447,10 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
       if key.content == "performance":
         result.performance = parsePerformanceConfig(value)
 
-    # Parse merge section
+    # Parse compact section
     for key, value in yamlRoot.fields.pairs:
-      if key.content == "merge":
-        result.merge = parseMergeConfig(value)
+      if key.content == "compact":
+        result.compact = parseCompactConfig(value)
 
     # Parse recovery section
     for key, value in yamlRoot.fields.pairs:
