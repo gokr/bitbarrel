@@ -145,7 +145,8 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
           valuePos: newPos.valuePos,
           valueSize: newPos.valueSize,
           timestamp: timestamp,
-          recordSize: newPos.recordSize
+          recordSize: newPos.recordSize,
+          deleted: false  # Non-tombstone records only reach here
         ))
         inc(controller.stats.recordsKept)
 
@@ -203,25 +204,31 @@ proc getCompactStats*(controller: CompactController): types.CompactStats =
 
 proc compactWorker*(controllerPtr: ptr CompactControllerObj) {.thread.} =
   ## Background worker thread for compact operations
+  ## Wakes periodically to check for auto-compact conditions
   let controller = cast[CompactController](controllerPtr)
+  let checkIntervalMs = controller.config.compactInterval * 1000  # seconds to ms
 
   while not controller.shutdownFlag.load():
+    # Sleep for the check interval (allows shutdown checks)
+    var sleptMs = 0
+    while sleptMs < checkIntervalMs and not controller.shutdownFlag.load():
+      sleep(100)  # Check shutdown every 100ms
+      sleptMs += 100
+
+    if controller.shutdownFlag.load():
+      break
+
+    # Check for pending compact or auto-compact trigger
     withLock(controller.compactLock):
-      if controller.shutdownFlag.load():
-        break
+      if controller.compactInProgress:
+        continue  # Already running, skip this cycle
 
-      # Wait for compact signal
-      if not controller.pendingCompact:
-        controller.compactCondition.wait(controller.compactLock)
-
-      # Check again after waking
-      if controller.shutdownFlag.load():
-        break
-
-      if controller.pendingCompact and not controller.compactInProgress:
+      # Handle explicit pending compact requests
+      if controller.pendingCompact:
         controller.pendingCompact = false
         # Note: In single-file mode, compact needs to be triggered with actual data file info
-        # This worker pattern is kept for potential future use
+        # The caller should use performCompact directly with the file path
+        continue
 
 proc startCompactWorker*(controller: CompactController) =
   ## Start the background compact worker thread

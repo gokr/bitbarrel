@@ -327,52 +327,86 @@ proc exists*(barrel: Barrel, key: string): bool =
 
 proc count*(barrel: Barrel): int =
   ## Get number of non-deleted keys in store
+  ## Uses deleted flag for O(n) in-memory counting (no disk reads)
   if barrel.closed:
     return 0
 
-  var count = 0
-  let keys = barrel.indexKeys()
-  for key in keys:
-    let found = barrel.indexGet(key)
-    if found.isSome():
-      let entry = found.get()
-      let recordInfo = RecordInfo(
-        recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
-        valueSize: entry.valueSize,
-        recordSize: entry.recordSize
-      )
-      try:
-        let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
-        if value.len > 0:
-          inc count
-      except:
-        discard
-  return count
+  case barrel.mode
+  of bmNormal:
+    var count = 0
+    for key, entry in barrel.keyDir.pairs():
+      if not entry.deleted:
+        inc count
+    return count
+  of bmCritBit:
+    var count = 0
+    for key, entry in barrel.critBit.pairs():
+      if not entry.deleted:
+        inc count
+    return count
+  of bmRanged:
+    # For ranged mode, iterate through ranges sequentially
+    # Each range is loaded, counted, then can be evicted
+    var count = 0
+    for rangeId in 0..<barrel.config.numRanges:
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if not entry.deleted:
+            inc count
+    return count
 
-proc listKeys*(barrel: Barrel): seq[string] =
-  ## List all non-deleted keys in the store
+proc listKeys*(barrel: Barrel, limit: int = 1000, offset: int = 0): seq[string] =
+  ## List non-deleted keys with pagination to avoid OOM
+  ## limit: Maximum number of keys to return (default: 1000)
+  ## offset: Number of keys to skip (default: 0)
   result = @[]
   if barrel.closed:
     return
 
-  let keys = barrel.indexKeys()
-  for key in keys:
-    let found = barrel.indexGet(key)
-    if found.isSome():
-      let entry = found.get()
-      let recordInfo = RecordInfo(
-        recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
-        valueSize: entry.valueSize,
-        recordSize: entry.recordSize
-      )
-      try:
-        let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
-        if value.len > 0:
+  var skipped = 0
+  var collected = 0
+
+  case barrel.mode
+  of bmNormal:
+    for key, entry in barrel.keyDir.pairs():
+      if entry.deleted:
+        continue
+      if skipped < offset:
+        inc skipped
+        continue
+      if collected >= limit:
+        break
+      result.add(key)
+      inc collected
+  of bmCritBit:
+    for key, entry in barrel.critBit.pairs():
+      if entry.deleted:
+        continue
+      if skipped < offset:
+        inc skipped
+        continue
+      if collected >= limit:
+        break
+      result.add(key)
+      inc collected
+  of bmRanged:
+    # Iterate ranges sequentially, with early exit on limit
+    for rangeId in 0..<barrel.config.numRanges:
+      if collected >= limit:
+        break
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if entry.deleted:
+            continue
+          if skipped < offset:
+            inc skipped
+            continue
+          if collected >= limit:
+            break
           result.add(key)
-      except:
-        discard
+          inc collected
 
 proc clear*(barrel: Barrel): bool =
   ## Clear all keys (values remain in file but won't be accessible)
@@ -416,51 +450,139 @@ proc getTtl*(barrel: Barrel, key: string): int =
 
 # CritBit mode specific operations (range queries)
 
-proc keysWithPrefix*(barrel: Barrel, prefix: string): seq[string] =
-  ## Get all keys that start with the given prefix (sorted)
-  ## Only efficient in bmCritBit mode
+proc keysWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, offset: int = 0): seq[string] =
+  ## Get keys that start with the given prefix with pagination
+  ## limit: Maximum number of keys to return (default: 1000)
+  ## offset: Number of keys to skip (default: 0)
   if barrel.closed:
     return @[]
 
+  var skipped = 0
+  var collected = 0
+  result = @[]
+
   case barrel.mode
   of bmCritBit:
-    result = barrel.critBit.keysWithPrefix(prefix)
-  else:
-    # For non-CritBit modes, fall back to filtering all keys
-    result = @[]
-    for key in barrel.indexKeys():
+    # CritBit has efficient prefix search, but still apply pagination
+    for key, entry in barrel.critBit.pairsWithPrefix(prefix):
+      if entry.deleted:
+        continue
+      if skipped < offset:
+        inc skipped
+        continue
+      if collected >= limit:
+        break
+      result.add(key)
+      inc collected
+  of bmNormal:
+    for key, entry in barrel.keyDir.pairs():
+      if entry.deleted:
+        continue
       if key.len >= prefix.len and key[0..<prefix.len] == prefix:
+        if skipped < offset:
+          inc skipped
+          continue
+        if collected >= limit:
+          break
         result.add(key)
+        inc collected
+  of bmRanged:
+    for rangeId in 0..<barrel.config.numRanges:
+      if collected >= limit:
+        break
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if entry.deleted:
+            continue
+          if key.len >= prefix.len and key[0..<prefix.len] == prefix:
+            if skipped < offset:
+              inc skipped
+              continue
+            if collected >= limit:
+              break
+            result.add(key)
+            inc collected
 
-proc keysInRange*(barrel: Barrel, startKey: string, endKey: string): seq[string] =
-  ## Get all keys in the range [startKey, endKey) (sorted)
-  ## Only efficient in bmCritBit mode
+proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int = 1000, offset: int = 0): seq[string] =
+  ## Get keys in the range [startKey, endKey) with pagination
+  ## limit: Maximum number of keys to return (default: 1000)
+  ## offset: Number of keys to skip (default: 0)
   if barrel.closed:
     return @[]
 
+  var skipped = 0
+  var collected = 0
+  result = @[]
+
   case barrel.mode
   of bmCritBit:
-    result = barrel.critBit.keysInRange(startKey, endKey)
-  else:
-    # For non-CritBit modes, fall back to filtering all keys
-    result = @[]
-    for key in barrel.indexKeys():
+    # CritBit doesn't have pairsInRange, use pairs with filtering
+    for key, entry in barrel.critBit.pairs():
+      if entry.deleted:
+        continue
       if key >= startKey and key < endKey:
+        if skipped < offset:
+          inc skipped
+          continue
+        if collected >= limit:
+          break
         result.add(key)
+        inc collected
+  of bmNormal:
+    for key, entry in barrel.keyDir.pairs():
+      if entry.deleted:
+        continue
+      if key >= startKey and key < endKey:
+        if skipped < offset:
+          inc skipped
+          continue
+        if collected >= limit:
+          break
+        result.add(key)
+        inc collected
+  of bmRanged:
+    for rangeId in 0..<barrel.config.numRanges:
+      if collected >= limit:
+        break
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if entry.deleted:
+            continue
+          if key >= startKey and key < endKey:
+            if skipped < offset:
+              inc skipped
+              continue
+            if collected >= limit:
+              break
+            result.add(key)
+            inc collected
 
 proc countWithPrefix*(barrel: Barrel, prefix: string): int =
-  ## Count keys with given prefix
+  ## Count non-deleted keys with given prefix
   if barrel.closed:
     return 0
 
   case barrel.mode
   of bmCritBit:
-    result = barrel.critBit.countWithPrefix(prefix)
-  else:
     result = 0
-    for key in barrel.indexKeys():
-      if key.len >= prefix.len and key[0..<prefix.len] == prefix:
+    for key, entry in barrel.critBit.pairsWithPrefix(prefix):
+      if not entry.deleted:
         inc result
+  of bmNormal:
+    result = 0
+    for key, entry in barrel.keyDir.pairs():
+      if not entry.deleted and key.len >= prefix.len and key[0..<prefix.len] == prefix:
+        inc result
+  of bmRanged:
+    result = 0
+    for rangeId in 0..<barrel.config.numRanges:
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if not entry.deleted and key.len >= prefix.len and key[0..<prefix.len] == prefix:
+            inc result
 
 # Utility functions
 
