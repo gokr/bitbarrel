@@ -156,7 +156,7 @@ proc writeCheckpoint*(cp: CheckpointSystem, keyDir: var KeyDir, checkpointType: 
         if key.len > 0:
           file.write(key)
 
-        # Write entry data (36 bytes total)
+        # Write entry data (37 bytes total)
         var entryData = entry
         discard file.writeBuffer(addr entryData.fileId, 4)
         discard file.writeBuffer(addr entryData.recordPos, 8)
@@ -164,9 +164,11 @@ proc writeCheckpoint*(cp: CheckpointSystem, keyDir: var KeyDir, checkpointType: 
         discard file.writeBuffer(addr entryData.valueSize, 4)
         discard file.writeBuffer(addr entryData.timestamp, 8)
         discard file.writeBuffer(addr entryData.recordSize, 4)
+        var deletedByte: uint8 = if entryData.deleted: 1 else: 0
+        discard file.writeBuffer(addr deletedByte, 1)
 
         writtenKeys += 1
-        totalSize += 2 + key.len + 36
+        totalSize += 2 + key.len + 37
 
       file.close()
 
@@ -240,7 +242,7 @@ proc loadCheckpoint*(cp: CheckpointSystem, checkpointPath: string): tuple[keyDir
       if keyLen > 0:
         discard file.readBuffer(addr key[0], keyLen.int)
 
-      # Read entry (36 bytes)
+      # Read entry (37 bytes)
       var entry: KeyDirEntry
       discard file.readBuffer(addr entry.fileId, 4)
       discard file.readBuffer(addr entry.recordPos, 8)
@@ -248,6 +250,9 @@ proc loadCheckpoint*(cp: CheckpointSystem, checkpointPath: string): tuple[keyDir
       discard file.readBuffer(addr entry.valueSize, 4)
       discard file.readBuffer(addr entry.timestamp, 8)
       discard file.readBuffer(addr entry.recordSize, 4)
+      var deletedByte: uint8
+      discard file.readBuffer(addr deletedByte, 1)
+      entry.deleted = deletedByte != 0
 
       # Add to KeyDir
       keyDir.add(key, entry)

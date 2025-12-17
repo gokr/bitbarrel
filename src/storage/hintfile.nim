@@ -5,7 +5,7 @@
 ##
 ## Format:
 ## - Header (32 bytes): magic, version, timestamp, entryCount, dataFileId, reserved
-## - Entries (variable): keyLen(2) + key + recordPos(8) + valuePos(8) + valueSize(4) + timestamp(8) + recordSize(4)
+## - Entries (variable): keyLen(2) + key + recordPos(8) + valuePos(8) + valueSize(4) + timestamp(8) + recordSize(4) + deleted(1)
 
 import std/[os, times, strformat]
 import ../bitbarrel/types
@@ -34,6 +34,7 @@ type
     valueSize*: uint32          # Size of value
     timestamp*: int64           # Record timestamp
     recordSize*: uint32         # Total record size
+    deleted*: bool              # True if this is a tombstone
 
   HintFile* = ref object
     path*: string
@@ -105,6 +106,10 @@ proc writeHintFile*(path: string, dataFileId: uint32, entries: seq[HintEntry]): 
       # Write recordSize (4 bytes)
       var recordSize = entry.recordSize
       discard file.writeBuffer(addr recordSize, 4)
+
+      # Write deleted flag (1 byte)
+      var deletedByte: uint8 = if entry.deleted: 1 else: 0
+      discard file.writeBuffer(addr deletedByte, 1)
 
     file.flushFile()
 
@@ -198,6 +203,13 @@ proc readHintFile*(path: string): tuple[header: HintHeader, entries: seq[HintEnt
       if recordSizeRead != 4:
         return
 
+      # Read deleted flag (1 byte)
+      var deletedByte: uint8
+      let deletedRead = file.readBuffer(addr deletedByte, 1)
+      if deletedRead != 1:
+        return
+      entry.deleted = deletedByte != 0
+
       entries.add(entry)
 
     result.entries = entries
@@ -267,7 +279,8 @@ proc loadKeyDirFromHint*(path: string, keyDir: var KeyDir): int =
       valuePos: entry.valuePos,
       valueSize: entry.valueSize,
       timestamp: entry.timestamp,
-      recordSize: entry.recordSize
+      recordSize: entry.recordSize,
+      deleted: entry.deleted
     )
 
     # Only add if newer than existing

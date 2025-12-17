@@ -332,7 +332,8 @@ proc recoverFromFile*(engine: RecoveryEngine, filePath: string): bool =
         valuePos: uint64(valuePos),
         valueSize: record.value.len.uint32,
         timestamp: record.timestamp,
-        recordSize: uint32(16 + record.key.len + record.value.len)
+        recordSize: uint32(16 + record.key.len + record.value.len),
+        deleted: record.value.len == 0  # Empty value = tombstone
       )
 
       # Update KeyDir (this automatically handles timestamp conflicts)
