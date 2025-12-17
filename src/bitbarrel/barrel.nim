@@ -489,6 +489,31 @@ proc indexCount*(barrel: Barrel): int =
   ## Get the number of entries in the index (including tombstones)
   barrel.indexLen()
 
+# Compaction operations
+
+proc triggerCompact*(barrel: Barrel) =
+  ## Manually trigger a compaction cycle
+  ## Only works with bmNormal mode and when compactController is initialized
+  if barrel.closed or barrel.compactController == nil or barrel.mode != bmNormal:
+    return
+  barrel.compactController.triggerBackgroundCompact()
+
+proc getCompactStats*(barrel: Barrel): types.CompactStats =
+  ## Get compaction statistics
+  ## Returns empty stats if compaction is not enabled
+  if barrel.closed or barrel.compactController == nil:
+    return types.CompactStats(
+      filesProcessed: 0,
+      recordsScanned: 0,
+      recordsKept: 0,
+      recordsDropped: 0,
+      bytesScanned: 0,
+      bytesWritten: 0,
+      timeStarted: getTime(),
+      timeCompleted: getTime()
+    )
+  barrel.compactController.getCompactStats()
+
 # Ranged mode specific operations
 
 proc flushRanges*(barrel: Barrel): int =
