@@ -3,7 +3,7 @@
 ## Provides a unified interface for key-value storage operations
 ## with support for multiple index modes: Normal (hash), CritBit (ordered), and Ranged (partitioned)
 
-import std/[times, options, os]
+import std/[times, options, os, strformat, strutils]
 import types
 import ../storage
 import ../storage/datafile
@@ -97,23 +97,19 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     result.rangeCache = rangecache.init(config.maxLoadedRanges, config.numRanges, dataDir)
 
   # Initialize compaction
-  let dataDir = if parentDir(path) == "": "." else: parentDir(path)
   if config.autoCompact:
     # Create CompactConfig from BarrelConfig settings
     var compactConfig: CompactConfig
     compactConfig.enabled = true
     compactConfig.maxFileSize = 1024 * 1024 * 1024  # 1GB default
-    compactConfig.minFilesToCompact = 2  # For single file mode, not really used
     compactConfig.triggerThreshold = config.compactThreshold
-    compactConfig.maxCompactThreads = 1
     compactConfig.compactInterval = 60  # 1 minute
     compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
-    compactConfig.skipThreshold = 100  # Skip small fragments
 
     # Initialize with appropriate KeyDir based on mode
     case config.mode
     of bmNormal:
-      result.compactController = newCompactController(compactConfig, result.keyDir, dataDir)
+      result.compactController = newCompactController(compactConfig, result.keyDir)
     of bmCritBit:
       # CritBit doesn't work with current compact system (needs KeyDir)
       result.compactController = nil
@@ -123,9 +119,7 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
 
     # Start background worker if controller was created
     if result.compactController != nil:
-      # Note: We need to check fragmentation and trigger compaction periodically
-      # For now, compaction will be triggered manually via triggerCompact()
-      discard
+      result.compactController.startCompactWorker()
   else:
     result.compactController = nil
 
@@ -252,7 +246,8 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
       valuePos: info.valuePos,
       valueSize: info.valueSize,
       timestamp: encodeTimestamp(rawTimestamp, ttlToUse),
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      deleted: false  # Not a tombstone
     )
     barrel.indexAdd(key, entry)
     return true
@@ -267,6 +262,11 @@ proc get*(barrel: Barrel, key: string): string =
   let found = barrel.indexGet(key)
   if found.isSome():
     let entry = found.get()
+
+    # Fast path: check deleted flag before disk read
+    if entry.deleted:
+      return ""
+
     let recordInfo = RecordInfo(
       recordPos: entry.recordPos,
       valuePos: entry.valuePos,
@@ -306,7 +306,8 @@ proc delete*(barrel: Barrel, key: string): bool =
       valuePos: info.valuePos,
       valueSize: info.valueSize,
       timestamp: timestamp,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      deleted: true  # Mark as deleted
     )
     barrel.indexAdd(key, entry)
     return true
@@ -315,23 +316,13 @@ proc delete*(barrel: Barrel, key: string): bool =
 
 proc exists*(barrel: Barrel, key: string): bool =
   ## Check if a key exists (and is not deleted)
+  ## Now O(1) - no disk read needed thanks to deleted flag
   if barrel.closed:
     return false
 
   let found = barrel.indexGet(key)
   if found.isSome():
-    let entry = found.get()
-    let recordInfo = RecordInfo(
-      recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
-      valueSize: entry.valueSize,
-      recordSize: entry.recordSize
-    )
-    try:
-      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
-      return value.len > 0
-    except:
-      return false
+    return not found.get().deleted
   return false
 
 proc count*(barrel: Barrel): int =
@@ -489,30 +480,6 @@ proc indexCount*(barrel: Barrel): int =
   ## Get the number of entries in the index (including tombstones)
   barrel.indexLen()
 
-# Compaction operations
-
-proc triggerCompact*(barrel: Barrel) =
-  ## Manually trigger a compaction cycle
-  ## Only works with bmNormal mode and when compactController is initialized
-  if barrel.closed or barrel.compactController == nil or barrel.mode != bmNormal:
-    return
-  barrel.compactController.triggerBackgroundCompact()
-
-proc getCompactStats*(barrel: Barrel): types.CompactStats =
-  ## Get compaction statistics
-  ## Returns empty stats if compaction is not enabled
-  if barrel.closed or barrel.compactController == nil:
-    return types.CompactStats(
-      filesProcessed: 0,
-      recordsScanned: 0,
-      recordsKept: 0,
-      recordsDropped: 0,
-      bytesScanned: 0,
-      bytesWritten: 0,
-      timeStarted: getTime(),
-      timeCompleted: getTime()
-    )
-  barrel.compactController.getCompactStats()
 
 # Ranged mode specific operations
 
@@ -537,6 +504,59 @@ proc rangeStats*(barrel: Barrel): tuple[loaded: int, maxRanges: int, totalKeys: 
   (loaded: cacheStats.loaded,
    maxRanges: cacheStats.maxRanges,
    totalKeys: barrel.rangeIndex.getTotalKeys())
+
+# Compaction operations
+
+proc triggerCompact*(barrel: Barrel): bool =
+  ## Trigger manual compaction of the current data file
+  ## Returns true if compaction was successful
+  if barrel.closed or barrel.compactController == nil or barrel.mode != bmNormal:
+    return false
+
+  # Build file path
+  let dataPath = barrel.path
+  let success = barrel.compactController.performCompact(dataPath, barrel.fileId)
+
+  # If successful, the old file is deleted and we need to reopen the new file
+  if success:
+    # Close old data file
+    barrel.dataFile.close()
+
+    # Update file ID to the new compacted file
+    barrel.fileId = barrel.fileId + 1
+
+    # Convert UserSyncMode to storage SyncMode
+    var storageSyncMode = syncImmediate
+    case barrel.config.syncMode
+    of UserSyncMode.None:
+      storageSyncMode = syncBuffered
+    of UserSyncMode.Sync:
+      storageSyncMode = syncImmediate
+    of UserSyncMode.Fsync:
+      storageSyncMode = syncImmediate
+
+    # Reopen the new data file
+    let newPath = dataPath.replace(&"{barrel.fileId - 1:06d}.data", &"{barrel.fileId:06d}.data")
+    barrel.dataFile = open(newPath, barrel.fileId, storageSyncMode,
+                         shouldFsync = (barrel.config.syncMode == UserSyncMode.Fsync),
+                         bufferSize = barrel.config.writeBufferSize,
+                         validateCrc = barrel.config.validateCrc)
+
+  return success
+
+proc getCompactStats*(barrel: Barrel): CompactStats =
+  ## Get statistics about the last compaction operation
+  if barrel.compactController == nil:
+    return CompactStats(
+      recordsScanned: 0,
+      recordsKept: 0,
+      recordsDropped: 0,
+      bytesScanned: 0,
+      bytesWritten: 0,
+      timeStarted: getTime(),
+      timeCompleted: getTime()
+    )
+  barrel.compactController.getCompactStats()
 
 # Backward compatibility aliases (deprecated, will be removed)
 type
