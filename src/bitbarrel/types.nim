@@ -24,6 +24,7 @@ type
     valueSize*: uint32   # Size of value
     timestamp*: int64    # For conflict resolution and TTL
     recordSize*: uint32  # Total record size for merge decisions
+    deleted*: bool       # True if this entry is a tombstone (deleted)
 
   # Write buffering configuration
   SyncMode* = enum
@@ -66,19 +67,13 @@ type
   # Compaction configuration
   CompactConfig* = object
     enabled*: bool
-    maxFileSize*: uint64
-    minFilesToCompact*: int
-    triggerThreshold*: float
-    maxCompactThreads*: int
-    compactInterval*: int
-    compactIntervalBytes*: int64
-    skipThreshold*: int
+    triggerThreshold*: float    # Fragmentation threshold to trigger compact (0.0-1.0)
+    compactInterval*: int       # Seconds between automatic compact checks
+    compactIntervalBytes*: int64 # Bytes written between compact checks
+    maxFileSize*: uint64        # Maximum file size before forcing compaction
 
   FileState* = enum
     fsActive     # Currently writable
-    fsImmutable   # Read-only, candidate for merge
-    fsMerging    # Currently being merged
-    fsDeleted    # Marked for deletion
 
   FileInfo* = object
     path*: string               # Full path to file
@@ -87,18 +82,15 @@ type
     state*: FileState            # Current state
     created*: Time               # Creation timestamp
     lastModified*: Time           # Last modification
-    deleteCount*: int            # Number of deleted/tombstone records
     totalRecords*: int           # Total records in file
-    duplicateCount*: int         # Superseded records
     liveRecords*: int            # Active (non-deleted) records
 
   CompactStats* = object
-    filesProcessed*: int
-    recordsScanned*: int
-    recordsKept*: int
-    recordsDropped*: int
-    bytesScanned*: int64
-    bytesWritten*: int64
+    recordsScanned*: int          # Total records scanned during compact
+    recordsKept*: int             # Records written to new file
+    recordsDropped*: int          # Tombstones and expired records removed
+    bytesScanned*: int64          # Bytes read from original file
+    bytesWritten*: int64          # Bytes written to new file
     timeStarted*: Time
     timeCompleted*: Time
 
