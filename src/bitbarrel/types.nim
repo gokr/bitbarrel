@@ -119,15 +119,15 @@ type
     Fsync = "fsync"     # Sync to disk (safest)
 
   BarrelMode* = enum
-    bmNormal       # Hash table - O(1) lookup, no ordering
+    bmHash         # Hash table - O(1) lookup, no ordering (formerly bmNormal)
     bmCritBit      # CritBit tree - O(key_len), supports range/prefix queries
-    bmRangedHash   # Hash-based lazy-loaded partitions for massive datasets
-    bmRangedCritBit # CritBit-based lazy-loaded partitions with ordered ranges
+    bmHugeCritBit  # Two-tier for massive datasets with range queries
 
-  # Access models for ranged modes
-  AccessModel* = enum
-    amHash     # Hash-based range index (O(1) lookup)
-    amCritBit  # CritBit-based range index (supports range/prefix queries)
+  HugeBarrelConfig* = object
+    maxEntriesPerRange*: int      # Max entries per RangeKeyDir (default: 100_000)
+    rangeCacheSize*: int          # Max RangeKeyDirs in memory (default: 10)
+    maxDataFileSizeMB*: int       # Max Barrel2 data file size (default: 1024)
+    autoSplitEnabled*: bool       # Enable automatic range splitting (default: true)
 
   BarrelConfig* = object
     # Storage config
@@ -142,23 +142,19 @@ type
     deleteExpiredOnRead*: bool   # Write tombstone when expired record is read
     # Index mode
     mode*: BarrelMode
-    # Range mode options
-    rangeAccessModel*: AccessModel   # Auto-inferred from mode if not specified
-    numRanges*: int           # Hash partitions (default: 100)
-    maxLoadedRanges*: int     # Max partitions in memory (default: 10)
+    # HugeBarrel configuration (only used when mode = bmHugeCritBit)
+    hugeConfig*: HugeBarrelConfig
 
-  # Range partition types (for bmRanged mode)
+  # Range partition types (used by bmHugeCritBit)
   RangeId* = uint32
 
-  RangeMetadata* = object
-    id*: RangeId
-    keyCount*: int64
-    lastAccess*: int64
-    hintPath*: string
-    isLoaded*: bool
-    isDirty*: bool
-    # Only used by CritBit ranges
-    accessModel*: AccessModel
-    # Key bounds for ordered range partitioning (used by bmRangedCritBit)
-    minKey*: string          # Smallest key in this range (inclusive)
-    maxKey*: string          # Largest key in this range (inclusive)
+  # RangeKeyDir entry for bmHugeCritBit mode
+  RangeKeyDirEntry* = object
+    key*: string
+    fileId*: uint32
+    recordPos*: uint64
+    valuePos*: uint64
+    valueSize*: uint32
+    timestamp*: int64
+    recordSize*: uint32
+    deleted*: bool

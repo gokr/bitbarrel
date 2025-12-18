@@ -155,11 +155,12 @@ proc validateConfig*(config: BitBarrelConfig): bool =
     result = false
 
   # Validate merge settings
-  if config.merge.triggerThreshold < 0.0 or config.merge.triggerThreshold > 1.0:
-    echo "Error: Merge trigger threshold must be between 0.0 and 1.0"
-    result = false
+  # Note: Merge config doesn't exist in BitBarrelConfig - commenting out
+  # if config.merge.triggerThreshold < 0.0 or config.merge.triggerThreshold > 1.0:
+  #   echo "Error: Merge trigger threshold must be between 0.0 and 1.0"
+  #   result = false
 
-  if config.merge.enabled and config.merge.maxMergeThreads < 1:
-    echo "Error: Max merge threads must be positive when merge is enabled"
-    result = false
+  # if config.merge.enabled and config.merge.maxMergeThreads < 1:
+  #   echo "Error: Max merge threads must be positive when merge is enabled"
+  #   result = false
 

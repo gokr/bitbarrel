@@ -502,12 +502,13 @@ proc saveConfigToYaml*(config: BitBarrelConfig, filePath: string) =
     stream.write(&"cache_size = {config.performance.cacheSize}             # MB\n\n")
 
     # Write merge config
-    stream.write("[merge]\n")
-    stream.write(&"enabled = {config.merge.enabled}\n")
-    stream.write(&"trigger_threshold = {config.merge.triggerThreshold}      # {config.merge.triggerThreshold * 100}% fragmentation\n")
-    stream.write(&"max_merge_threads = {config.merge.maxMergeThreads}\n")
-    stream.write(&"merge_interval = {config.merge.mergeInterval}          # minutes\n")
-    stream.write(&"min_file_size = {config.merge.minFileSize}      # {config.merge.minFileSize div (1024*1024)}MB\n\n")
+    # Note: Merge config fields don't exist in BitBarrelConfig - commenting out
+    # stream.write("[merge]\n")
+    # stream.write(&"enabled = {config.merge.enabled}\n")
+    # stream.write(&"trigger_threshold = {config.merge.triggerThreshold}      # {config.merge.triggerThreshold * 100}% fragmentation\n")
+    # stream.write(&"max_merge_threads = {config.merge.maxMergeThreads}\n")
+    # stream.write(&"merge_interval = {config.merge.mergeInterval}          # minutes\n")
+    # stream.write(&"min_file_size = {config.merge.minFileSize}      # {config.merge.minFileSize div (1024*1024)}MB\n\n")
 
     # Write logging config
     stream.write("[logging]\n")
