@@ -49,7 +49,8 @@ proc defaultBarrelConfig*(): BarrelConfig =
     deleteExpiredOnRead: false,  # Don't automatically write tombstones
     mode: bmNormal,
     numRanges: 100,
-    maxLoadedRanges: 10
+    maxLoadedRanges: 10,
+    rangeAccessModel: amHash  # Default to hash
   )
 
 proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
@@ -82,19 +83,35 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     result.keyDir = keydir.init()
   of bmCritBit:
     result.critBit = critbitindex.init()
-  of bmRanged:
+  of bmRangedHash:
     # Get data directory from path
     let dataDir = if parentDir(path) == "": "." else: parentDir(path)
 
-    # Ensure ranges directory exists
-    if not ensureRangeDir(dataDir):
-      raise newException(IOError, "Failed to create ranges directory")
+    # Ensure ranges/hash directory exists
+    let hashDir = dataDir / "ranges" / "hash"
+    if not dirExists(hashDir):
+      createDir(hashDir)
 
-    # Initialize range index (for tracking metadata)
-    result.rangeIndex = initRangeIndex(config.numRanges, dataDir)
+    # Initialize range index (for metadata)
+    result.rangeIndex = initRangeIndex(config.numRanges, amHash, dataDir)
 
     # Initialize range cache
-    result.rangeCache = rangecache.init(config.maxLoadedRanges, config.numRanges, dataDir)
+    result.rangeCache = rangecache.init(amHash, config.maxLoadedRanges, config.numRanges, dataDir)
+
+  of bmRangedCritBit:
+    # Get data directory from path
+    let dataDir = if parentDir(path) == "": "." else: parentDir(path)
+
+    # Ensure ranges/critbit directory exists
+    let critBitDir = dataDir / "ranges" / "critbit"
+    if not dirExists(critBitDir):
+      createDir(critBitDir)
+
+    # Initialize range index (for metadata)
+    result.rangeIndex = initRangeIndex(config.numRanges, amCritBit, dataDir)
+
+    # Initialize range cache
+    result.rangeCache = rangecache.init(amCritBit, config.maxLoadedRanges, config.numRanges, dataDir)
 
   # Initialize compaction
   if config.autoCompact:
@@ -106,15 +123,17 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     compactConfig.compactInterval = 60  # 1 minute
     compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
 
-    # Initialize with appropriate KeyDir based on mode
+    # Initialize with appropriate index based on mode
     case config.mode
     of bmNormal:
       result.compactController = newCompactController(compactConfig, result.keyDir)
     of bmCritBit:
-      # CritBit doesn't work with current compact system (needs KeyDir)
+      result.compactController = newCompactController(compactConfig, result.critBit)
+    of bmRangedHash:
+      # Ranged mode doesn't work with current compact system (needs many KeyDir instances)
       result.compactController = nil
-    of bmRanged:
-      # Ranged mode doesn't work with current compact system
+    of bmRangedCritBit:
+      # RangedCritBit mode doesn't work with current compact system (needs many CritBitIndex instances)
       result.compactController = nil
 
     # Start background worker if controller was created
@@ -136,7 +155,7 @@ proc close*(barrel: Barrel) =
       barrel.keyDir.deinit()
     of bmCritBit:
       barrel.critBit.deinit()
-    of bmRanged:
+    of bmRangedHash, bmRangedCritBit:
       # Flush and cleanup range cache
       discard barrel.rangeCache.flushAllRanges()
       barrel.rangeCache.deinit()
@@ -163,9 +182,17 @@ proc indexGet(barrel: Barrel, key: string): Option[KeyDirEntry] =
     barrel.keyDir.get(key)
   of bmCritBit:
     barrel.critBit.get(key)
-  of bmRanged:
-    # Two-step lookup
+  of bmRangedHash:
+    # Two-step lookup with hash-based partitioning
     let rangeId = computeRangeId(key, barrel.config.numRanges)
+    let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
+    if rangeKeyDir.isSome():
+      rangeKeyDir.get()[].get(key)
+    else:
+      none(KeyDirEntry)
+  of bmRangedCritBit:
+    # Two-step lookup with ordered partitioning
+    let rangeId = computeOrderedRangeId(key, barrel.rangeIndex.ranges)
     let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
     if rangeKeyDir.isSome():
       rangeKeyDir.get()[].get(key)
@@ -179,12 +206,22 @@ proc indexAdd(barrel: Barrel, key: string, entry: KeyDirEntry) =
     barrel.keyDir.add(key, entry)
   of bmCritBit:
     barrel.critBit.add(key, entry)
-  of bmRanged:
-    # Two-step add
+  of bmRangedHash:
+    # Two-step add with hash-based partitioning
     let rangeId = computeRangeId(key, barrel.config.numRanges)
     let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
     if rangeKeyDir.isSome():
       rangeKeyDir.get()[].add(key, entry)
+      barrel.rangeIndex.markRangeDirty(rangeId)
+      barrel.rangeIndex.updateRangeKeyCount(rangeId, 1)
+  of bmRangedCritBit:
+    # Two-step add with ordered partitioning
+    let rangeId = computeOrderedRangeId(key, barrel.rangeIndex.ranges)
+    let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
+    if rangeKeyDir.isSome():
+      rangeKeyDir.get()[].add(key, entry)
+      # Update range metadata
+      barrel.rangeIndex.updateRangeKeyBounds(rangeId, key)
       barrel.rangeIndex.markRangeDirty(rangeId)
       barrel.rangeIndex.updateRangeKeyCount(rangeId, 1)
 
@@ -195,7 +232,7 @@ proc indexKeys(barrel: Barrel): seq[string] =
     result = barrel.keyDir.keys()
   of bmCritBit:
     result = barrel.critBit.keys()
-  of bmRanged:
+  of bmRangedHash, bmRangedCritBit:
     # For ranged mode, we need to iterate all ranges
     # This is expensive - use with caution for large datasets
     result = @[]
@@ -212,9 +249,9 @@ proc indexClear(barrel: Barrel) =
     barrel.keyDir.clear()
   of bmCritBit:
     barrel.critBit.clear()
-  of bmRanged:
+  of bmRangedHash, bmRangedCritBit:
     # Clear all ranges
-    barrel.rangeCache.evictAll()
+    barrel.rangeCache.clear()
     barrel.rangeIndex = initRangeIndex(barrel.config.numRanges,
                                         parentDir(barrel.path))
 
@@ -225,7 +262,7 @@ proc indexLen(barrel: Barrel): int =
     barrel.keyDir.len()
   of bmCritBit:
     barrel.critBit.len()
-  of bmRanged:
+  of bmRangedHash, bmRangedCritBit:
     # Get total from range index metadata
     barrel.rangeIndex.getTotalKeys().int
 
@@ -344,7 +381,7 @@ proc count*(barrel: Barrel): int =
       if not entry.deleted:
         inc count
     return count
-  of bmRanged:
+  of bmRangedHash, bmRangedCritBit:
     # For ranged mode, iterate through ranges sequentially
     # Each range is loaded, counted, then can be evicted
     var count = 0
@@ -390,7 +427,7 @@ proc listKeys*(barrel: Barrel, limit: int = 1000, offset: int = 0): seq[string] 
         break
       result.add(key)
       inc collected
-  of bmRanged:
+  of bmRangedHash, bmRangedCritBit:
     # Iterate ranges sequentially, with early exit on limit
     for rangeId in 0..<barrel.config.numRanges:
       if collected >= limit:
@@ -486,11 +523,31 @@ proc keysWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, offset: 
           break
         result.add(key)
         inc collected
-  of bmRanged:
+  of bmRangedHash:
+    # Hash-based partitioning - must scan all ranges
     for rangeId in 0..<barrel.config.numRanges:
       if collected >= limit:
         break
       let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if entry.deleted:
+            continue
+          if key.len >= prefix.len and key[0..<prefix.len] == prefix:
+            if skipped < offset:
+              inc skipped
+              continue
+            if collected >= limit:
+              break
+            result.add(key)
+            inc collected
+  of bmRangedCritBit:
+    # Ordered partitioning - use candidate range filtering
+    let candidateRanges = barrel.rangeIndex.getCandidateRangesForPrefix(prefix)
+    for rangeId in candidateRanges:
+      if collected >= limit:
+        break
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
       if rangeKeyDir.isSome():
         for key, entry in rangeKeyDir.get()[].pairs():
           if entry.deleted:
@@ -541,11 +598,31 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int =
           break
         result.add(key)
         inc collected
-  of bmRanged:
+  of bmRangedHash:
+    # Hash-based partitioning - must scan all ranges
     for rangeId in 0..<barrel.config.numRanges:
       if collected >= limit:
         break
       let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
+      if rangeKeyDir.isSome():
+        for key, entry in rangeKeyDir.get()[].pairs():
+          if entry.deleted:
+            continue
+          if key >= startKey and key < endKey:
+            if skipped < offset:
+              inc skipped
+              continue
+            if collected >= limit:
+              break
+            result.add(key)
+            inc collected
+  of bmRangedCritBit:
+    # Ordered partitioning - use candidate range filtering
+    let candidateRanges = getCandidateRangesForRange(barrel.rangeIndex, startKey, endKey)
+    for rangeId in candidateRanges:
+      if collected >= limit:
+        break
+      let rangeKeyDir = barrel.rangeCache.getOrLoadRange(rangeId)
       if rangeKeyDir.isSome():
         for key, entry in rangeKeyDir.get()[].pairs():
           if entry.deleted:
@@ -575,7 +652,7 @@ proc countWithPrefix*(barrel: Barrel, prefix: string): int =
     for key, entry in barrel.keyDir.pairs():
       if not entry.deleted and key.len >= prefix.len and key[0..<prefix.len] == prefix:
         inc result
-  of bmRanged:
+  of bmRangedHash, bmRangedCritBit:
     result = 0
     for rangeId in 0..<barrel.config.numRanges:
       let rangeKeyDir = barrel.rangeCache.getOrLoadRange(RangeId(rangeId))
@@ -606,25 +683,25 @@ proc indexCount*(barrel: Barrel): int =
 # Ranged mode specific operations
 
 proc flushRanges*(barrel: Barrel): int =
-  ## Flush all dirty ranges to disk (only for bmRanged mode)
+  ## Flush all dirty ranges to disk (only for ranged modes)
   ## Returns number of ranges flushed
-  if barrel.closed or barrel.mode != bmRanged:
+  if barrel.closed or barrel.mode notin {bmRangedHash, bmRangedCritBit}:
     return 0
   barrel.rangeCache.flushAllRanges()
 
 proc loadedRangeCount*(barrel: Barrel): int =
-  ## Get number of currently loaded ranges (only for bmRanged mode)
-  if barrel.mode != bmRanged:
+  ## Get number of currently loaded ranges (only for ranged modes)
+  if barrel.mode notin {bmRangedHash, bmRangedCritBit}:
     return 0
-  barrel.rangeCache.stats().loaded
+  barrel.rangeCache.getStats().loaded
 
 proc rangeStats*(barrel: Barrel): tuple[loaded: int, maxRanges: int, totalKeys: int64] =
-  ## Get range statistics (only for bmRanged mode)
-  if barrel.mode != bmRanged:
+  ## Get range statistics (only for ranged modes)
+  if barrel.mode notin {bmRangedHash, bmRangedCritBit}:
     return (0, 0, 0'i64)
-  let cacheStats = barrel.rangeCache.stats()
+  let cacheStats = barrel.rangeCache.getStats()
   (loaded: cacheStats.loaded,
-   maxRanges: cacheStats.maxRanges,
+   maxRanges: cacheStats.max,
    totalKeys: barrel.rangeIndex.getTotalKeys())
 
 # Compaction operations

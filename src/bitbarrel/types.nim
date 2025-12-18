@@ -119,9 +119,15 @@ type
     Fsync = "fsync"     # Sync to disk (safest)
 
   BarrelMode* = enum
-    bmNormal   # Hash table - O(1) lookup, no ordering
-    bmCritBit  # CritBit tree - O(key_len), supports range/prefix queries
-    bmRanged   # Lazy-loaded hash partitions for massive datasets
+    bmNormal       # Hash table - O(1) lookup, no ordering
+    bmCritBit      # CritBit tree - O(key_len), supports range/prefix queries
+    bmRangedHash   # Hash-based lazy-loaded partitions for massive datasets
+    bmRangedCritBit # CritBit-based lazy-loaded partitions with ordered ranges
+
+  # Access models for ranged modes
+  AccessModel* = enum
+    amHash     # Hash-based range index (O(1) lookup)
+    amCritBit  # CritBit-based range index (supports range/prefix queries)
 
   BarrelConfig* = object
     # Storage config
@@ -136,7 +142,8 @@ type
     deleteExpiredOnRead*: bool   # Write tombstone when expired record is read
     # Index mode
     mode*: BarrelMode
-    # Range mode options (only used if mode == bmRanged)
+    # Range mode options
+    rangeAccessModel*: AccessModel   # Auto-inferred from mode if not specified
     numRanges*: int           # Hash partitions (default: 100)
     maxLoadedRanges*: int     # Max partitions in memory (default: 10)
 
@@ -150,4 +157,8 @@ type
     hintPath*: string
     isLoaded*: bool
     isDirty*: bool
-
+    # Only used by CritBit ranges
+    accessModel*: AccessModel
+    # Key bounds for ordered range partitioning (used by bmRangedCritBit)
+    minKey*: string          # Smallest key in this range (inclusive)
+    maxKey*: string          # Largest key in this range (inclusive)

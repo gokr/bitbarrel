@@ -4,12 +4,15 @@
 ## from deleted and expired records.
 
 import std/[os, times, strformat, strutils, locks, atomics, typedthreads]
-import ../bitbarrel/types, datafile, keydir, record
+import ../bitbarrel/types, datafile, keydir, record, critbitindex
 
 type
+  # Callback type for updating index entries after compaction
+  IndexUpdateProc* = proc(key: string, entry: KeyDirEntry) {.gcsafe.}
+
   CompactControllerObj* = object
     config*: types.CompactConfig
-    keyDir*: KeyDir
+    updateEntry*: IndexUpdateProc     # Callback to update index (KeyDir or CritBit)
     # Background compact support
     shutdownFlag*: Atomic[bool]       # Signal to stop background thread
     compactThread*: Thread[ptr CompactControllerObj]  # Background worker thread
@@ -23,16 +26,18 @@ type
   CompactController* = ref CompactControllerObj
 
 # Forward declarations
-proc newCompactController*(config: types.CompactConfig, keyDir: KeyDir): CompactController
+proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc): CompactController
+proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir): CompactController
+proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex): CompactController
 proc performCompact*(controller: CompactController, dataPath: string, fileId: uint32): bool
 
 # Implementation
 
-proc newCompactController*(config: types.CompactConfig, keyDir: KeyDir): CompactController =
-  ## Create a new compact controller
+proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc): CompactController =
+  ## Create a new compact controller with callback for index updates
   result = CompactController()
   result.config = config
-  result.keyDir = keyDir
+  result.updateEntry = updateEntry
   result.shutdownFlag.store(false)
   result.hasWorker = false
   result.pendingCompact = false
@@ -48,6 +53,28 @@ proc newCompactController*(config: types.CompactConfig, keyDir: KeyDir): Compact
     timeStarted: getTime(),
     timeCompleted: getTime()
   )
+
+proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir): CompactController =
+  ## Create a new compact controller for KeyDir (backward compatible)
+  ## Creates a callback that updates the KeyDir
+  proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
+    keyDir[].add(key, entry)
+  result = newCompactController(config, updateCallback)
+
+proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir): CompactController =
+  ## Create a new compact controller for KeyDir (backward compatible)
+  result = newCompactController(config, addr(keyDir))
+
+proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex): CompactController =
+  ## Create a new compact controller for CritBit index
+  ## Creates a callback that updates the CritBit index
+  proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
+    critBit[].add(key, entry)
+  result = newCompactController(config, updateCallback)
+
+proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex): CompactController =
+  ## Create a new compact controller for CritBit index
+  result = newCompactController(config, addr(critBit))
 
 proc calculateFragmentation*(dataPath: string): tuple[live: int, total: int, ratio: float] =
   ## Calculate fragmentation ratio of a data file
@@ -138,8 +165,8 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
         let newPos = newDataFile.appendRecord(key, value, timestamp)
         controller.stats.bytesWritten += recordSize.int64
 
-        # Update KeyDir with new position
-        controller.keyDir.add(key, KeyDirEntry(
+        # Update index with new position using callback
+        controller.updateEntry(key, KeyDirEntry(
           fileId: newFileId,
           recordPos: newPos.recordPos,
           valuePos: newPos.valuePos,

@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.2.0"
+version       = "0.3.0"
 author        = "Göran Krampe"
 description   = "High-Performance Bitcask-style Key/Value Store"
 license       = "MIT"
@@ -80,9 +80,15 @@ task server, "Build and run BitBarrel network server":
 task client, "Build BitBarrel network client library":
   exec "nim c -d:release --mm:orc --threads:on -o:bitbarrel_client src/network/client.nim"
 
-task testNetwork, "Run network layer tests":
-  exec "nim c -r --mm:orc --threads:on tests/test_protocol.nim"
-  exec "nim c -r --mm:orc --threads:on tests/test_session.nim"
+task testNetwork, "Run network integration tests":
+  exec "nim c -r tests/test_client.nim"
+  exec "nim c -r tests/test_server.nim"
+
+task benchNetwork, "Run network benchmark (1000 ops)":
+  exec "nim c -d:release --mm:orc --threads:on -r --path:src bench/network_bench.nim quick"
+
+task benchNetworkComprehensive, "Run comprehensive network benchmark (100K ops, 10 clients)":
+  exec "nim c -d:release --mm:orc --threads:on -r --path:src bench/network_bench.nim comprehensive"
 
 # Quick test - runs all tests
 
