@@ -31,7 +31,7 @@ proc demonstrateBarrelConfig*() =
 
   # Example 2: Custom configuration for performance
   info("Example 2: Custom BarrelConfig for high performance")
-  var cfg = defaultConfig()
+  var cfg = defaultBarrelConfig()
   cfg.writeBufferSize = 1024 * 1024  # 1MB write buffer
   cfg.syncMode = UserSyncMode.None  # Don't sync on every write
   cfg.autoCompact = true
@@ -47,7 +47,7 @@ proc demonstrateBarrelConfig*() =
 
   # Example 3: Configuration for durability
   info("Example 3: BarrelConfig for maximum durability")
-  var durableCfg = defaultConfig()
+  var durableCfg = defaultBarrelConfig()
   durableCfg.syncMode = UserSyncMode.Fsync  # Fsync on every write
   durableCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
 
@@ -135,7 +135,7 @@ proc demonstrateConfigurationInAction*() =
   echo ""
 
   # Fast mode - no syncing
-  var fastCfg = defaultConfig()
+  var fastCfg = defaultBarrelConfig()
   fastCfg.syncMode = UserSyncMode.None
   fastCfg.writeBufferSize = 256 * 1024
 
@@ -154,7 +154,7 @@ proc demonstrateConfigurationInAction*() =
   echo ""
 
   # Safe mode - full sync
-  var safeCfg = defaultConfig()
+  var safeCfg = defaultBarrelConfig()
   safeCfg.syncMode = UserSyncMode.Fsync
   safeCfg.writeBufferSize = 32 * 1024
 
@@ -187,7 +187,7 @@ proc demonstrateBestPractices*() =
   echo ""
 
   echo "✓ Customize BarrelConfig for specific needs:"
-  info("   var cfg = defaultConfig()")
+  info("   var cfg = defaultBarrelConfig()")
   info("   cfg.syncMode = UserSyncMode.Fsync  # For durability")
   info("   cfg.writeBufferSize = 1024 * 1024  # 1MB buffer")
   info("   var db = openBarrel('myapp.db', cfg)")

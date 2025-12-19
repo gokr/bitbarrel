@@ -24,7 +24,7 @@ proc testSyncModes() =
 
   let testSize = 1000
   echo "  Testing None mode (max performance)..."
-  var configNone = barrel.defaultConfig()
+  var configNone = barrel.defaultBarrelConfig()
   configNone.syncMode = barrel.UserSyncMode.None
   configNone.writeBufferSize = 128 * 1024
 
@@ -37,7 +37,7 @@ proc testSyncModes() =
 
   # Test Fsync mode
   echo "  Testing Fsync mode (max durability)..."
-  var configFsync = barrel.defaultConfig()
+  var configFsync = barrel.defaultBarrelConfig()
   configFsync.syncMode = barrel.UserSyncMode.Fsync
   configFsync.writeBufferSize = 128 * 1024
 
@@ -70,7 +70,7 @@ proc testBuffers() =
   let testSize = 5000
 
   echo "  Testing 4KB buffer..."
-  var cfgSmall = barrel.defaultConfig()
+  var cfgSmall = barrel.defaultBarrelConfig()
   cfgSmall.syncMode = barrel.UserSyncMode.None
   cfgSmall.writeBufferSize = 4 * 1024
 
@@ -82,7 +82,7 @@ proc testBuffers() =
   db1.close()
 
   echo "  Testing 1MB buffer..."
-  var cfgLarge = barrel.defaultConfig()
+  var cfgLarge = barrel.defaultBarrelConfig()
   cfgLarge.syncMode = barrel.UserSyncMode.None
   cfgLarge.writeBufferSize = 1024 * 1024
 

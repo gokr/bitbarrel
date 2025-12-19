@@ -7,8 +7,8 @@
 ##
 ## Run with: nim c -r examples/performance_tuning_demo.nim
 
-import std/[os, strformat, strutils except formatSize, times]
-import demo_utils
+import std/[os, strformat, strutils, times]
+import demo_utils except formatSize
 import bitbarrel
 
 type
@@ -58,7 +58,7 @@ proc demonstrateSyncModes*() =
   echo &"Performing {testSize} write operations per test...\n"
 
   # Test with None sync (max performance, no durability)
-  var fastConfig = defaultConfig()
+  var fastConfig = defaultBarrelConfig()
   fastConfig.syncMode = UserSyncMode.None
   fastConfig.writeBufferSize = 1024 * 1024  # 1MB buffer
 
@@ -73,7 +73,7 @@ proc demonstrateSyncModes*() =
   ))
 
   # Test with Sync mode (balanced)
-  var normalConfig = defaultConfig()
+  var normalConfig = defaultBarrelConfig()
   normalConfig.syncMode = UserSyncMode.Sync
   normalConfig.writeBufferSize = 256 * 1024  # 256KB buffer
 
@@ -88,7 +88,7 @@ proc demonstrateSyncModes*() =
   ))
 
   # Test with Fsync (max durability)
-  var safeConfig = defaultConfig()
+  var safeConfig = defaultBarrelConfig()
   safeConfig.syncMode = UserSyncMode.Fsync
   safeConfig.writeBufferSize = 32 * 1024  # 32KB buffer
 
@@ -123,7 +123,7 @@ proc demonstrateBufferSizes*() =
   echo &"Testing {bufferSizes.len} buffer sizes with {testSize} operations each\n"
 
   for bufSize in bufferSizes:
-    var config = defaultConfig()
+    var config = defaultBarrelConfig()
     config.syncMode = UserSyncMode.None  # No sync to isolate buffer effect
     config.writeBufferSize = bufSize
 
@@ -151,7 +151,7 @@ proc demonstrateBatching*() =
 
   for batchSize in batchSizes:
     let numBatches = testSize div batchSize
-    var config = defaultConfig()
+    var config = defaultBarrelConfig()
     config.syncMode = UserSyncMode.None
     config.writeBufferSize = 512 * 1024
 
@@ -183,7 +183,7 @@ proc demonstrateRealWorldScenario*() =
 
   echo "Simulating 70% reads, 30% writes pattern...\n"
 
-  var config = defaultConfig()
+  var config = defaultBarrelConfig()
   config.syncMode = UserSyncMode.Sync  # Balanced durability
   config.writeBufferSize = 128 * 1024
 

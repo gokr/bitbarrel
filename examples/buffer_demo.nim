@@ -13,7 +13,7 @@ proc testDirectWrites(): float64 =
   removeDir("bench_direct", true)
 
 proc testBufferedWrites(): float64 =
-  var cfg = defaultConfig()
+  var cfg = defaultBarrelConfig()
   cfg.syncMode = UserSyncMode.Sync
   cfg.writeBufferSize = 64 * 1024
 
