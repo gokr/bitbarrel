@@ -17,6 +17,8 @@ type
     cmdCount = 0x05
     cmdListKeys = 0x06
     cmdPing = 0x09
+    ## Reference traversal
+    cmdTraverse = 0x20
     ## Barrel management
     cmdCreateBarrel = 0x10
     cmdOpenBarrel = 0x11
@@ -116,7 +118,7 @@ proc decodeRequest*(data: string): Request =
   let cmdByte = readByte(data, pos)
   # Validate command byte
   if cmdByte notin {0x01'u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09,
-                     0x10, 0x11, 0x12, 0x13, 0x14, 0x15}:
+                     0x20, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15}:
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
   result.command = Command(cmdByte)
@@ -159,6 +161,109 @@ proc decodeResponse*(data: string): Response =
   if valLen > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $valLen)
   result.value = readString(data, pos, int(valLen))
+
+
+## Traversal request/response extensions
+
+type
+  TraverseRequest* = object
+    seq*: uint32
+    key*: string           ## Starting key for traversal
+    pathSpec*: string      ## Path specification string
+    options*: uint8        ## Options bitfield
+
+  TraverseResult* = object
+    path*: string          ## Full traversal path
+    value*: string         ## Value at the path end (if requested)
+    extractedData*: string ## Extracted array data (if requested)
+
+proc encodeTraverseRequest*(req: TraverseRequest): string =
+  ## Encode a traversal request
+  ## Format: [seq:4][keyLen:2][key:N][pathLen:2][path:N][options:1]
+  result = newStringOfCap(4 + 2 + req.key.len + 2 + req.pathSpec.len + 1)
+  result.writeUint32BE(req.seq)
+  result.writeUint16BE(uint16(req.key.len))
+  result.add(req.key)
+  result.writeUint16BE(uint16(req.pathSpec.len))
+  result.add(req.pathSpec)
+  result.writeByte(byte(req.options))
+
+proc decodeTraverseRequest*(data: string): TraverseRequest =
+  ## Decode a traversal request
+  var pos = 0
+  result.seq = readUint32BE(data, pos)
+
+  let keyLen = readUint16BE(data, pos)
+  if keyLen > MaxKeySize:
+    raise newException(ProtocolError, "Key too large: " & $keyLen)
+  result.key = readString(data, pos, int(keyLen))
+
+  let pathLen = readUint16BE(data, pos)
+  if pathLen > 1024:  # Reasonable limit for path spec
+    raise newException(ProtocolError, "Path spec too large: " & $pathLen)
+  result.pathSpec = readString(data, pos, int(pathLen))
+
+  result.options = uint8(readByte(data, pos))
+
+proc encodeTraverseResults*(results: seq[TraverseResult], seq: uint32): string =
+  ## Encode traversal results
+  ## Format: [status:1][seq:4][count:4][results...]
+  ## Each result: [pathLen:2][path:N][valLen:4][val:M][extFlags:1][extLen:4][ext:M]
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(statusOk)))
+  result.writeUint32BE(seq)
+  result.writeUint32BE(uint32(results.len))
+
+  for res in results:
+    # Path
+    result.writeUint16BE(uint16(res.path.len))
+    result.add(res.path)
+
+    # Value (if present)
+    result.writeUint32BE(uint32(res.value.len))
+    if res.value.len > 0:
+      result.add(res.value)
+
+    # Extracted data flag and length
+    let hasExtracted = if res.extractedData.len > 0: 1'u8 else: 0'u8
+    result.writeByte(byte(hasExtracted))
+    result.writeUint32BE(uint32(res.extractedData.len))
+    if res.extractedData.len > 0:
+      result.add(res.extractedData)
+
+proc decodeTraverseResults*(data: string): (ResponseStatus, uint32, seq[TraverseResult]) =
+  ## Decode traversal results
+  var pos = 0
+
+  let statusByte = readByte(data, pos)
+  if statusByte > byte(ord(high(ResponseStatus))):
+    raise newException(ProtocolError, "Invalid status: 0x" & statusByte.toHex)
+
+  result[0] = ResponseStatus(statusByte)
+  result[1] = readUint32BE(data, pos)
+
+  let count = readUint32BE(data, pos)
+  result[2] = newSeq[TraverseResult](count)
+
+  for i in 0..<count:
+    var res: TraverseResult
+
+    # Path
+    let pathLen = readUint16BE(data, pos)
+    res.path = readString(data, pos, int(pathLen))
+
+    # Value
+    let valLen = readUint32BE(data, pos)
+    if valLen > 0:
+      res.value = readString(data, pos, int(valLen))
+
+    # Extracted data
+    let hasExtracted = readByte(data, pos)
+    let extLen = readUint32BE(data, pos)
+    if hasExtracted != 0 and extLen > 0:
+      res.extractedData = readString(data, pos, int(extLen))
+
+    result[2][i] = res
 
 
 proc newRequest*(command: Command, key: string = "", value: string = "", seq: uint32 = 0): Request =
@@ -208,6 +313,7 @@ proc `$`*(cmd: Command): string =
   of cmdCount: "COUNT"
   of cmdListKeys: "LIST_KEYS"
   of cmdPing: "PING"
+  of cmdTraverse: "TRAVERSE"
   of cmdCreateBarrel: "CREATE_BARREL"
   of cmdOpenBarrel: "OPEN_BARREL"
   of cmdUseBarrel: "USE_BARREL"
