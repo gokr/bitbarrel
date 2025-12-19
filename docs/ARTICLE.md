@@ -4,7 +4,7 @@
 
 BitBarrel is a high-performance key-value storage engine written in Nim that brings the classic Bitcask design into the modern era. It combines the simplicity and speed of the original Bitcask model with advanced features like configurable durability, multiple index modes, and background compaction.
 
-At its core, BitBarrel solves a simple problem: how to store and retrieve key-value pairs with maximum performance and minimum complexity. By embracing an append-only design with an in-memory index, BitBarrel achieves ~250,000 writes per second and ~180,000 reads per second on commodity hardware while maintaining crash safety and data integrity.
+At its core, BitBarrel solves a simple problem: how to store and retrieve key-value pairs with good performance and minimum complexity. By embracing an append-only design with an in-memory index, BitBarrel provides reliable storage with ~553 writes/sec and ~98,000 reads/sec on commodity hardware while maintaining crash safety and data integrity. Performance varies significantly based on sync mode, buffer configuration, and workload characteristics.
 
 ## The Bitcask Heritage
 
@@ -129,10 +129,10 @@ cfg.syncMode = UserSyncMode.Fsync
 cfg.writeBufferSize = 64 * 1024  # 64KB buffer
 ```
 
-**Write Performance**:
-- `None` sync: ~250K ops/sec (fastest)
-- `Sync` mode: ~245K ops/sec (OS-level durability)
-- `Fsync` mode: ~11.5K ops/sec (disk-level durability)
+**Write Performance** (actual baseline results):
+- Baseline write throughput: ~553 ops/sec
+- Performance varies significantly with sync mode, buffer size, and hardware
+- See `bench/results_baseline.txt` for detailed benchmarks across all configurations
 
 ### Fast Recovery with Hint Files
 
@@ -213,14 +213,16 @@ BitBarrel maintains O(1) reads and writes while adding features:
 - **No Random Writes**: Ever. All writes are sequential.
 - **Zero-Copy Reads**: Directly map values from disk where possible.
 
-Measured performance on Linux x86_64 with SSD:
+Measured baseline performance on Linux x86_64 with SSD:
 
 | Operation | Throughput | Latency |
 |-----------|------------|---------|
-| Write (none sync) | 250K ops/sec | 0.004ms |
-| Write (fsync) | 11.5K ops/sec | 0.086ms |
-| Read | 180K ops/sec | 0.006ms |
-| Mixed (80% read) | 278K ops/sec | varies |
+| Write | ~553 ops/sec | ~1.808ms |
+| Read (random) | ~98,020 ops/sec | ~0.010ms |
+| Read (sequential) | ~92,962 ops/sec | ~0.011ms |
+| Mixed (80% read) | ~2,531 ops/sec | varies |
+
+*Performance varies significantly by sync mode, buffer size, and workload. See `bench/results_baseline.txt` for full benchmark results.*
 
 ### Barrel-per-Collection
 
@@ -473,7 +475,7 @@ for size in [4*1024, 64*1024, 256*1024, 1024*1024]:
   echo fmt"Buffer {size/1024}KB: {10000/elapsed:.0f} ops/sec"
 ```
 
-**Typical results**: 64KB-256KB provides optimal performance (~230K ops/sec). Smaller buffers increase syscalls; larger buffers waste memory.
+**Typical results**: 64KB-256KB provides reasonable performance for most workloads. Smaller buffers increase syscalls; larger buffers may waste memory. Performance varies significantly based on sync mode and workload characteristics. See `bench/results_baseline.txt` for actual measured results.
 
 ### Sync Mode Selection
 
@@ -539,4 +541,4 @@ nimble install bitbarrel
 nim c -r examples/basic_demo.nim
 ```
 
-Performance benchmarks on Linux x86_64 with SSD show consistent ~250K writes/sec and ~180K reads/sec for typical workloads.
+Baseline performance benchmarks on Linux x86_64 with SSD show ~553 writes/sec and ~98,020 reads/sec for representative workloads. See `bench/results_baseline.txt` for complete benchmark results including sync mode variations.
