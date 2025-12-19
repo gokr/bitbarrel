@@ -13,7 +13,7 @@ BitBarrel is a high-performance key-value storage engine implemented in Nim usin
    - `keydir.nim` - In-memory hash index mapping keys to disk positions
    - `record.nim` - Binary record format with CRC32 checksums
    - `writebuffer.nim` - Write buffering with sync modes
-   - `merge.nim` - Background compaction for space reclamation
+   - `compact.nim` - Background compaction for space reclamation
    - `recovery.nim` - Crash recovery with hint file support
    - `hintfile.nim` - Fast recovery metadata files
    - `readbuffer.nim` - Read-ahead LRU caching
@@ -54,11 +54,7 @@ BitBarrel supports three different index modes to optimize for different use cas
 - Memory: All keys kept in sorted tree structure
 - Best for: Time-series data, leaderboards, ordered traversal
 
-### bmRanged: Lazy-Loaded Partitions
-- Hash partitions across configurable ranges
-- Only active partitions loaded into memory (LRU cache)
-- Supports datasets 100× larger than RAM
-- Best for: Analytics data with billions of keys, bursty access patterns
+**Note:** The bmRanged mode (for billion-key datasets) is currently in the design phase. See `docs/research/HUGECRITBIT.md` for details.
 
 ## File Formats
 
@@ -146,22 +142,23 @@ Background process reclaims space from deleted/overwritten records:
 
 **Measured on:** Linux x86_64, SSD, Nim 2.2.6 (Release Build)
 
-### Throughput
-- **Write (None sync)**: ~250K ops/sec
-- **Write (Sync)**: ~245K ops/sec
-- **Write (Fsync)**: ~11.5K ops/sec
-- **Read**: ~180K ops/sec
-- **Mixed (80% read)**: ~278K ops/sec
+### Throughput (Baseline Results)
+- **Write**: ~553 ops/sec (10K records)
+- **Read (random)**: ~98,020 ops/sec
+- **Read (sequential)**: ~92,962 ops/sec
+- **Mixed (80% read)**: ~2,531 ops/sec
 
-### Latency
-- **Write (None/Sync)**: ~0.004ms
-- **Write (Fsync)**: ~0.086ms
-- **Read**: ~0.006ms
+*Performance varies significantly by sync mode and configuration. See `bench/results_baseline.txt` for detailed benchmarks.*
+
+### Latency (Baseline Results)
+- **Write**: ~1.808 ms per operation
+- **Read (random)**: ~0.010 ms per operation
+- *Latency depends on sync mode, buffer size, and workload*
 
 ### Resource Usage
 - **Memory per key**: ~50 bytes (KeyDir overhead)
 - **Recovery speed**: 40K keys/sec (with hint files)
-- **Dataset size**: Limited only by disk space (bmRanged mode)
+- **Dataset size**: Limited by available RAM for active keys (all keys must be in KeyDir)
 
 ### CRC32 Options
 Two implementations available:
@@ -175,10 +172,10 @@ Key configuration options:
 ```nim
 var cfg = defaultBarrelConfig()
 
-cfg.mode = BarrelMode.bmNormal      # Or bmCritBit, bmRanged
+cfg.mode = BarrelMode.bmHash        # Or bmCritBit (no bmRanged - see research/)
 cfg.syncMode = UserSyncMode.None    # Or Sync, Fsync
 cfg.writeBufferSize = 64 * 1024     # 64KB buffer
-cfg.autoCompact = true              # Enable background merge
+cfg.autoCompact = true              # Enable background compaction
 cfg.compactThreshold = 0.3          # 30% fragmentation trigger
 cfg.validateCrc = true              # Verify CRC32 on reads
 cfg.defaultTtl = 0                  # Optional TTL in seconds
@@ -223,7 +220,7 @@ parallel:
 - Session storage (fast, simple lookups)
 - Caching layers (disk-backed, larger than RAM)
 - Time-series data (ordered traversal with bmCritBit)
-- Analytics data (billions of keys with bmRanged)
+- Analytics data (see research/HUGECRITBIT.md for billion-key design)
 - Configuration storage (persistent, reliable)
 - High-frequency counters (append-only efficiency)
 
@@ -247,7 +244,7 @@ src/
     ├── datafile.nim     # Data file I/O
     ├── keydir.nim       # In-memory index
     ├── record.nim       # Record encoding/decoding
-    ├── merge.nim        # Background compaction
+    ├── compact.nim      # Background compaction
     ├── recovery.nim     # Crash recovery engine
     ├── hintfile.nim     # Fast recovery metadata
     └── writebuffer.nim  # Write buffering with sync modes
@@ -259,9 +256,9 @@ BitBarrel enhances the classic Bitcask model:
 
 | Feature | Original Bitcask | BitBarrel |
 |---------|------------------|-----------|
-| Index Type | Single hash table | Three modes (Hash/CritBit/Ranged) |
-| Query Types | Simple GET/SET | + Range, Prefix, Ordered queries |
-| Memory Limit | All keys in RAM | bmRanged supports >RAM datasets |
+| Index Type | Single hash table | Two modes (Hash/CritBit) |
+| Query Types | Simple GET/SET | + Range, Prefix, Ordered queries (CritBit) |
+| Memory Limit | All keys in RAM | All keys in RAM (see research/HUGECRITBIT.md for >RAM design) |
 | Durability | Basic sync | Three sync modes + write buffering |
 | Recovery | Slow scan | Fast with hint files (40K/sec) |
 | Compression | None | LZ4 & Snappy support |
