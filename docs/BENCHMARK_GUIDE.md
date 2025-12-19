@@ -41,10 +41,11 @@ nim c -d:release -r bench/stress_test.nim
 |------|----------|-----------|
 
 ### Tests
-- `nimble test` - Run all 65 tests
+- `nimble test` - Run all 25 tests
 - `nimble test-storage` - Storage module tests
 - `nimble test-keydir` - KeyDir tests
 - `nimble test-recovery` - Recovery tests
+- `nimble testNetwork` - Network protocol tests
 
 ### Demos
 - `nimble demoBasic` - Basic CRUD example
@@ -56,7 +57,13 @@ nim c -d:release -r bench/stress_test.nim
 - `nimble benchQuick` - Quick benchmark (1K ops)
 - `nimble benchComprehensive` - Full benchmark (100K ops)
 - `nimble benchStress` - System stress tests
-- `nimble benchCrunchy` - With crunchy CRC32
+- `nimble benchNetwork` - Network benchmark (1K ops)
+- `nimble benchNetworkComprehensive` - Network benchmark (100K ops, 10 clients)
+
+### Compression Builds
+- `nimble buildDefault` - Build without compression
+- `nimble buildLz4` - Build with LZ4 compression
+- `nimble buildSnappy` - Build with Snappy compression
 
 ### Configurations Tested
 
@@ -82,9 +89,18 @@ The `examples/performance_tuning_demo.nim` demonstrates how to:
 ## See Also
 - `nimble bench --help` - Shows all available commands
 - `examples/performance_tuning_demo.nim` - Performance tuning examples
-- `PHASE3_SUMMARY.md` - Full Phase 3 achievements
+- `bench/results_baseline.txt` - Baseline performance results
 
-## File Structure (After Consolidation)
+## File Structure
+
+For current project structure, see the repository root. Key directories:
+- `src/` - Source code
+- `tests/` - Test suite (25 test files)
+- `bench/` - Benchmark suite
+- `examples/` - Demo programs
+- `docs/` - Documentation (see `docs/TUTORIAL.md` for usage guide)
+
+**Note:** This file section is outdated. See repository for current structure.
 
 ```
 kvs/
