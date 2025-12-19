@@ -4,80 +4,64 @@ import std/[unittest, os, times, strformat, options]
 import ../src/bitbarrel/types
 import ../src/storage/hintfile
 import ../src/storage/keydir
-
-const TestDir = "/tmp/bitbarrel_test_hintfile"
-
-proc setupTest(): string =
-  let testDir = TestDir & "_" & $getTime().toUnix()
-  createDir(testDir)
-  result = testDir
-
-proc cleanupTest(testDir: string) =
-  if dirExists(testDir):
-    removeDir(testDir)
+import testutils
 
 suite "Hint File Tests":
 
   test "Write and read empty hint file":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    withTestDir("hintfile_empty"):
+      let path = testDir / "test.hint"
+      let entries: seq[HintEntry] = @[]
 
-    let path = testDir / "test.hint"
-    let entries: seq[HintEntry] = @[]
+      let writeSuccess = writeHintFile(path, 1, entries)
+      check writeSuccess == true
+      check fileExists(path)
 
-    let writeSuccess = writeHintFile(path, 1, entries)
-    check writeSuccess == true
-    check fileExists(path)
-
-    let (header, readEntries, readSuccess) = readHintFile(path)
-    check readSuccess == true
-    check header.magic == HINT_MAGIC
-    check header.version == HINT_VERSION
-    check header.entryCount == 0
-    check header.dataFileId == 1
-    check readEntries.len == 0
+      let (header, readEntries, readSuccess) = readHintFile(path)
+      check readSuccess == true
+      check header.magic == HINT_MAGIC
+      check header.version == HINT_VERSION
+      check header.entryCount == 0
+      check header.dataFileId == 1
+      check readEntries.len == 0
 
   test "Write and read hint file with entries":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    withTestDir("hintfile_entries"):
+      let path = testDir / "test.hint"
+      let entries = @[
+        HintEntry(key: "key1", recordPos: 100, valuePos: 120, valueSize: 10, timestamp: 1000, recordSize: 30),
+        HintEntry(key: "key2", recordPos: 200, valuePos: 220, valueSize: 20, timestamp: 2000, recordSize: 40),
+        HintEntry(key: "key3", recordPos: 300, valuePos: 320, valueSize: 30, timestamp: 3000, recordSize: 50)
+      ]
 
-    let path = testDir / "test.hint"
-    let entries = @[
-      HintEntry(key: "key1", recordPos: 100, valuePos: 120, valueSize: 10, timestamp: 1000, recordSize: 30),
-      HintEntry(key: "key2", recordPos: 200, valuePos: 220, valueSize: 20, timestamp: 2000, recordSize: 40),
-      HintEntry(key: "key3", recordPos: 300, valuePos: 320, valueSize: 30, timestamp: 3000, recordSize: 50)
-    ]
+      let writeSuccess = writeHintFile(path, 42, entries)
+      check writeSuccess == true
 
-    let writeSuccess = writeHintFile(path, 42, entries)
-    check writeSuccess == true
+      let (header, readEntries, readSuccess) = readHintFile(path)
+      check readSuccess == true
+      check header.entryCount == 3
+      check header.dataFileId == 42
+      check readEntries.len == 3
 
-    let (header, readEntries, readSuccess) = readHintFile(path)
-    check readSuccess == true
-    check header.entryCount == 3
-    check header.dataFileId == 42
-    check readEntries.len == 3
+      check readEntries[0].key == "key1"
+      check readEntries[0].recordPos == 100
+      check readEntries[0].valuePos == 120
+      check readEntries[0].valueSize == 10
+      check readEntries[0].timestamp == 1000
+      check readEntries[0].recordSize == 30
 
-    check readEntries[0].key == "key1"
-    check readEntries[0].recordPos == 100
-    check readEntries[0].valuePos == 120
-    check readEntries[0].valueSize == 10
-    check readEntries[0].timestamp == 1000
-    check readEntries[0].recordSize == 30
-
-    check readEntries[1].key == "key2"
-    check readEntries[2].key == "key3"
+      check readEntries[1].key == "key2"
+      check readEntries[2].key == "key3"
 
   test "Hint file validation - valid file":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    withTestDir("hintfile_validation"):
+      let path = testDir / "test.hint"
+      let entries = @[
+        HintEntry(key: "test", recordPos: 50, valuePos: 60, valueSize: 5, timestamp: 100, recordSize: 20)
+      ]
 
-    let path = testDir / "test.hint"
-    let entries = @[
-      HintEntry(key: "test", recordPos: 50, valuePos: 60, valueSize: 5, timestamp: 100, recordSize: 20)
-    ]
-
-    discard writeHintFile(path, 1, entries)
-    check validateHintFile(path) == true
+      discard writeHintFile(path, 1, entries)
+      check validateHintFile(path) == true
 
   test "Hint file validation - nonexistent file":
     check validateHintFile("/nonexistent/path.hint") == false
