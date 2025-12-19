@@ -315,38 +315,8 @@ proc testBarrelModes(config: BenchmarkConfig) =
                  &"{critBitResult.avgLatency:.3f}", $int(critBitResult.totalTime),
                  "Ordered, range queries"])
 
-  # Test bmRanged mode
-  let dbFileRanged = "bench_mode_ranged.dat"
-  var cfgRanged = defaultConfig()
-  cfgRanged.mode = BarrelMode.bmRanged
-  cfgRanged.numRanges = 50
-  cfgRanged.maxLoadedRanges = 10
-  var bbRanged = openDatabase(dbFileRanged, cfgRanged)
-
-  let startRanged = cpuTime()
-  for i in 0..<config.profile.operations:
-    let key = "key_" & $i
-    let value = "value_" & $i
-    discard bbRanged.set(key, value)
-  let timeRanged = cpuTime() - startRanged
-  bbRanged.close()
-  removeFile(dbFileRanged)
-
-  let rangedResult = BenchmarkResult(
-    name: "Ranged Mode",
-    opsPerSec: config.profile.operations.float / timeRanged,
-    avgLatency: (timeRanged * 1000) / config.profile.operations.float,
-    totalTime: timeRanged * 1000,
-    mode: "bmRanged",
-    bufferMode: "Lazy load"
-  )
-
-  if rangedResult.opsPerSec > bestResult.opsPerSec:
-    bestResult = rangedResult
-
-  printTableRow([rangedResult.mode, $int(rangedResult.opsPerSec),
-                 &"{rangedResult.avgLatency:.3f}", $int(rangedResult.totalTime),
-                 "Billions of keys, LRU"])
+  # Note: bmRanged mode is not currently implemented
+  # Future design: See docs/research/HUGECRITBIT.md for proposed billion-key support
 
   printTableFooter(sum(columns.mapIt(it.len + 3)))
   echo ""
@@ -354,7 +324,6 @@ proc testBarrelModes(config: BenchmarkConfig) =
   echo ""
   echo "Note: bmHash is fastest for simple lookups"
   echo "      bmCritBit supports range queries and prefix searches"
-  echo "      bmRanged handles datasets larger than RAM"
   echo ""
 
 proc printSummary(results: seq[BenchmarkResult]) =
