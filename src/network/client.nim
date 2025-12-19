@@ -383,3 +383,94 @@ proc ping*(client: var BitBarrelClient): bool =
   let req = Request(command: cmdPing)
   let resp = client.sendAndWait(req)
   return resp.status == statusOk and resp.value == "pong"
+
+# Reference traversal operations
+type
+  TraverseOptions* = object
+    includeFullData*: bool    ## Return full values or just paths
+    extractArrays*: bool      ## Extract array elements individually
+    firstOnly*: bool          ## Stop after first result
+
+  TraverseResult* = object
+    path*: string            ## Full traversal path
+    key*: string             ## Key of the result
+    value*: string          ## Value at path end (if includeFullData=true)
+    extractedData*: string  ## Extracted array data (if extractArrays=true)
+
+proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
+               options: TraverseOptions): seq[TraverseResult] =
+  ## Traverse references from a key using path specification
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if client.conn == nil:
+    client.connect()
+
+  # Build traversal request
+  var optionsByte: uint8 = 0
+  if options.includeFullData:
+    optionsByte = optionsByte or 0x01
+  if options.extractArrays:
+    optionsByte = optionsByte or 0x02
+  if options.firstOnly:
+    optionsByte = optionsByte or 0x04
+
+  let tReq = TraverseRequest(
+    seq: client.seqCounter,
+    key: key,
+    pathSpec: pathSpec,
+    options: optionsByte
+  )
+  client.seqCounter += 1
+
+  # Encode and send
+  let encoded = encodeTraverseRequest(tReq)
+  let req = Request(command: cmdTraverse, value: encoded)
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Traversal failed: {resp.status}")
+
+  # Decode results
+  let (status, seq, results) = decodeTraverseResults(resp.value)
+  if status != statusOk:
+    raise newException(ClientError, "Invalid traversal response")
+
+  # Convert to client format
+  result = newSeq[TraverseResult](results.len)
+  for i, res in results:
+    result[i] = TraverseResult(
+      path: res.path,
+      key: res.key,
+      value: res.value,
+      extractedData: res.extractedData
+    )
+
+# Convenience overloads
+proc traversePath*(client: var BitBarrelClient, key: string,
+                   pathSpec: string): seq[TraverseResult] =
+  ## Traverse with default options (include full data, no extraction)
+  let options = TraverseOptions(
+    includeFullData: true,
+    extractArrays: false,
+    firstOnly: false
+  )
+  result = client.traverse(key, pathSpec, options)
+
+proc traverseDepth*(client: var BitBarrelClient, key: string,
+                    maxDepth: int): seq[TraverseResult] =
+  ## Simple depth-based traversal (deprecated, use traversePath instead)
+  ## This creates a path spec that follows all refs for N levels
+  if maxDepth <= 0:
+    return @[]
+
+  var pathSpec = "*"
+  for i in 1..<maxDepth:
+    pathSpec.add("->*")
+
+  let options = TraverseOptions(
+    includeFullData: true,
+    extractArrays: false,
+    firstOnly: false
+  )
+  result = client.traverse(key, pathSpec, options)
