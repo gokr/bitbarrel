@@ -1,0 +1,139 @@
+# BitBarrel Documentation
+
+Welcome to the BitBarrel documentation! BitBarrel is a high-performance Bitcask-style key-value storage engine written in Nim.
+
+## Quick Start
+
+New to BitBarrel? Start here:
+
+- [Getting Started](GETTING_STARTED.md) - Set up and running in 5 minutes
+- [User Tutorial](USER_GUIDE/tutorial.md) - Comprehensive usage guide
+- [API Reference](USER_GUIDE/api-reference.md) - Complete API documentation
+
+## Documentation Structure
+
+### User Documentation
+For users who want to use BitBarrel in their applications:
+
+- **[Getting Started](GETTING_STARTED.md)** - Quick setup and basic usage
+- **[User Guide](USER_GUIDE/)**
+  - [Tutorial](USER_GUIDE/tutorial.md) - Complete usage tutorial
+  - [Configuration](USER_GUIDE/configuration.md) - All configuration options
+  - [API Reference](USER_GUIDE/api-reference.md) - Full API documentation
+
+### Developer Documentation
+For developers who want to contribute or understand internals:
+
+- **[Developer Guide](DEVELOPER_GUIDE/)**
+  - [Architecture](DEVELOPER_GUIDE/architecture.md) - System architecture and design
+  - [Testing](DEVELOPER_GUIDE/testing.md) - Test suite and testing practices
+  - [Performance](DEVELOPER_GUIDE/performance.md) - Benchmarking and optimization
+  - [Memory Management](DEVELOPER_GUIDE/memory-management.md) - Nim memory patterns in BitBarrel
+
+### Feature Documentation
+Detailed documentation for specific BitBarrel features:
+
+- **[Features](FEATURES/)**
+  - [Compression](FEATURES/compression.md) - Data compression support
+  - [Data Integrity](FEATURES/data-integrity.md) - CRC32 validation
+  - [Networking](FEATURES/networking.md) - Network protocol and client
+
+### Historical and Research
+Background information and experimental features:
+
+- **[Research](research/)**
+  - [Bitcask Background](research/bitcask-background.md) - History and theory
+  - [HugeBarrel Analysis](research/hugebarrel-analysis.md) - Critical review of HugeBarrel
+  - [HugeCritBit Design](research/hugecritbit-design.md) - Design analysis
+  - [References](research/references.md) - External references
+
+## Choose Your Path
+
+### I just want to use BitBarrel
+1. [Getting Started](GETTING_STARTED.md)
+2. [User Tutorial](USER_GUIDE/tutorial.md)
+3. [Configuration](USER_GUIDE/configuration.md)
+4. [API Reference](USER_GUIDE/api-reference.md)
+
+### I want to understand how it works
+1. [Architecture](DEVELOPER_GUIDE/architecture.md)
+2. [Bitcask Background](research/bitcask-background.md)
+3. [Performance](DEVELOPER_GUIDE/performance.md)
+
+### I want to contribute
+1. [Memory Management](DEVELOPER_GUIDE/memory-management.md) - Important for Nim development
+2. [Testing](DEVELOPER_GUIDE/testing.md) - Test suite overview
+3. [Architecture](DEVELOPER_GUIDE/architecture.md) - Code structure
+
+### I need to tune performance
+1. [Performance](DEVELOPER_GUIDE/performance.md)
+2. [Configuration](USER_GUIDE/configuration.md) - Performance tuning section
+3. [Features](FEATURES/) - Compression, networking options
+
+## Key Concepts
+
+BitBarrel implements the **Bitcask** storage model with these key concepts:
+
+- **Append-only log files** - Fast sequential writes
+- **In-memory hash index** - O(1) key lookups
+- **CRC32 checksums** - Data integrity validation
+- **Background compaction** - Automatic space reclamation
+- **Multiple index modes** - Hash, CritBit, HugeCritBit
+
+### Index Modes
+
+| Mode | Use Case | Features |
+|------|----------|----------|
+| `bmHash` | Simple key-value lookups | O(1) lookups, minimal memory |
+| `bmCritBit` | Ordered data, range queries | Prefix search, range scans |
+| `bmHugeCritBit` | Massive datasets | Two-tier storage, range queries |
+
+## Performance Characteristics
+
+Typical performance on commodity hardware:
+
+- **Writes**: ~553-10,000 ops/sec (depends on sync mode)
+- **Reads**: ~98,000 ops/sec (cache-friendly)
+- **Recovery**: <10ms for small datasets with hint files
+- **Storage**: Append-only, compacted in background
+
+*Performance varies significantly based on sync mode, buffer configuration, and workload characteristics.*
+
+## Contributing to Documentation
+
+Documentation lives in the `docs/` directory:
+
+```
+docs/
+├── GETTING_STARTED.md           # Quick start guide
+├── README.md                    # This file
+├── USER_GUIDE/                  # User documentation
+├── DEVELOPER_GUIDE/             # Developer documentation
+├── FEATURES/                    # Feature-specific docs
+└── research/                    # Historical/experimental
+```
+
+### Style Guidelines
+
+- Use clear, concise language
+- Include code examples for all major concepts
+- Cross-reference related topics
+- Keep technical accuracy - verify against implementation
+
+### Building Documentation
+
+Documentation is plain Markdown. No special build process required.
+
+## External Resources
+
+- [BitBarrel GitHub Repository](https://github.com/your-repo/bitbarrel)
+- [Nim Programming Language](https://nim-lang.org/)
+- [Original Bitcask Paper](https://riak.com/assets/bitcask-intro.pdf)
+- [CLAUDE.md](../CLAUDE.md) - Development guidelines for the project
+
+## Need Help?
+
+- Check the [FAQ](USER_GUIDE/tutorial.md#faq) in the tutorial
+- Look at examples in the `examples/` directory
+- Run tests: `nimble test`
+- Review architecture: [DEVELOPER_GUIDE/architecture.md](DEVELOPER_GUIDE/architecture.md)
