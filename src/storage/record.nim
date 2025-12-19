@@ -1,6 +1,6 @@
 ## Record format and encoding for Bitcask
 
-import std/[endians, strutils, times]
+import std/[endians, times]
 import ../bitbarrel/types
 import ./crc32
 import ./compression

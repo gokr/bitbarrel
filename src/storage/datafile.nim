@@ -1,6 +1,6 @@
 ## Data file implementation for Bitcask storage model
 
-import std/[os, times, locks, strformat]
+import std/[os, times, locks]
 when defined(posix):
   import std/posix
 import ../bitbarrel/types

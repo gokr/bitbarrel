@@ -8,8 +8,6 @@
 
 {.experimental: "codeReordering".}
 
-import ../bitbarrel/types
-
 # Compression algorithm IDs
 const
   ALG_NONE* = 0
