@@ -128,6 +128,8 @@ type
     rangeCacheSize*: int          # Max RangeKeyDirs in memory (default: 10)
     maxDataFileSizeMB*: int       # Max Barrel2 data file size (default: 1024)
     autoSplitEnabled*: bool       # Enable automatic range splitting (default: true)
+    flushIntervalMs*: int         # Time-based flush interval in ms (default: 1000, 0 = disabled)
+    enableBarrel2Recovery*: bool  # Enable Barrel2 recovery on startup (default: true)
 
   BarrelConfig* = object
     # Storage config
@@ -158,3 +160,31 @@ type
     timestamp*: int64
     recordSize*: uint32
     deleted*: bool
+
+  # Barrel2 recovery configuration (for HugeBarrel)
+  Barrel2RecoveryOptions* = object
+    validateChecksums*: bool      # Validate CRC32 on each record (default: true)
+    skipCorruptRecords*: bool     # Skip bad records vs abort (default: true)
+    maxProgressInterval*: int     # Report progress every N records (default: 10000)
+    enableVerboseLogging*: bool   # Detailed logging (default: false)
+
+  # Barrel2 recovery statistics
+  Barrel2RecoveryStats* = object
+    filesScanned*: int            # Number of data files scanned
+    totalRecords*: int            # Total records read
+    validRecords*: int            # Records with valid CRC32
+    corruptRecords*: int          # Records with invalid CRC32
+    tombstoneRecords*: int        # Deleted records (empty value)
+    orphanedRecords*: int         # Records not in any RangeKeyDir
+    recoveredRecords*: int        # Records successfully recovered
+    bytesScanned*: int64          # Total bytes scanned
+    recoveryTimeMs*: int64        # Recovery duration in milliseconds
+    rangesCreated*: int           # New RangeKeyDirs created
+    rangesUpdated*: int           # Existing RangeKeyDirs updated
+
+  # Pending split marker for atomic split operations
+  PendingSplit* = object
+    oldRangeKey*: string
+    leftRangeKey*: string
+    rightRangeKey*: string
+    timestamp*: int64

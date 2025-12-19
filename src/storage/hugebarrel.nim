@@ -2,16 +2,16 @@
 ##
 ## Coordinates between Barrel1 (CritBit for RangeKeyDirs) and Barrel2 (data files)
 
-import std/[tables, options, os, strformat, algorithm, locks, times]
+import std/[tables, options, os, strformat, strutils, algorithm, locks, times, endians]
 import ../bitbarrel/types
 import ../bitbarrel/barrel
 import ../storage/datafile
 import rangekeydir
+import crc32
 
 const
   DEFAULT_RANGE_CACHE_SIZE = 10
-  DEFAULT_MAX_ENTRIES_PER_RANGE = 100_000
-  DEFAULT_MAX_DATA_FILE_SIZE_MB = 1024
+  PENDING_SPLIT_KEY* = "__PENDING_SPLIT__"
 
 type
   RangeKeyDirCache* = object
@@ -38,6 +38,16 @@ type
     ranges*: seq[tuple[minKey: string, maxKey: string, rangeKey: string]]
     rangeKeyCache*: RangeKeyDirCache
 
+    # Time-based flush tracking
+    lastFlushTime*: float  # Last flush time (cpuTime() * 1000)
+
+# Forward declarations for functions used before they're defined
+proc shouldTimeFlush*(hb: HugeBarrel): bool
+proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string)
+proc recoverPendingSplit*(hb: var HugeBarrel)
+proc rebuildFromBarrel2*(hb: var HugeBarrel, options: Barrel2RecoveryOptions = Barrel2RecoveryOptions()): Barrel2RecoveryStats
+proc flushDirtyRanges*(hb: var HugeBarrel): int
+
 proc initRangeKeyDirCache(maxSize: int): RangeKeyDirCache =
   ## Initialize LRU cache for RangeKeyDirs
   result.cache = initTable[string, RangeKeyDir]()
@@ -45,14 +55,25 @@ proc initRangeKeyDirCache(maxSize: int): RangeKeyDirCache =
   result.maxSize = maxSize
   initLock(result.lock)
 
-proc evictLRU(cache: var RangeKeyDirCache) =
+proc evictLRU(cache: var RangeKeyDirCache): tuple[rangeKey: string, rkd: RangeKeyDir, wasDirty: bool] =
   ## Evict least recently used RangeKeyDir
+  ## Returns the evicted data so caller can save if dirty
   if cache.lruList.len == 0:
-    return
+    return ("", newRangeKeyDir(), false)
 
   let oldestKey = cache.lruList[0]
+
+  # Safety check: key might have been manually deleted from cache
+  if oldestKey notin cache.cache:
+    # Just remove from LRU list and try next
+    cache.lruList.delete(0)
+    return ("", newRangeKeyDir(), false)
+
+  let evictedRkd = cache.cache[oldestKey]
+  let wasDirty = evictedRkd.isDirty
   cache.lruList.delete(0)
   cache.cache.del(oldestKey)
+  return (oldestKey, evictedRkd, wasDirty)
 
 proc cacheGet(cache: var RangeKeyDirCache, rangeKey: string): Option[RangeKeyDir] =
   ## Get RangeKeyDir from cache, update LRU
@@ -67,16 +88,21 @@ proc cacheGet(cache: var RangeKeyDirCache, rangeKey: string): Option[RangeKeyDir
     else:
       return none(RangeKeyDir)
 
-proc cachePut(cache: var RangeKeyDirCache, rangeKey: string, rkd: RangeKeyDir) =
-  ## Put RangeKeyDir in cache
-  withLock(cache.lock):
+proc cachePut(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
+  ## Put RangeKeyDir in cache with automatic eviction
+  withLock(hb.rangeKeyCache.lock):
     # Evict if at capacity
-    if cache.lruList.len >= cache.maxSize:
-      cache.evictLRU()
+    if hb.rangeKeyCache.lruList.len >= hb.rangeKeyCache.maxSize:
+      let (evictedKey, evictedRkd, wasDirty) = hb.rangeKeyCache.evictLRU()
+      # Save evicted range if it was dirty
+      if wasDirty:
+        let evictedSerialized = evictedRkd.serialize()
+        discard hb.barrel1.set(evictedKey, evictedSerialized)
+        echo fmt"Saved evicted dirty range {evictedKey}"
 
     # Add to cache and LRU list
-    cache.cache[rangeKey] = rkd
-    cache.lruList.add(rangeKey)
+    hb.rangeKeyCache.cache[rangeKey] = rkd
+    hb.rangeKeyCache.lruList.add(rangeKey)
 
 proc cacheClear*(cache: var RangeKeyDirCache) =
   ## Clear the cache
@@ -170,19 +196,22 @@ proc loadRangeKeyDir(hb: var HugeBarrel, rangeKey: string): RangeKeyDir =
   # Check cache first
   let cached = hb.rangeKeyCache.cacheGet(rangeKey)
   if cached.isSome():
+    echo fmt"loadRangeKeyDir: Cache hit for {rangeKey}, entryCount={cached.get().len()}"
     return cached.get()
-
 
   # Load from Barrel1
   let serialized = hb.barrel1.get(rangeKey)
+  echo fmt"loadRangeKeyDir: Cache miss for {rangeKey}, loading from Barrel1, serializedSize={serialized.len}"
   if serialized == "":
+    echo fmt"loadRangeKeyDir: No data in Barrel1 for {rangeKey}, creating empty RangeKeyDir"
     # Create empty RangeKeyDir
     return newRangeKeyDir()
 
 
   let rkd = deserialize(serialized)
+  echo fmt"loadRangeKeyDir: Deserialized {rangeKey} from Barrel1, entryCount={rkd.len()}"
 
-  hb.rangeKeyCache.cachePut(rangeKey, rkd)
+  hb.cachePut(rangeKey, rkd)
 
   return rkd
 
@@ -206,7 +235,9 @@ proc saveRangeMetadata(hb: var HugeBarrel) =
     serialized.add(r.maxKey)
     serialized.add('\x00')
 
-  discard hb.barrel1.set("__RANGES_METADATA__", serialized)
+  let success = hb.barrel1.set("__RANGES_METADATA__", serialized)
+  if not success:
+    raise newException(IOError, fmt"Failed to save range metadata to Barrel1")
 
 proc loadRangeMetadata(hb: var HugeBarrel) =
   ## Load range metadata from Barrel1
@@ -262,8 +293,9 @@ proc rebuildRangesFromBarrel1*(hb: var HugeBarrel) =
   hb.ranges = @[]
   var processedCount = 0
 
-  # Iterate all keys in barrel1
-  for rangeKey in hb.barrel1.keys():
+  # Iterate all range keys in barrel1 using listKeys() method
+  let allKeys = hb.barrel1.listKeys(limit = 100000)  # Get up to 100K keys
+  for rangeKey in allKeys:
     # Skip the special metadata key
     if rangeKey == "__RANGES_METADATA__":
       continue
@@ -295,18 +327,23 @@ proc rebuildRangesFromBarrel1*(hb: var HugeBarrel) =
 proc saveRangeKeyDir(hb: var HugeBarrel, rangeKey: string, rkd: var RangeKeyDir) =
   ## Save a RangeKeyDir to Barrel1
 
+  echo fmt"saveRangeKeyDir: Saving {rangeKey}, entryCount={rkd.len()}, isDirty={rkd.isDirty}"
   let serialized = rkd.serialize()
+  echo fmt"saveRangeKeyDir: Serialized size={serialized.len} bytes"
 
   let success = hb.barrel1.set(rangeKey, serialized)
 
   if not success:
-    echo fmt"ERROR: Failed to save RangeKeyDir to Barrel1!"
+    raise newException(IOError, fmt"Failed to save RangeKeyDir {rangeKey} to Barrel1")
+  else:
+    echo fmt"saveRangeKeyDir: Successfully saved {rangeKey} to Barrel1"
 
-  # Update cache
-  hb.rangeKeyCache.cachePut(rangeKey, rkd)
+  # Update cache - let cachePut handle eviction and save
+  hb.cachePut(rangeKey, rkd)
 
   # Clear dirty flag since we just saved
   rkd.isDirty = false
+  echo fmt"saveRangeKeyDir: Cleared dirty flag for {rangeKey}"
 
 # --- Key operations ---
 
@@ -315,21 +352,27 @@ proc get*(hb: var HugeBarrel, key: string): string =
 
   # Find which range this key belongs to
   let rangeKey = hb.findRangeForKey(key)
+  echo fmt"get: Looking for key '{key}', found range '{rangeKey}', total ranges={hb.ranges.len}"
 
   if rangeKey == "":
+    echo fmt"get: No range found for key '{key}'"
     return ""
 
   # Load the RangeKeyDir
   let rkd = hb.loadRangeKeyDir(rangeKey)
+  echo fmt"get: Loaded range {rangeKey}, entryCount={rkd.len()}"
 
   # Find the entry
   let entry = rkd.find(key)
+  echo fmt"get: Looking for key '{key}' in range {rangeKey}, found={entry.isSome()}"
 
   if entry.isNone() or entry.get().deleted:
+    echo fmt"get: Key '{key}' not found or deleted"
     return ""
 
   # Read from data file
   let fileId = entry.get().fileId
+  echo fmt"get: Key found at fileId={fileId}, recordPos={entry.get().recordPos}"
   var dataFileRef = hb.getOrCreateDataFile(fileId)
 
   # Build RecordInfo
@@ -339,18 +382,38 @@ proc get*(hb: var HugeBarrel, key: string): string =
   recordInfo.valueSize = entry.get().valueSize
   recordInfo.recordSize = entry.get().recordSize
 
-  let (readKey, value, timestamp) = dataFileRef[].readRecord(recordInfo)
+  let (_, value, _) = dataFileRef[].readRecord(recordInfo)
+  echo fmt"get: Read value '{value}' for key '{key}'"
 
   return value
 
 proc get*(hb: HugeBarrel, key: string): string =
   ## Get value for a key (const version)
+  echo fmt"get(const): Looking for key '{key}'"
   var mutableHb = hb
   result = get(mutableHb, key)
+  echo fmt"get(const): Returning '{result}' for key '{key}'"
+
+proc flushAllCachedRanges*(hb: var HugeBarrel): int =
+  ## Flush all dirty cached ranges to Barrel1
+  ## Only iterates over cached ranges (more efficient than flushDirtyRanges)
+  var count = 0
+  for rangeKey in hb.rangeKeyCache.cache.keys:
+    var rkd = hb.rangeKeyCache.cache[rangeKey]
+    if rkd.isDirty:
+      rkd.flush()
+      hb.saveRangeKeyDir(rangeKey, rkd)
+      inc count
+  return count
 
 proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   ## Split a range into two halves
   ## Returns (leftRangeKey, rightRangeKey)
+
+  # Before splitting, save all dirty cached ranges to prevent data loss during eviction
+  let dirtyCount = hb.flushAllCachedRanges()
+  if dirtyCount > 0:
+    echo fmt"Flushed {dirtyCount} dirty ranges before split"
 
   # Load the current RangeKeyDir
   var rkd = hb.loadRangeKeyDir(rangeKey)
@@ -372,7 +435,6 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
 
   # Find split point (median)
   let splitIndex = allEntries.len div 2
-  let splitKey = allEntries[splitIndex].key
 
   # Create two new RangeKeyDirs
   let leftRangeKey = fmt"R{hb.nextFileId:010d}"
@@ -410,10 +472,10 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   # Save updated range metadata (since hb.ranges changed)
   hb.saveRangeMetadata()
 
-  # Update cache
+  # Update cache by saving the new ranges
   hb.rangeKeyCache.cacheDel(rangeKey)
-  hb.rangeKeyCache.cachePut(leftRangeKey, leftRkd)
-  hb.rangeKeyCache.cachePut(rightRangeKey, rightRkd)
+  hb.saveRangeKeyDir(leftRangeKey, leftRkd)
+  hb.saveRangeKeyDir(rightRangeKey, rightRkd)
 
   echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
 
@@ -432,6 +494,8 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   if rangeKey == "":
     # Create new range
     rangeKey = fmt"R{hb.nextFileId:010d}"
+    var newRange = newRangeKeyDir(key, key)
+    hb.saveRangeKeyDir(rangeKey, newRange)
     hb.ranges.add((minKey: key, maxKey: key, rangeKey: rangeKey))
     hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
     # Save metadata since we added a new range
@@ -472,19 +536,19 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   rkd.insert(key, entry)
   rkd.isDirty = true
 
-  # Save RangeKeyDir if buffer is full
-  if rkd.shouldFlush():
+  # Save RangeKeyDir if buffer is full OR time-based flush is due
+  if rkd.shouldFlush() or hb.shouldTimeFlush():
     rkd.flush()
     hb.saveRangeKeyDir(rangeKey, rkd)
+    hb.lastFlushTime = cpuTime() * 1000
   else:
-    # Still need to update cache with the modified RangeKeyDir!
-    # Otherwise get() will load the stale version from Barrel1
-    hb.rangeKeyCache.cachePut(rangeKey, rkd)
+    # Update cache with the modified RangeKeyDir!
+    hb.cachePut(rangeKey, rkd)
 
   # Check if range needs splitting
   if rkd.len() > hb.config.maxEntriesPerRange and hb.config.autoSplitEnabled:
-    # Perform range split
-    discard hb.splitRange(rangeKey)
+    # Perform atomic range split (with crash recovery marker)
+    discard hb.splitRangeAtomic(rangeKey)
 
   hb.currentFileSize += recordInfo.recordSize + 4  # +4 for CRC
 
@@ -540,7 +604,8 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
     nextFileId: 2,  # Start at 2 so first file is 1
     currentFileId: 1,  # Initialize to first file ID
     currentFileSize: 0,
-    ranges: @[]
+    ranges: @[],
+    lastFlushTime: cpuTime() * 1000  # Initialize flush time
   )
   initLock(result.barrel2Lock)
 
@@ -580,14 +645,40 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
     else:
       echo fmt"Loaded {result.ranges.len} ranges from Barrel1"
 
+    # Recover any interrupted split operations
+    result.recoverPendingSplit()
+
+    # Run Barrel2 recovery if enabled (recovers orphaned records)
+    if config.hugeConfig.enableBarrel2Recovery:
+      let recoveryOpts = Barrel2RecoveryOptions(
+        validateChecksums: config.validateCrc,
+        skipCorruptRecords: true,
+        maxProgressInterval: 10000,
+        enableVerboseLogging: false
+      )
+      let stats = result.rebuildFromBarrel2(recoveryOpts)
+      if stats.recoveredRecords > 0:
+        echo fmt"Recovered {stats.recoveredRecords} orphaned records from Barrel2"
+
   # Create first data file
   result.createNewDataFile()
 
 proc close*(hb: var HugeBarrel) =
   ## Close the HugeBarrel
 
+  echo fmt"close: Flushing all ranges..."
+
+  # First, flush ALL dirty ranges (not just cached ones)
+  # This ensures data in ranges that were never loaded into cache is also saved
+  let flushedCount = hb.flushDirtyRanges()
+  echo fmt"close: Flushed {flushedCount} dirty ranges"
+
+  echo fmt"close: Saving {hb.rangeKeyCache.cache.len} cached RangeKeyDirs"
+
   # Save all cached RangeKeyDirs (even if not dirty)
-  for rangeKey, rkd in hb.rangeKeyCache.cache:
+  for rangeKey in hb.rangeKeyCache.cache.keys:
+    var rkd = hb.rangeKeyCache.cache[rangeKey]
+    echo fmt"close: Saving {rangeKey}, entryCount={rkd.len()}, isDirty={rkd.isDirty}"
     let serialized = rkd.serialize()
     discard hb.barrel1.set(rangeKey, serialized)
 
@@ -618,13 +709,431 @@ proc getRangeKeys*(hb: HugeBarrel): seq[string] =
   for r in hb.ranges:
     result.add(r.rangeKey)
 
-proc flushAllRanges*(hb: var HugeBarrel): int =
+proc flushDirtyRanges*(hb: var HugeBarrel): int =
   ## Flush all dirty ranges to Barrel1
+  ## Iterates over ALL ranges (not just cached ones) to ensure complete persistence
+  echo fmt"flushDirtyRanges: Starting flush of {hb.ranges.len} ranges"
   var count = 0
-  for rangeKey in hb.rangeKeyCache.cache.keys:
-    var rkd = hb.rangeKeyCache.cache[rangeKey]
+  for r in hb.ranges:
+    var rkd = hb.loadRangeKeyDir(r.rangeKey)  # Load from cache or Barrel1
+    echo fmt"flushDirtyRanges: Range {r.rangeKey} isDirty={rkd.isDirty}"
     if rkd.isDirty:
       rkd.flush()
-      hb.saveRangeKeyDir(rangeKey, rkd)
+      hb.saveRangeKeyDir(r.rangeKey, rkd)
       inc count
+  echo fmt"flushDirtyRanges: Flushed {count} dirty ranges"
   return count
+
+# --- Time-based flush ---
+
+proc shouldTimeFlush*(hb: HugeBarrel): bool =
+  ## Check if time-based flush is needed
+  if hb.config.flushIntervalMs <= 0:
+    return false
+  let now = cpuTime() * 1000
+  let elapsed = now - hb.lastFlushTime
+  return elapsed >= hb.config.flushIntervalMs.float
+
+proc flushIfNeeded*(hb: var HugeBarrel) =
+  ## Flush dirty ranges if time threshold exceeded
+  if hb.shouldTimeFlush():
+    discard hb.flushDirtyRanges()
+    hb.lastFlushTime = cpuTime() * 1000
+
+# --- Barrel2 Recovery ---
+
+proc scanBarrel2Files*(hb: HugeBarrel): seq[string] =
+  ## Scan barrel2 directory for data files
+  ## Returns sorted list of file paths (by file ID)
+  result = @[]
+  let barrel2Dir = hb.path / "barrel2"
+
+  if not dirExists(barrel2Dir):
+    return
+
+  for kind, path in walkDir(barrel2Dir):
+    if kind == pcFile and path.endsWith(".data"):
+      # Validate filename format: file_NNNNNN.data
+      let filename = extractFilename(path)
+      if filename.startsWith("file_") and filename.len == 17:
+        result.add(path)
+
+  # Sort by file ID (numeric order)
+  result.sort(proc(a, b: string): int =
+    let aName = extractFilename(a)
+    let bName = extractFilename(b)
+    let aId = parseInt(aName[5..10])
+    let bId = parseInt(bName[5..10])
+    cmp(aId, bId)
+  )
+
+proc extractFileId*(filePath: string): uint32 =
+  ## Extract file ID from barrel2 file path
+  ## file_000001.data -> 1
+  let filename = extractFilename(filePath)
+  if filename.startsWith("file_") and filename.len == 17:
+    return parseInt(filename[5..10]).uint32
+  return 0
+
+proc readRecordForRecovery*(filePath: string, offset: int64, validateCrc: bool = true):
+    tuple[key: string, timestamp: int64, valueSize: uint32, recordSize: uint32, deleted: bool, valid: bool] =
+  ## Read minimal record info for recovery scanning
+  ## Returns (key, timestamp, valueSize, recordSize, deleted, valid)
+  ## This is optimized to read only what's needed for index recovery
+  result.valid = false
+
+  let fileSize = getFileSize(filePath)
+  if offset < 0 or offset >= fileSize:
+    return
+
+  let readFile = open(filePath, fmRead)
+  defer: readFile.close()
+
+  readFile.setFilePos(offset, fspSet)
+
+  # Read CRC32 (4 bytes)
+  var storedCrc: uint32
+  let crcBytesRead = readFile.readBuffer(addr storedCrc, 4)
+  if crcBytesRead != 4:
+    return
+
+  # Read timestamp (8 bytes, little-endian)
+  var rawTimestamp: int64
+  let tsBytesRead = readFile.readBuffer(addr rawTimestamp, 8)
+  if tsBytesRead != 8:
+    return
+  littleEndian64(addr result.timestamp, addr rawTimestamp)
+
+  # Read key length (4 bytes, little-endian)
+  var rawKeyLen: uint32
+  let keyLenRead = readFile.readBuffer(addr rawKeyLen, 4)
+  if keyLenRead != 4:
+    return
+  var keyLen: uint32
+  littleEndian32(addr keyLen, addr rawKeyLen)
+
+  # Validate key length
+  if keyLen > MAX_KEY_SIZE.uint32:
+    return
+
+  # Read key
+  result.key = newString(keyLen.int)
+  if keyLen > 0:
+    let keyRead = readFile.readBuffer(addr result.key[0], keyLen.int)
+    if keyRead != keyLen.int:
+      return
+
+  # Read value length (4 bytes, little-endian)
+  var rawValueLen: uint32
+  let valueLenRead = readFile.readBuffer(addr rawValueLen, 4)
+  if valueLenRead != 4:
+    return
+  littleEndian32(addr result.valueSize, addr rawValueLen)
+
+  # Validate value length
+  if result.valueSize > MAX_VALUE_SIZE.uint32:
+    return
+
+  # Read flags (1 byte) and algorithm (1 byte)
+  var flags: uint8
+  var algo: uint8
+  if readFile.readBuffer(addr flags, 1) != 1:
+    return
+  if readFile.readBuffer(addr algo, 1) != 1:
+    return
+
+  # Calculate total record size: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + flags(1) + algo(1) + value
+  result.recordSize = (4 + 8 + 4 + keyLen.int + 4 + 1 + 1 + result.valueSize.int).uint32
+
+  # Check if value is a tombstone (deleted)
+  result.deleted = result.valueSize == 0
+
+  # Validate CRC32 if requested
+  if validateCrc:
+    # Read the full record data for CRC verification
+    let recordDataLen = result.recordSize.int - 4  # Exclude CRC itself
+    readFile.setFilePos(offset + 4, fspSet)  # Position after CRC
+    var recordData = newString(recordDataLen)
+    let bytesRead = readFile.readBuffer(addr recordData[0], recordDataLen)
+    if bytesRead != recordDataLen:
+      return
+    let computedCrc = crc32(recordData)
+    if storedCrc != computedCrc:
+      return  # CRC mismatch, invalid record
+
+  result.valid = true
+
+proc rebuildFromBarrel2*(hb: var HugeBarrel, options: Barrel2RecoveryOptions = Barrel2RecoveryOptions()): Barrel2RecoveryStats =
+  ## Full recovery from Barrel2 data files
+  ## Scans all records and rebuilds any missing RangeKeyDir entries
+  result = Barrel2RecoveryStats()
+  let startTime = cpuTime()
+
+  # Step 1: Scan data files
+  let dataFiles = hb.scanBarrel2Files()
+  result.filesScanned = dataFiles.len
+
+  if dataFiles.len == 0:
+    return
+
+  if options.enableVerboseLogging:
+    echo fmt("Barrel2 recovery: scanning {dataFiles.len} data files")
+
+  # Step 2: Build recovery map
+  # Map: rangeKey -> Table[key, RangeKeyDirEntry]
+  var recoveryMap = initTable[string, Table[string, RangeKeyDirEntry]]()
+
+  for filePath in dataFiles:
+    let fileId = extractFileId(filePath)
+    var offset = HEADER_SIZE.int64  # Skip file header
+    let fileSize = getFileSize(filePath)
+
+    while offset < fileSize:
+      let (key, timestamp, valueSize, recordSize, deleted, valid) =
+        readRecordForRecovery(filePath, offset, options.validateChecksums)
+
+      if not valid:
+        if options.skipCorruptRecords:
+          inc result.corruptRecords
+          # Try to find next valid record by scanning forward
+          offset += 1
+          continue
+        else:
+          raise newException(IOError, fmt("Corrupt record at {filePath}:{offset}"))
+
+      inc result.totalRecords
+      inc result.validRecords
+      result.bytesScanned += recordSize.int64
+
+      # Check if this is a tombstone
+      if deleted:
+        inc result.tombstoneRecords
+
+      # Find or create target range
+      var rangeKey = hb.findRangeForKey(key)
+      if rangeKey == "":
+        # Key doesn't fit in any existing range - create new range
+        rangeKey = fmt"R{hb.nextFileId:010d}"
+        inc hb.nextFileId
+        hb.addRangeMetadata(rangeKey, key, key)
+        inc result.rangesCreated
+
+      # Check if this record is newer than what we have indexed
+      let rkd = hb.loadRangeKeyDir(rangeKey)
+      let existing = rkd.find(key)
+
+      var shouldAdd = false
+      if existing.isNone():
+        shouldAdd = true
+        inc result.orphanedRecords
+      elif existing.get().timestamp < timestamp:
+        # Record in Barrel2 is newer than what's indexed
+        shouldAdd = true
+        inc result.orphanedRecords
+
+      if shouldAdd:
+        # Calculate valuePos: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + flags(1) + algo(1)
+        let valuePos = offset.uint64 + 4 + 8 + 4 + key.len.uint64 + 4 + 1 + 1
+
+        # Build entry for recovery
+        let entry = RangeKeyDirEntry(
+          key: key,
+          fileId: fileId,
+          recordPos: offset.uint64 + 4,  # After CRC
+          valuePos: valuePos,
+          valueSize: valueSize,
+          timestamp: timestamp,
+          recordSize: recordSize,
+          deleted: deleted
+        )
+
+        if rangeKey notin recoveryMap:
+          recoveryMap[rangeKey] = initTable[string, RangeKeyDirEntry]()
+
+        # Keep newest entry for each key
+        if key notin recoveryMap[rangeKey] or
+           recoveryMap[rangeKey][key].timestamp < timestamp:
+          recoveryMap[rangeKey][key] = entry
+
+      # Report progress
+      if options.maxProgressInterval > 0 and result.totalRecords mod options.maxProgressInterval == 0:
+        echo fmt("Barrel2 recovery progress: {result.totalRecords} records scanned")
+
+      offset += recordSize.int64
+
+  # Step 3: Apply recovery to RangeKeyDirs
+  for rangeKey, entries in recoveryMap:
+    var rkd = hb.loadRangeKeyDir(rangeKey)
+
+    for key, entry in entries:
+      rkd.insert(key, entry)
+      inc result.recoveredRecords
+
+    rkd.flush()
+    hb.saveRangeKeyDir(rangeKey, rkd)
+    inc result.rangesUpdated
+
+  # Step 4: Save updated metadata
+  if result.recoveredRecords > 0:
+    hb.saveRangeMetadata()
+
+  result.recoveryTimeMs = ((cpuTime() - startTime) * 1000).int64
+
+  if options.enableVerboseLogging or result.recoveredRecords > 0:
+    echo fmt("Barrel2 recovery complete: {result.recoveredRecords} records recovered from {result.filesScanned} files in {result.recoveryTimeMs}ms")
+
+# --- Atomic Split with Pending Marker ---
+
+proc serializePendingSplit(ps: PendingSplit): string =
+  ## Serialize PendingSplit to string format
+  result = ps.oldRangeKey & "\x00" & ps.leftRangeKey & "\x00" & ps.rightRangeKey & "\x00"
+  var tsBytes: array[8, byte]
+  var ts = ps.timestamp
+  littleEndian64(addr tsBytes[0], addr ts)
+  for b in tsBytes:
+    result.add(char(b))
+
+proc deserializePendingSplit(data: string): PendingSplit =
+  ## Deserialize PendingSplit from string format
+  var pos = 0
+
+  # Parse oldRangeKey
+  var endPos = data.find('\x00', pos)
+  if endPos < 0: return
+  result.oldRangeKey = data[pos ..< endPos]
+  pos = endPos + 1
+
+  # Parse leftRangeKey
+  endPos = data.find('\x00', pos)
+  if endPos < 0: return
+  result.leftRangeKey = data[pos ..< endPos]
+  pos = endPos + 1
+
+  # Parse rightRangeKey
+  endPos = data.find('\x00', pos)
+  if endPos < 0: return
+  result.rightRangeKey = data[pos ..< endPos]
+  pos = endPos + 1
+
+  # Parse timestamp (8 bytes, little-endian)
+  if pos + 8 > data.len: return
+  var tsBytes: array[8, byte]
+  for i in 0..7:
+    tsBytes[i] = byte(data[pos + i])
+  littleEndian64(addr result.timestamp, addr tsBytes[0])
+
+proc recoverPendingSplit*(hb: var HugeBarrel) =
+  ## Called during open to complete interrupted splits
+  let pendingData = hb.barrel1.get(PENDING_SPLIT_KEY)
+  if pendingData == "":
+    return  # No pending split
+
+  echo "Found pending split marker, recovering..."
+  let pending = deserializePendingSplit(pendingData)
+
+  # Check what state we're in
+  let leftExists = hb.barrel1.get(pending.leftRangeKey) != ""
+  let rightExists = hb.barrel1.get(pending.rightRangeKey) != ""
+  let oldExists = hb.barrel1.get(pending.oldRangeKey) != ""
+
+  if leftExists and rightExists:
+    # Split completed, just clean up
+    if oldExists:
+      discard hb.barrel1.delete(pending.oldRangeKey)
+    # Rebuild metadata from Barrel1
+    hb.rebuildRangesFromBarrel1()
+    echo fmt("Recovered completed split: {pending.oldRangeKey} -> {pending.leftRangeKey}, {pending.rightRangeKey}")
+  else:
+    # Split incomplete - restore from old range
+    # Old range should still have all data
+    echo fmt("Recovering incomplete split of {pending.oldRangeKey}")
+    if leftExists:
+      discard hb.barrel1.delete(pending.leftRangeKey)
+    if rightExists:
+      discard hb.barrel1.delete(pending.rightRangeKey)
+
+  # Clear marker
+  discard hb.barrel1.delete(PENDING_SPLIT_KEY)
+
+proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
+  ## Atomic split with recovery marker
+  ## Returns (leftRangeKey, rightRangeKey)
+
+  # Load the current RangeKeyDir
+  var rkd = hb.loadRangeKeyDir(rangeKey)
+
+  # Collect all entries (sorted array + pending)
+  var allEntries: seq[RangeKeyDirEntry] = @[]
+
+  # Add from sorted array
+  if rkd.entryCount > 0:
+    for key, entry in rkd.pairs():
+      allEntries.add(entry)
+
+  # Add from pending
+  for key, entry in rkd.pendingInserts:
+    allEntries.add(entry)
+
+  # Sort by key
+  allEntries.sort(proc(a, b: RangeKeyDirEntry): int = cmp(a.key, b.key))
+
+  # Find split point (median)
+  let splitIndex = allEntries.len div 2
+
+  # Create new range keys
+  let leftRangeKey = fmt"R{hb.nextFileId:010d}"
+  inc(hb.nextFileId)
+  let rightRangeKey = fmt"R{hb.nextFileId:010d}"
+  inc(hb.nextFileId)
+
+  # Step 1: Write pending split marker FIRST (for atomicity)
+  let pendingSplit = PendingSplit(
+    oldRangeKey: rangeKey,
+    leftRangeKey: leftRangeKey,
+    rightRangeKey: rightRangeKey,
+    timestamp: getTime().toUnix()
+  )
+  discard hb.barrel1.set(PENDING_SPLIT_KEY, serializePendingSplit(pendingSplit))
+
+  # Step 2: Create and populate new RangeKeyDirs
+  var leftRkd = newRangeKeyDir(allEntries[0].key, allEntries[splitIndex - 1].key)
+  var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, allEntries[^1].key)
+
+  # Distribute entries
+  for i, entry in allEntries:
+    if i < splitIndex:
+      leftRkd.insert(entry.key, entry)
+    else:
+      rightRkd.insert(entry.key, entry)
+
+  # Step 3: Save both new RangeKeyDirs to Barrel1
+  hb.saveRangeKeyDir(leftRangeKey, leftRkd)
+  hb.saveRangeKeyDir(rightRangeKey, rightRkd)
+
+  # Step 4: Update in-memory metadata with new ranges
+  var newRanges: seq[tuple[minKey: string, maxKey: string, rangeKey: string]] = @[]
+  for r in hb.ranges:
+    if r.rangeKey != rangeKey:
+      newRanges.add(r)
+  newRanges.add((minKey: leftRkd.minKey, maxKey: leftRkd.maxKey, rangeKey: leftRangeKey))
+  newRanges.add((minKey: rightRkd.minKey, maxKey: rightRkd.maxKey, rangeKey: rightRangeKey))
+  newRanges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+  hb.ranges = newRanges
+
+  # Step 5: Save updated range metadata
+  hb.saveRangeMetadata()
+
+  # Step 6: Delete old range from Barrel1
+  discard hb.barrel1.delete(rangeKey)
+
+  # Step 7: Clear pending marker (split complete)
+  discard hb.barrel1.delete(PENDING_SPLIT_KEY)
+
+  # Update cache
+  hb.rangeKeyCache.cacheDel(rangeKey)
+  hb.cachePut(leftRangeKey, leftRkd)
+  hb.cachePut(rightRangeKey, rightRkd)
+
+  echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
+
+  result = (leftRangeKey, rightRangeKey)

@@ -1,6 +1,6 @@
 ## Tests for HugeBarrel - Two-tier storage
 
-import std/[unittest, os, strformat]
+import std/[unittest, os, strformat, strutils]
 import ../src/bitbarrel/types
 import ../src/bitbarrel/barrel
 import ../src/storage/hugebarrel
@@ -122,7 +122,7 @@ suite "HugeBarrel Tests":
       discard hb.set(fmt"key_{i}", fmt"value_{i}")
 
     # Flush to ensure RangeKeyDir is saved
-    let flushed = hb.flushAllRanges()
+    let flushed = hb.flushDirtyRanges()
     check flushed == 1
 
     # Clear cache
@@ -149,7 +149,7 @@ suite "HugeBarrel Tests":
       for i in 0..<50:
         discard hb.set(fmt"persistent_{i:03d}", fmt"value_{i:03d}")
 
-      discard hb.flushAllRanges()
+      discard hb.flushDirtyRanges()
       hb.close()
 
     # Reopen
@@ -254,6 +254,99 @@ suite "HugeBarrel Tests":
       check value == fmt"value_{i:03d}"
 
     hb.close()
+
+  test "Multiple data files":
+    ## Test that writes span multiple data files when size limit is reached
+    var config = defaultBarrelConfig()
+    config.mode = bmHugeCritBit
+    config.hugeConfig.maxDataFileSizeMB = 1  # Very small to force rotation
+
+    var hb = openHugeBarrel(TEST_DIR, config)
+
+    # Insert enough data to trigger file rotation
+    # With 1MB per file, we should get multiple files
+    let fileCount = 3
+    let keysPerFile = 500
+    for i in 0..<fileCount * keysPerFile:
+      let key = fmt"file_key_{i:05d}"
+      let value = repeat("X", 1000)  # 1KB value
+      discard hb.set(key, value)
+
+    # Verify data is still accessible
+    for i in 0..<fileCount * keysPerFile:
+      let key = fmt"file_key_{i:05d}"
+      let value = hb.get(key)
+      check value.len == 1000
+      check value[0] == 'X'
+
+    hb.close()
+
+  test "Range splitting with data file verification":
+    ## Test that range splitting works correctly and data spans multiple files
+    var config = defaultBarrelConfig()
+    config.mode = bmHugeCritBit
+    config.hugeConfig.maxEntriesPerRange = 50  # Force splits
+    config.hugeConfig.autoSplitEnabled = true
+    config.hugeConfig.maxDataFileSizeMB = 1
+
+    var hb = openHugeBarrel(TEST_DIR, config)
+
+    # Insert sorted keys to trigger range splitting
+    var insertedKeys: seq[string]
+    for i in 0..<200:
+      let key = fmt"split_key_{i:03d}"
+      let value = fmt"split_value_{i:03d}"
+      let success = hb.set(key, value)
+      check success
+      insertedKeys.add(key)
+
+    # Check that we have multiple ranges
+    let rangeCount = hb.getRangeCount()
+    check rangeCount > 1
+    echo fmt"Split test: Created {rangeCount} ranges"
+
+    # Verify all keys are still accessible after splitting
+    for key in insertedKeys:
+      let value = hb.get(key)
+      check value != ""
+      check value.startsWith("split_value_")
+
+    # Verify data persisted across restart
+    hb.close()
+
+    var hb2 = openHugeBarrel(TEST_DIR, config)
+    check hb2.getRangeCount() == rangeCount
+
+    for key in insertedKeys:
+      let value = hb2.get(key)
+      check value != ""
+      check value.startsWith("split_value_")
+
+    hb2.close()
+
+  test "Persistence across reopen (fixed)":
+    ## Test that data persists correctly after close and reopen
+    var config = defaultBarrelConfig()
+    config.mode = bmHugeCritBit
+
+    block initial_setup:
+      var hb = openHugeBarrel(TEST_DIR, config)
+
+      for i in 0..<50:
+        discard hb.set(fmt"persistent_{i:03d}", fmt"value_{i:03d}")
+
+      hb.close()
+
+    # Reopen
+    block verify_persistence:
+      var hb = openHugeBarrel(TEST_DIR, config)
+
+      # All keys should still exist
+      for i in 0..<50:
+        let value = hb.get(fmt"persistent_{i:03d}")
+        check value == fmt"value_{i:03d}"
+
+      hb.close()
 
 echo "Running HugeBarrel integration tests..."
 
