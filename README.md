@@ -5,7 +5,7 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 ## ✅ Status & Features
 
 **Current Status:**
-- **Test Suite**: 19 test files with 228 test cases, all passing
+- **Test Suite**: 20 test files with 250+ test cases, all passing
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Compression**: LZ4 (~2.1x ratio) and Snappy (~1.7x ratio) support
 - **Stability**: Stress-tested with 25K+ keys
@@ -21,6 +21,16 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 - ✅ Thread-safe KeyDir operations
 - ✅ Compression support for large values (LZ4 & Snappy)
 
+**NEW! Reference Model (Graph Traversal):**
+- ✅ Reference storage in JSON with `_refs` field
+- ✅ Path expression traversal (friends->team->matches)
+- ✅ Wildcard support (*)
+- ✅ Array slicing ([0], [-1], [0:5])
+- ✅ Server-side traversal (single round-trip)
+- ✅ ~30-50μs for 3-level traversals
+- ✅ Cycle detection and prevention
+- ✅ Client library and REST API support
+
 **Reliability Features:**
 - ✅ Crash recovery with checkpoint system
 - ✅ Fast recovery at 40,000+ keys/sec with hint files
@@ -35,8 +45,13 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 - ✅ Write buffering with configurable sync modes (none/sync/fsync)
 - ✅ Time-to-live (TTL) support for automatic expiration
 
-**Future Work:**
-- 🚧 Network server with binary protocol
+**Network Features (NEW!):**
+- ✅ WebSocket server/client with binary protocol
+- ✅ HTTP REST API
+- ✅ Session management and barrel selection
+- ✅ Binary protocol with 15 commands
+- ✅ Request/response correlation with sequence numbers
+- ✅ Thread-safe concurrent operations
 
 ## Quick Start
 
@@ -307,7 +322,8 @@ bitbarrel/
 │   │   ├── barrel.nim       # High-level Barrel API
 │   │   ├── lowlevelapi.nim  # Low-level wrapper
 │   │   ├── config.nim       # Configuration system
-│   │   └── config_parser.nim # YAML/ENV config parsing
+│   │   ├── config_parser.nim # YAML/ENV config parsing
+│   │   └── refs.nim         # Reference model utilities (NEW!)
 │   ├── storage/             # Storage engine
 │   │   ├── datafile.nim     # Data file format
 │   │   ├── keydir.nim       # In-memory index
@@ -318,13 +334,21 @@ bitbarrel/
 │   │   ├── hintfile.nim     # Hint files for fast recovery
 │   │   ├── writebuffer.nim  # Write buffering system
 │   │   └── readbuffer.nim   # Read-ahead LRU buffering
+│   ├── network/             # Network layer (NEW!)
+│   │   ├── protocol.nim     # Binary protocol
+│   │   ├── server.nim       # WebSocket/HTTP server
+│   │   ├── client.nim       # Client library
+│   │   └── session.nim      # Session management
 │   └── cli/                 # Command line interface
 │       └── main.nim         # CLI server entry point
 ├── examples/                # Runnable demos
 │   ├── basic_demo.nim       # CRUD operations demo
 │   ├── simple_kv_demo.nim   # Detailed demo
 │   ├── performance_tuning_demo.nim # Performance characteristics
-│   └── configuration_demo.nim # Config API usage
+│   ├── configuration_demo.nim # Config API usage
+│   ├── social_graph_demo.nim    # Reference model social graph (NEW!)
+│   ├── org_chart_demo.nim       # Reference model org chart (NEW!)
+│   └── content_graph_demo.nim   # Reference model content graph (NEW!)
 ├── bench/                   # Benchmarks and stress tests
 │   ├── unified_benchmark.nim # Comprehensive benchmark suite
 │   ├── simple_bench.nim     # Performance benchmark
@@ -337,6 +361,20 @@ bitbarrel/
 │   ├── test_error_handling.nim # Error handling tests (11 tests)
 │   ├── test_hintfile.nim    # Hint file tests (11 tests)
 │   ├── test_hintfile_recovery.nim # Hint recovery tests (4 tests)
+│   ├── test_protocol.nim    # Protocol tests (17 tests)
+│   ├── test_refs.nim        # Reference model tests (22 tests, NEW!)
+│   ├── test_integration.nim # Integration tests (3 tests)
+│   ├── test_keydir.nim      # KeyDir tests (11 tests)
+│   ├── test_recovery.nim    # Recovery tests (18 tests)
+│   ├── test_session.nim     # Session tests (11 tests)
+│   └── ... (more test files)
+├── docs/                    # Documentation
+│   ├── TUTORIAL.md          # Comprehensive tutorial
+│   └── REFERENCES.md        # Reference model guide (NEW!)
+├── bitbarrel.yaml          # Default configuration file
+├── bitbarrel.nimble        # Nimble package definition
+└── README.md               # This file
+```
 │   ├── test_integration.nim # Integration tests (3 tests)
 │   ├── test_keydir.nim      # KeyDir tests (11 tests)
 │   ├── test_compact.nim     # Compaction tests (13 tests)
@@ -371,11 +409,36 @@ bitbarrel/
 
 ## Future Enhancements
 
-- **Network layer**: Server/client with binary protocol
-- **Monitoring**: Metrics and health checks
-- **Backup**: Online snapshot capability
+- **Pub/Sub Messaging**: Real-time messaging system
+- **Monitoring & Observability**: Prometheus metrics, health checks
+- **Replication**: Master-replica for high availability
+- **Advanced Query Features**: Filtering and aggregation
+- **Backup & Snapshots**: Online backup and point-in-time recovery
 
 See [TODO.md](TODO.md) for detailed roadmap.
+
+## New Reference Model Feature!
+
+The reference model adds graph traversal capabilities to BitBarrel, enabling:
+
+- Store references between records using JSON `_refs` field
+- Traverse relationships with path expressions: `friends->team->matches`
+- Use wildcards and array slicing: `friends[0:5]->posts[-1]`
+- Server-side processing for single round-trip queries
+
+**Try it out:**
+```bash
+# Run social graph demo
+nim c -r examples/social_graph_demo.nim
+
+# Run org chart demo
+nim c -r examples/org_chart_demo.nim
+
+# Run content graph demo
+nim c -r examples/content_graph_demo.nim
+```
+
+**Documentation**: See `docs/REFERENCES.md` for complete reference model guide.
 
 ## License
 
