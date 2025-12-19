@@ -3,16 +3,12 @@
 import std/[unittest, times]
 import ../src/storage/record
 import ../src/bitbarrel/types
+import testutils
 
 suite "Record Module Tests":
-  test "CRC32 with known test vectors":
-    # Standard CRC32 test vectors
-    check crc32("") == 0x00000000'u32
-    check crc32("a") == 0xE8B7BE43'u32
-    check crc32("abc") == 0x352441C2'u32
-    check crc32("message digest") == 0x20159D7F'u32
-    check crc32("abcdefghijklmnopqrstuvwxyz") == 0x4C2750BD'u32
-    check crc32("123456789") == 0xCBF43926'u32
+  test "CRC32 test vectors":
+    for (input, expected) in crc32TestVectors:
+      check crc32(input) == expected
 
   test "CRC32 consistency":
     # Same input should always produce same output
