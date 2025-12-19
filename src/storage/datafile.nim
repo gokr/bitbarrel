@@ -1,6 +1,6 @@
 ## Data file implementation for Bitcask storage model
 
-import std/[os, times, locks]
+import std/[os, times, locks, strformat]
 when defined(posix):
   import std/posix
 import ../bitbarrel/types
@@ -326,8 +326,8 @@ proc readRecordAt*(df: var DataFile, offset: uint64): tuple[key: string, value: 
     if valueRead != valueLen.int:
       raise newException(IOError, "Failed to read value")
 
-  # Calculate total record size: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + value
-  let totalRecordSize = (4 + 8 + 4 + keyLen.int + 4 + valueLen.int).uint32
+  # Calculate total record size: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + flags(1) + algorithm(1) + value
+  let totalRecordSize = (4 + 8 + 4 + keyLen.int + 4 + 1 + 1 + valueLen.int).uint32
 
   # Re-read the full record data for CRC verification
   readFile.setFilePos(offset.int64 + 4, fspSet)  # Skip CRC32
@@ -337,9 +337,10 @@ proc readRecordAt*(df: var DataFile, offset: uint64): tuple[key: string, value: 
   if bytesRead != recordDataLen:
     raise newException(IOError, "Failed to read full record data")
 
-  # Verify CRC32
-  let computedCrc = crc32(recordData)
-  if storedCrc != computedCrc:
-    raise newException(IOError, "CRC32 mismatch at offset " & $offset)
+  # Verify CRC32 (only if validation is enabled)
+  if df.validateCrc:
+    let computedCrc = crc32(recordData)
+    if storedCrc != computedCrc:
+      raise newException(IOError, "CRC32 mismatch at offset " & $offset)
 
   result = (key, value, timestamp, totalRecordSize)

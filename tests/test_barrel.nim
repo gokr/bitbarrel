@@ -24,7 +24,7 @@ suite "Barrel API - Normal Mode":
 
   test "open and close barrel":
     let barrel = openBarrel(TestDir / "test.db")
-    check barrel.getMode() == bmNormal
+    check barrel.getMode() == bmHash
     check not barrel.isClosed()
     barrel.close()
     check barrel.isClosed()
@@ -350,7 +350,7 @@ suite "Multiple Barrels with Different Configs":
 
   test "different index modes":
     var normalConfig = defaultBarrelConfig()
-    normalConfig.mode = bmNormal
+    normalConfig.mode = bmHash
 
     var critbitConfig = defaultBarrelConfig()
     critbitConfig.mode = bmCritBit
@@ -358,7 +358,7 @@ suite "Multiple Barrels with Different Configs":
     let normalBarrel = openBarrel(TestDir / "normal.db", normalConfig)
     let critbitBarrel = openBarrel(TestDir / "critbit.db", critbitConfig)
 
-    check normalBarrel.getMode() == bmNormal
+    check normalBarrel.getMode() == bmHash
     check critbitBarrel.getMode() == bmCritBit
 
     # Both should work for basic ops

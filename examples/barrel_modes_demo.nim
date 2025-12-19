@@ -1,6 +1,6 @@
 ## BitBarrel Barrel Modes Demo
 ##
-## Demonstrates the three different barrel modes (bmNormal, bmCritBit, bmRanged)
+## Demonstrates the three different barrel modes (bmHash, bmCritBit, bmRanged)
 ## with practical use cases for each mode.
 ##
 ## Run with: nim c -r examples/barrel_modes_demo.nim
@@ -31,8 +31,8 @@ proc printSection(title: string) =
   echo ""
 
 proc demoNormalMode() =
-  ## Demonstrate bmNormal mode - hash table for O(1) lookups
-  printSection("Barrel Mode 1: bmNormal (Hash Table)")
+  ## Demonstrate bmHash mode - hash table for O(1) lookups
+  printSection("Barrel Mode 1: bmHash (Hash Table)")
 
   echo "Use case: Session storage, caching, general key-value operations"
   echo "Characteristics:"
@@ -42,9 +42,9 @@ proc demoNormalMode() =
   echo "  • Fastest for simple get/set operations"
   echo ""
 
-  # Create bmNormal barrel (this is the default)
+  # Create bmHash barrel (this is the default)
   var cfg = defaultBarrelConfig()
-  cfg.mode = BarrelMode.bmNormal  # Explicitly set normal mode
+  cfg.mode = BarrelMode.bmHash  # Explicitly set normal mode
   cfg.syncMode = UserSyncMode.Sync  # Balanced durability
   cfg.writeBufferSize = 64 * 1024  # 64KB buffer
 
@@ -84,7 +84,7 @@ proc demoNormalMode() =
   echo &"   ✓ Looked up {foundCount} sessions in {lookupTime*1000:.2f}ms"
   echo &"   ✓ Average lookup: {(lookupTime*1000000)/100:.2f}μs"
   echo ""
-  echo "🏆 bmNormal is perfect for: High-performance session stores, caching layers,"
+  echo "🏆 bmHash is perfect for: High-performance session stores, caching layers,"
   echo "   and any workload requiring fast O(1) key lookups"
   echo ""
 
@@ -268,7 +268,7 @@ proc main() =
   echo "This demo showcases all three barrel modes with practical examples."
   echo ""
   echo "Available modes:"
-  echo "  📦 bmNormal  - Hash table for O(1) lookups (default)"
+  echo "  📦 bmHash  - Hash table for O(1) lookups (default)"
   echo "  🌳 bmCritBit - Sorted keys with range queries"
   echo "  🗂️  bmRanged  - Lazy-loaded partitions for large datasets"
   echo ""
@@ -284,12 +284,12 @@ proc main() =
   echo "┌─────────────────────────────────────────────────────────────────────┐"
   echo "│ Mode      │ Best For                      │ Performance │ Memory   │"
   echo "├───────────┼───────────────────────────────┼─────────────┼──────────┤"
-  echo "│ bmNormal  │ Session storage, caching      │ Fastest     │ Moderate │"
+  echo "│ bmHash  │ Session storage, caching      │ Fastest     │ Moderate │"
   echo "│ bmCritBit │ Time-series, leaderboards     │ Fast        │ Moderate │"
   echo "│ bmRanged  │ Analytics, large datasets     │ Good        │ Low      │"
   echo "└─────────────────────────────────────────────────────────────────────┘"
   echo ""
-  echo "💡 Choose bmNormal for maximum performance, bmCritBit for ordered data,"
+  echo "💡 Choose bmHash for maximum performance, bmCritBit for ordered data,"
   echo "   and bmRanged when you have more keys than can fit in memory."
   echo ""
 

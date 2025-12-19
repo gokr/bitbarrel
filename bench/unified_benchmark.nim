@@ -253,10 +253,10 @@ proc testBarrelModes(config: BenchmarkConfig) =
   var bestResult: BenchmarkResult
   bestResult.opsPerSec = -1
 
-  # Test bmNormal mode
+  # Test bmHash mode
   let dbFileNormal = "bench_mode_normal.dat"
   var cfgNormal = defaultConfig()
-  cfgNormal.mode = BarrelMode.bmNormal
+  cfgNormal.mode = BarrelMode.bmHash
   var bbNormal = openDatabase(dbFileNormal, cfgNormal)
 
   let startNormal = cpuTime()
@@ -273,7 +273,7 @@ proc testBarrelModes(config: BenchmarkConfig) =
     opsPerSec: config.profile.operations.float / timeNormal,
     avgLatency: (timeNormal * 1000) / config.profile.operations.float,
     totalTime: timeNormal * 1000,
-    mode: "bmNormal",
+    mode: "bmHash",
     bufferMode: "O(1) hash"
   )
 
@@ -352,7 +352,7 @@ proc testBarrelModes(config: BenchmarkConfig) =
   echo ""
   echo &"🏆 Best barrel mode: {bestResult.mode} ({int(bestResult.opsPerSec)} ops/sec)"
   echo ""
-  echo "Note: bmNormal is fastest for simple lookups"
+  echo "Note: bmHash is fastest for simple lookups"
   echo "      bmCritBit supports range queries and prefix searches"
   echo "      bmRanged handles datasets larger than RAM"
   echo ""

@@ -10,6 +10,10 @@ suite "HugeBarrel Tests":
 
   const TEST_DIR = "/tmp/bitbarrel_huge_test"
 
+  # Clean up before all tests
+  if dirExists(TEST_DIR):
+    removeDir(TEST_DIR)
+
   setup:
     # Clean up test directory
     if dirExists(TEST_DIR):
@@ -228,4 +232,28 @@ suite "HugeBarrel Tests":
 
     hb.close()
 
+  test "Range splitting":
+    var config = defaultBarrelConfig()
+    config.mode = bmHugeCritBit
+    config.hugeConfig.maxEntriesPerRange = 100  # Force splits
+    config.hugeConfig.autoSplitEnabled = true
+
+    var hb = openHugeBarrel(TEST_DIR, config)
+
+    # Add enough keys to trigger split
+    for i in 0..<150:
+      discard hb.set(fmt"key_{i:03d}", fmt"value_{i:03d}")
+
+    # Should have more than 1 range now
+    let rangeCount = hb.getRangeCount()
+    check rangeCount > 1
+
+    # All keys should still be accessible
+    for i in 0..<150:
+      let value = hb.get(fmt"key_{i:03d}")
+      check value == fmt"value_{i:03d}"
+
+    hb.close()
+
 echo "Running HugeBarrel integration tests..."
+

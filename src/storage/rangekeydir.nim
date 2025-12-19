@@ -25,7 +25,7 @@ type
     checksum*: uint32           # CRC32 of entries section
     reserved*: array[20, byte]  # Padding to 48 bytes
 
-  RangeKeyDir* = ref object
+  RangeKeyDir* = object
     # Range bounds
     minKey*: string
     maxKey*: string
@@ -360,7 +360,7 @@ proc contains*(rkd: RangeKeyDir, key: string): bool =
 
 # --- Insert operations ---
 
-proc insert*(rkd: RangeKeyDir, key: string, entry: RangeKeyDirEntry) =
+proc insert*(rkd: var RangeKeyDir, key: string, entry: RangeKeyDirEntry) =
   ## Insert or update an entry
   ## Buffers the insert - call flush() to rebuild sorted array
   rkd.pendingInserts[key] = entry
@@ -372,7 +372,7 @@ proc insert*(rkd: RangeKeyDir, key: string, entry: RangeKeyDirEntry) =
   if rkd.maxKey.len == 0 or key > rkd.maxKey:
     rkd.maxKey = key
 
-proc delete*(rkd: RangeKeyDir, key: string) =
+proc delete*(rkd: var RangeKeyDir, key: string) =
   ## Mark a key as deleted
   let existing = rkd.find(key)
   if existing.isSome:
@@ -380,7 +380,7 @@ proc delete*(rkd: RangeKeyDir, key: string) =
     entry.deleted = true
     rkd.insert(key, entry)
 
-proc flush*(rkd: RangeKeyDir) =
+proc flush*(rkd: var RangeKeyDir) =
   ## Rebuild the sorted array by merging pending inserts
   if rkd.pendingInserts.len == 0:
     return
@@ -402,7 +402,7 @@ proc shouldFlush*(rkd: RangeKeyDir): bool =
   ## Check if pending buffer should be flushed
   rkd.pendingInserts.len >= rkd.maxPendingInserts
 
-proc maybeFlush*(rkd: RangeKeyDir) =
+proc maybeFlush*(rkd: var RangeKeyDir) =
   ## Flush if pending buffer exceeds threshold
   if rkd.shouldFlush():
     rkd.flush()

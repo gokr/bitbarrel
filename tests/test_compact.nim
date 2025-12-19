@@ -108,7 +108,7 @@ suite "Compaction Tests":
     let testDir = setupTest()
     defer: cleanupTest(testDir)
 
-    let path = testDir / "test.data"
+    let path = testDir / "000001.data"
     var df = datafile.open(path, 1'u32)
     var kd = keydir.init()
 
@@ -153,20 +153,22 @@ suite "Compaction Tests":
 
     controller.shutdown()
 
-  test "Compaction with expired records":
+  test "Compaction with tombstones":
     let testDir = setupTest()
     defer: cleanupTest(testDir)
 
-    let path = testDir / "test.data"
+    let path = testDir / "000001.data"
     var df = datafile.open(path, 1'u32)
     var kd = keydir.init()
 
-    let expiredTime = (getTime() - 2.hours).toUnix()  # 2 hours ago
-    let currentTime = getTime().toUnix()
+    let now = getTime().toUnix()
 
-    # Add an expired record
-    discard df.appendRecord("expired_key", "expired_value", expiredTime)
-    discard df.appendRecord("valid_key", "valid_value", currentTime)
+    # Add records - one valid, one that will be deleted
+    discard df.appendRecord("delete_me", "will_be_deleted", now)
+    discard df.appendRecord("keep_me", "should_remain", now)
+
+    # Delete one record (create tombstone)
+    discard df.appendRecord("delete_me", "", now)
 
     df.close()
 
@@ -185,9 +187,9 @@ suite "Compaction Tests":
 
     check compacted == true
 
-    # Check that expired record was dropped
+    # Check that tombstone was dropped
     let stats = getCompactStats(controller)
-    check stats.recordsDropped >= 1  # At least the expired record
+    check stats.recordsDropped >= 1  # At least the tombstone
 
     controller.shutdown()
 
@@ -224,7 +226,7 @@ suite "Compaction Tests":
     let testDir = setupTest()
     defer: cleanupTest(testDir)
 
-    let barrelPath = testDir / "barrel.data"
+    let barrelPath = testDir / "000001.data"
 
     # Create barrel with compaction enabled
     var config = defaultBarrelConfig()

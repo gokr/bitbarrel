@@ -87,11 +87,12 @@ proc newCompactController*(config: types.CompactConfig, critBit: var CritBitInde
   ## Create a new compact controller for CritBit index
   result = newCompactController(config, addr(critBit))
 
-proc calculateFragmentation*(dataPath: string): tuple[live: int, total: int, ratio: float] =
+proc calculateFragmentation*(dataPath: string, validateCrc: bool = false): tuple[live: int, total: int, ratio: float] =
   ## Calculate fragmentation ratio of a data file
   ## Returns: (live_records, total_records, fragmentation_ratio)
+  ## validateCrc: if false, CRC validation is skipped (for debugging corrupted files)
 
-  var dataFile = datafile.open(dataPath, 0'u32)  # File ID doesn't matter for reading
+  var dataFile = datafile.open(dataPath, 0'u32, syncImmediate, true, 0, validateCrc)  # File ID doesn't matter for reading
   defer: dataFile.close()
 
   var total = 0
@@ -107,8 +108,9 @@ proc calculateFragmentation*(dataPath: string): tuple[live: int, total: int, rat
       # Check if tombstone (empty value)
       if value.len > 0 and not isExpired(timestamp):
         inc(live)
-  except IOError:
-    discard  # End of file or read error
+  except IOError, ValueError:
+    # End of file or read error - this is expected when we reach EOF
+    discard
 
   let ratio = if total > 0: (float(total - live) / float(total)) else: 0.0
   (live: live, total: total, ratio: ratio)
@@ -149,7 +151,7 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
     return false
 
   # Calculate fragmentation to see if compaction is needed
-  let (_, _, fragmentation) = calculateFragmentation(dataPath)
+  let (_, _, fragmentation) = calculateFragmentation(dataPath, validateCrc=false)
   let fileSize = getFileSize(dataPath).uint64
 
   if fragmentation < controller.config.triggerThreshold and fileSize < controller.config.maxFileSize:
@@ -167,7 +169,40 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
   controller.stats.bytesWritten = 0
 
   let newFileId = fileId + 1  # Use next ID for compacted file
-  let newPath = dataPath.replace(&"{fileId:06d}.data", &"{newFileId:06d}.data")
+
+  # Calculate new path - handle both numbered (000001.data) and simple (test.data) filenames
+  var newPath: string
+  if dataPath.contains(".data"):
+    let extIdx = dataPath.rfind(".")
+    if extIdx > 0 and dataPath.len >= 6:
+      # Extract just the filename, not the full path
+      let filename = dataPath.extractFilename()
+      let fileExtIdx = filename.rfind(".")
+      let namePart = if fileExtIdx > 0: filename[0 ..< fileExtIdx] else: filename
+
+      # Check if it's a numbered file like "000001.data"
+      let allDigits = namePart.len == 6 and namePart.allCharsInSet({'0'..'9'})
+      if allDigits:
+        # Replace numbered file - construct new filename with padding
+        let paddedId = $newFileId
+        let numStr = repeat("0", 6 - paddedId.len) & paddedId
+        newPath = dataPath.replace(&"{fileId:06d}.data", numStr & ".data")
+      else:
+        # Simple filename like "test.data" -> "test_000002.data"
+        let paddedId = $newFileId
+        let suffix = repeat("0", 6 - paddedId.len) & paddedId
+        newPath = dataPath.replace(".data", &"_{suffix}.data")
+    else:
+      # Fallback
+      let paddedId = $newFileId
+      let suffix = repeat("0", 6 - paddedId.len) & paddedId
+      newPath = dataPath & &"_{suffix}"
+  else:
+    # No extension
+    let paddedId = $newFileId
+    let suffix = repeat("0", 6 - paddedId.len) & paddedId
+    newPath = dataPath & &"_{suffix}"
+
   let tempPath = newPath & ".tmp"
 
   var newFileSize: uint64 = 0
@@ -218,9 +253,6 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
 
     except IOError:
       discard  # End of file or read error
-
-    finally:
-      newDataFile.close()
 
     # Capture size before closing
     newFileSize = newDataFile.size

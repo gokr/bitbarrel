@@ -84,19 +84,40 @@ proc cacheClear*(cache: var RangeKeyDirCache) =
     cache.cache.clear()
     cache.lruList = @[]
 
+proc cacheDel*(cache: var RangeKeyDirCache, rangeKey: string) =
+  ## Remove a RangeKeyDir from cache
+  withLock(cache.lock):
+    cache.cache.del(rangeKey)
+    let index = cache.lruList.find(rangeKey)
+    if index >= 0:
+      cache.lruList.delete(index)
+
 # --- Range finding ---
 
 proc findRangeForKey*(hb: HugeBarrel, key: string): string =
-  ## Find which range a key belongs to
+  ## Find which range a key belongs to by binary search
   ## Returns rangeKey or empty string if not found
 
-  # For now, with single range, return the first range
   if hb.ranges.len == 0:
     return ""
 
-  # With range splitting not yet implemented, just return the first range
-  # This will be updated in Phase 4
-  return hb.ranges[0].rangeKey
+  # Binary search on ranges
+  var lo = 0
+  var hi = hb.ranges.len - 1
+
+  while lo <= hi:
+    let mid = (lo + hi) div 2
+    let (minKey, maxKey, rangeKey) = hb.ranges[mid]
+
+    # Handle empty bounds as wildcard (initial range)
+    if (minKey.len == 0 or key >= minKey) and (maxKey.len == 0 or key <= maxKey):
+      return rangeKey
+    elif maxKey.len > 0 and key < minKey:
+      hi = mid - 1
+    else:
+      lo = mid + 1
+
+  return ""
 
 proc addRangeMetadata(hb: var HugeBarrel, rangeKey: string, minKey: string, maxKey: string) =
   ## Add range metadata to in-memory list
@@ -204,13 +225,81 @@ proc get*(hb: var HugeBarrel, key: string): string =
   recordInfo.valueSize = entry.get().valueSize
   recordInfo.recordSize = entry.get().recordSize
 
-  let (key, value, timestamp) = dataFile.readRecord(recordInfo)
+  let (readKey, value, timestamp) = dataFile.readRecord(recordInfo)
   return value
 
 proc get*(hb: HugeBarrel, key: string): string =
   ## Get value for a key (const version)
   var mutableHb = hb
   result = get(mutableHb, key)
+
+proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
+  ## Split a range into two halves
+  ## Returns (leftRangeKey, rightRangeKey)
+
+  # Load the current RangeKeyDir
+  var rkd = hb.loadRangeKeyDir(rangeKey)
+
+  # Collect all entries (sorted array + pending)
+  var allEntries: seq[RangeKeyDirEntry] = @[]
+
+  # Add from sorted array
+  if rkd.entryCount > 0:
+    for key, entry in rkd.pairs():
+      allEntries.add(entry)
+
+  # Add from pending
+  for key, entry in rkd.pendingInserts:
+    allEntries.add(entry)
+
+  # Sort by key
+  allEntries.sort(proc(a, b: RangeKeyDirEntry): int = cmp(a.key, b.key))
+
+  # Find split point (median)
+  let splitIndex = allEntries.len div 2
+  let splitKey = allEntries[splitIndex].key
+
+  # Create two new RangeKeyDirs
+  let leftRangeKey = fmt"R{hb.nextFileId:010d}"
+  inc(hb.nextFileId)
+  let rightRangeKey = fmt"R{hb.nextFileId:010d}"
+  inc(hb.nextFileId)
+
+  var leftRkd = newRangeKeyDir(allEntries[0].key, splitKey)
+  var rightRkd = newRangeKeyDir(splitKey, allEntries[^1].key)
+
+  # Distribute entries
+  for i, entry in allEntries:
+    if i < splitIndex:
+      leftRkd.insert(entry.key, entry)
+    else:
+      rightRkd.insert(entry.key, entry)
+
+  # Save both to Barrel1
+  hb.saveRangeKeyDir(leftRangeKey, leftRkd)
+  hb.saveRangeKeyDir(rightRangeKey, rightRkd)
+
+  # Remove old range from Barrel1
+  discard hb.barrel1.delete(rangeKey)
+
+  # Update in-memory metadata
+  var newRanges: seq[tuple[minKey: string, maxKey: string, rangeKey: string]] = @[]
+  for r in hb.ranges:
+    if r.rangeKey != rangeKey:
+      newRanges.add(r)
+  newRanges.add((minKey: leftRkd.minKey, maxKey: leftRkd.maxKey, rangeKey: leftRangeKey))
+  newRanges.add((minKey: rightRkd.minKey, maxKey: rightRkd.maxKey, rangeKey: rightRangeKey))
+  newRanges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+  hb.ranges = newRanges
+
+  # Update cache
+  hb.rangeKeyCache.cacheDel(rangeKey)
+  hb.rangeKeyCache.cachePut(leftRangeKey, leftRkd)
+  hb.rangeKeyCache.cachePut(rightRangeKey, rightRkd)
+
+  echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
+
+  result = (leftRangeKey, rightRangeKey)
 
 proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   ## Set a key-value pair
@@ -267,12 +356,39 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
     hb.saveRangeKeyDir(rangeKey, rkd)
 
   # Check if range needs splitting
-  if rkd.len() > hb.config.maxEntriesPerRange:
-    # TODO: Implement range splitting (Phase 4)
-    echo fmt"Range {rangeKey} has {rkd.len()} entries, exceeds max {hb.config.maxEntriesPerRange}"
+  if rkd.len() > hb.config.maxEntriesPerRange and hb.config.autoSplitEnabled:
+    # Perform range split
+    discard hb.splitRange(rangeKey)
 
   hb.currentFileSize += recordInfo.recordSize + 4  # +4 for CRC
   return true
+
+proc shouldSplitRange*(hb: HugeBarrel, rangeKey: string): bool =
+  ## Check if a range needs to be split
+  let rkd = hb.loadRangeKeyDir(rangeKey)
+  result = rkd.len() > hb.config.maxEntriesPerRange
+
+  # Remove old range from Barrel1
+  discard hb.barrel1.delete(rangeKey)
+
+  # Update in-memory metadata
+  var newRanges: seq[tuple[minKey: string, maxKey: string, rangeKey: string]] = @[]
+  for r in hb.ranges:
+    if r.rangeKey != rangeKey:
+      newRanges.add(r)
+  newRanges.add((minKey: leftRkd.minKey, maxKey: leftRkd.maxKey, rangeKey: leftRangeKey))
+  newRanges.add((minKey: rightRkd.minKey, maxKey: rightRkd.maxKey, rangeKey: rightRangeKey))
+  newRanges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+  hb.ranges = newRanges
+
+  # Update cache
+  hb.rangeKeyCache.cacheDel(rangeKey)
+  hb.rangeKeyCache.cachePut(leftRangeKey, leftRkd)
+  hb.rangeKeyCache.cachePut(rightRangeKey, rightRkd)
+
+  echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
+
+  result = (leftRangeKey, rightRangeKey)
 
 proc delete*(hb: var HugeBarrel, key: string): bool =
   ## Delete a key (tombstone)
