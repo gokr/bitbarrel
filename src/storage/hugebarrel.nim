@@ -253,6 +253,45 @@ proc loadRangeMetadata(hb: var HugeBarrel) =
   # Sort by minKey for binary search
   hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
 
+proc rebuildRangesFromBarrel1*(hb: var HugeBarrel) =
+  ## Emergency recovery: Scan all RangeKeyDirs in barrel1 to rebuild hb.ranges
+  ## Called when __RANGES_METADATA__ is missing or corrupted
+
+  echo "WARNING: Range metadata lost, performing emergency rebuild from Barrel1..."
+
+  hb.ranges = @[]
+  var processedCount = 0
+
+  # Iterate all keys in barrel1
+  for rangeKey in hb.barrel1.keys():
+    # Skip the special metadata key
+    if rangeKey == "__RANGES_METADATA__":
+      continue
+
+    # Skip non-range keys (shouldn't exist but be safe)
+    if not rangeKey.startsWith("R"):
+      continue
+
+    # Load the RangeKeyDir
+    let serialized = hb.barrel1.get(rangeKey)
+    if serialized == "":
+      continue
+
+    let rkd = deserialize(serialized)
+
+    # Add to ranges list
+    hb.ranges.add((minKey: rkd.minKey, maxKey: rkd.maxKey, rangeKey: rangeKey))
+    inc(processedCount)
+
+  # Sort by minKey for binary search
+  hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+
+  echo fmt"Rebuilt {processedCount} ranges from Barrel1"
+
+  # Immediately save the rebuilt metadata
+  hb.saveRangeMetadata()
+  echo "Saved rebuilt metadata to Barrel1"
+
 proc saveRangeKeyDir(hb: var HugeBarrel, rangeKey: string, rkd: var RangeKeyDir) =
   ## Save a RangeKeyDir to Barrel1
 
@@ -534,7 +573,12 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
   else:
     # Load existing ranges from Barrel1
     loadRangeMetadata(result)
-    echo fmt"Loaded {result.ranges.len} ranges from Barrel1"
+
+    if result.ranges.len == 0:
+      # Metadata missing or corrupted, rebuild from barrel1
+      result.rebuildRangesFromBarrel1()
+    else:
+      echo fmt"Loaded {result.ranges.len} ranges from Barrel1"
 
   # Create first data file
   result.createNewDataFile()
