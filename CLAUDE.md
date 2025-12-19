@@ -135,6 +135,82 @@ examples/                # Demo programs
 - Use `*` to export fields that should be publicly accessible
 - When using fmt **ALWAYS** write it as `fmt("...")` not `fmt"..."` (escaped characters)
 
+### Memory Management: var, ref, and ptr
+
+**Nim is Value-Based**: Understanding Nim's value semantics is critical for memory safety.
+
+#### var (Value Types)
+- Creates stack-allocated values with copy-on-assignment semantics
+- `var x = y` creates a copy of `y` (except for ref/ptr types)
+- Use for objects that don't need shared ownership or heap allocation
+- Default for most types - safer and more efficient
+
+#### ref (Traced References)
+- Garbage-collected heap references (preferred for shared objects)
+- Use `new()` to allocate: `var obj = new(MyType)`
+- Assignment copies the reference, not the object
+- Automatically managed by Nim's garbage collector
+- Use when you need shared ownership or want to avoid copying
+
+#### ptr (Untraced Pointers)
+- Manually managed memory (unsafe)
+- Use with `alloc()`/`dealloc()`: must manage lifetime yourself
+- Required for FFI or low-level system programming
+- Must call `reset()` on GC objects before deallocating to prevent leaks
+- Avoid unless absolutely necessary
+
+#### Common Pitfalls
+
+**NEVER take address of temporary copies:**
+```nim
+# DANGEROUS - undefined behavior!
+proc badExample(): ptr int =
+  var x = 42
+  var table = {"key": x}
+  result = addr table["key"]  # Points to temporary copy!
+```
+
+**SAFE patterns:**
+```nim
+# Store refs directly in containers when sharing is needed
+type
+  MyStruct = ref object
+    data: int
+
+proc safeExample(): Table[string, MyStruct] =
+  result = {"key": MyStruct(data: 42)}  # Store ref, not value
+```
+
+#### ref Objects Design Pattern
+
+For objects that will frequently be shared or passed around, consider defining them as `ref object` from the start:
+
+```nim
+# Good: Natural reference semantics
+type
+  DataFile = ref object
+    handle: File
+    size: uint64
+    lock: Lock
+
+  # Usage: no wrapping needed
+  proc createDataFile(): DataFile =
+    result = DataFile(handle: open(...), size: 0)
+```
+
+This provides a more Java-esque mental model where objects are naturally heap-allocated and shared via references. Benefits:
+- No need to wrap value types in `ref` everywhere
+- Cleaner API without constant `[]` dereferencing
+- Natural shared ownership semantics
+- Less error-prone than manual `ref` wrapping
+
+**Rule of Thumb:**
+- Use `var` for stack-local and simple values
+- Use `ref object` for types intended to be shared (data structures, files, network connections)
+- Use `ref` wrapping only when retrofitting existing value types
+- Use `ptr` only for FFI or when you specifically need manual memory management
+- Never use `addr` and `cast` to create refs from value types in containers
+
 ### Function and Return Style
 - **Single-line functions**: Use direct expression without `result =` or `return`
 - **Multi-line functions**: Use `result =` assignment and `return` for clarity
