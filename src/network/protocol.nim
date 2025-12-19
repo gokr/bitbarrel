@@ -174,6 +174,7 @@ type
 
   TraverseResult* = object
     path*: string          ## Full traversal path
+    key*: string           ## Key of the result
     value*: string         ## Value at the path end (if requested)
     extractedData*: string ## Extracted array data (if requested)
 

@@ -391,14 +391,8 @@ type
     extractArrays*: bool      ## Extract array elements individually
     firstOnly*: bool          ## Stop after first result
 
-  TraverseResult* = object
-    path*: string            ## Full traversal path
-    key*: string             ## Key of the result
-    value*: string          ## Value at path end (if includeFullData=true)
-    extractedData*: string  ## Extracted array data (if extractArrays=true)
-
 proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
-               options: TraverseOptions): seq[TraverseResult] =
+               options: TraverseOptions): seq[protocol.TraverseResult] =
   ## Traverse references from a key using path specification
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
@@ -437,9 +431,9 @@ proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
     raise newException(ClientError, "Invalid traversal response")
 
   # Convert to client format
-  result = newSeq[TraverseResult](results.len)
+  result = newSeq[protocol.TraverseResult](results.len)
   for i, res in results:
-    result[i] = TraverseResult(
+    result[i] = protocol.TraverseResult(
       path: res.path,
       key: res.key,
       value: res.value,
@@ -448,7 +442,7 @@ proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
 
 # Convenience overloads
 proc traversePath*(client: var BitBarrelClient, key: string,
-                   pathSpec: string): seq[TraverseResult] =
+                   pathSpec: string): seq[protocol.TraverseResult] =
   ## Traverse with default options (include full data, no extraction)
   let options = TraverseOptions(
     includeFullData: true,
@@ -458,7 +452,7 @@ proc traversePath*(client: var BitBarrelClient, key: string,
   result = client.traverse(key, pathSpec, options)
 
 proc traverseDepth*(client: var BitBarrelClient, key: string,
-                    maxDepth: int): seq[TraverseResult] =
+                    maxDepth: int): seq[protocol.TraverseResult] =
   ## Simple depth-based traversal (deprecated, use traversePath instead)
   ## This creates a path spec that follows all refs for N levels
   if maxDepth <= 0:

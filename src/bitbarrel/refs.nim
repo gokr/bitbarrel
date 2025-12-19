@@ -23,7 +23,7 @@ type
     extractArrays*: bool      ## Extract array elements individually
     firstOnly*: bool          ## Stop after first result
 
-  TraverseResult* = object
+  RefsTraverseResult* = object
     ## Result of a traversal operation
     path*: string            ## Full traversal path
     key*: string             ## Key of the result
