@@ -19,7 +19,7 @@ BitBarrel is a high-performance Bitcask-style key-value storage engine written i
 ```bash
 nimble install           # Install dependencies
 nimble build             # Build the bitbarrel binary
-nimble test              # Run all tests (65 tests)
+nimble test              # Run all tests (25 test files)
 nimble clean             # Remove generated data files and binaries
 
 # Specific test suites
@@ -52,7 +52,7 @@ Tests use Nim's `unittest` module. Located in `tests/`:
 | `test_integration.nim` | GET/SET/DELETE workflow, persistence |
 | `test_error_handling.nim` | Corruption detection, boundary conditions |
 | `test_recovery.nim` | Recovery engine, checkpoints, hint files |
-| `test_compact.nim` | Compaction system tests (13 tests) |
+| `test_compact.nim` | Compaction system tests |
 | `test_writebuffer.nim` | Write buffer sync modes |
 | `test_readbuffer.nim` | Read buffering/caching |
 | `test_hintfile.nim` | Hint file I/O |
