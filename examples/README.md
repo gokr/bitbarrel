@@ -24,6 +24,8 @@ nimble demo
 
 ## Available Demos
 
+### Core Demos
+
 ### 1. Basic Demo (`basic_demo.nim`)
 
 **Features demonstrated:**
@@ -48,6 +50,79 @@ nimble demo
 - Header inspection
 - File reopening/persistence
 - Multiple records handling
+
+### Reference Model Demos (NEW!)
+
+These demos showcase the graph traversal capabilities added to BitBarrel.
+
+### 3. Social Graph Demo (`social_graph_demo.nim`)
+
+Demonstrates social network features with friends, posts, and interactions.
+
+**Features:**
+- User profiles with relationships
+- Multi-level traversals (friends of friends)
+- Array slicing for recent posts/comments
+- Wildcard traversals
+
+**Example queries:**
+```nim
+friends->team->matches        # Multi-step paths
+friends[0:5]->posts[-1]       # Array slicing
+*->comments                   # Wildcards
+```
+
+**Run it:**
+```bash
+nim c -r social_graph_demo.nim
+```
+
+### 4. Organization Chart Demo (`org_chart_demo.nim`)
+
+Shows hierarchical data navigation for org charts and reporting structures.
+
+**Features:**
+- Upward and downward traversals
+- Skip-level reporting analysis
+- Management chain discovery
+- Cross-department queries
+
+**Example queries:**
+```nim
+direct_reports->direct_reports    # Downward traversal
+manager->manager                    # Upward traversal
+*->*                                # All relationships
+```
+
+**Run it:**
+```bash
+nim c -r org_chart_demo.nim
+```
+
+### 5. Content Graph Demo (`content_graph_demo.nim`)
+
+Demonstrates content management with articles, tags, and recommendations.
+
+**Features:**
+- Related content discovery
+- Tag-based navigation
+- Content recommendations
+- Comment thread analysis
+- Graph metrics and analytics
+
+**Example queries:**
+```nim
+tags->articles              # Tag-based navigation
+related->related            # Related content chains
+*->*                        # Full graph analysis
+```
+
+**Run it:**
+```bash
+nim c -r content_graph_demo.nim
+```
+
+**Documentation:** See `docs/REFERENCES.md` for complete reference model documentation.
 
 ## Code Examples
 
