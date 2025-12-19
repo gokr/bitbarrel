@@ -5,6 +5,8 @@ import ../src/bitbarrel/types
 import ../src/storage/datafile
 import ../src/storage/keydir
 import ../src/storage/record
+import ../src/storage/recovery
+import testutils
 
 suite "Error Handling Tests":
   # Note: Some tests for file corruption are simplified to avoid system-specific issues
@@ -211,3 +213,113 @@ suite "Error Handling Tests":
   # test "multiple CRC32 mismatches in same file":
   #   # This test is commented out due to fragility in different environments
   #   pass
+
+  test "Detects bit flips in file headers":
+    withTestDir("bit_flips"):
+      # Create valid file
+      let testFile = testDir / "bitflip.data"
+      var df = datafile.open(testFile, 1'u32)
+      discard df.appendRecord("key", "value", now())
+      df.close()
+
+      # Flip random bits in header
+      let headerPos = 0
+      corruptFileAt(testFile, headerPos, char(0xFF))
+
+      # Try to reopen - should fail
+      expect OSError, IOError, CatchableError:
+        var df2 = datafile.open(testFile, 1'u32)
+        if not df2.isNil:
+          df2.close()
+
+  test "Handles truncated data files":
+    withTestDir("truncation"):
+      # Create file with multiple records
+      let testFile = testDir / "truncated.data"
+      var df = datafile.open(testFile, 1'u32)
+      for i in 0..<5:
+        discard df.appendRecord(&"key_{i}", &"value_{i}", now())
+      df.close()
+
+      # Truncate file in middle of record
+      let fileSize = getFileSize(testFile)
+      truncateFileAt(testFile, fileSize - 20)
+
+      # Try to reopen - should handle gracefully
+      expect OSError, IOError, CatchableError:
+        var df2 = datafile.open(testFile, 1'u32)
+        if not df2.isNil:
+          df2.close()
+
+  test "Handles system clock rollback":
+    withTestDir("clock_rollback"):
+      # Write records with timestamps
+      let testFile = testDir / "clock.data"
+      var df = datafile.open(testFile, 1'u32)
+
+      let now = now()
+      discard df.appendRecord("key1", "value1", now)
+      discard df.appendRecord("key2", "value2", now - 100)  # Earlier time
+
+      df.close()
+
+      # Recovery should handle timestamp ordering
+      let engine = initRecoveryEngine(testDir)
+      let stats = engine.recover()
+
+      # Should recover both keys
+      check stats.keyCount == 2
+
+      # Newer entry should win (key1)
+      var keyDir = engine.getKeyDir()
+      let key1Entry = keyDir.get("key1")
+      check key1Entry.isSome
+
+  test "Handles partial record writes":
+    withTestDir("partial_records"):
+      # Create file with records
+      let testFile = testDir / "partial.data"
+      var df = datafile.open(testFile, 1'u32)
+
+      # Write complete records
+      discard df.appendRecord("key1", "value1", 1000)
+
+      # Get position
+      let pos1 = df.file.getFilePos()
+
+      # Write another record
+      discard df.appendRecord("key2", "value2", 2000)
+
+      df.close()
+
+      # Corrupt by truncating in middle of second record
+      let corruptPos = pos1 + 10
+      truncateFileAt(testFile, int(corruptPos))
+
+      # Try to reopen - should handle corruption
+      expect OSError, IOError, CatchableError:
+        var df2 = datafile.open(testFile, 1'u32)
+        if not df2.isNil:
+          df2.close()
+
+  test "Validates file header on open":
+    withTestDir("header_validation"):
+      # Create file with valid header
+      let testFile = testDir / "valid_header.data"
+      var df = datafile.open(testFile, 1'u32)
+      discard df.appendRecord("key", "value", now())
+      df.close()
+
+      # File should open successfully
+      var df2 = datafile.open(testFile, 1'u32)
+      check not df2.isNil
+      df2.close()
+
+      # Now corrupt the header
+      writeCorruptFile(testFile, "INVALID_HEADER")
+
+      # Try to open corrupt file
+      expect OSError, IOError, CatchableError:
+        var df3 = datafile.open(testFile, 1'u32)
+        if not df3.isNil:
+          df3.close()
