@@ -3,16 +3,17 @@
 ## This example demonstrates how to use the reference model for
 ## social network features like friends, posts, and interactions.
 
-import std/[json, strformat, os]
+import std/[json, strformat, os, strutils]
 import bitbarrel
 import network/client
+from std/net import Port
 
 proc main() =
   echo "=== BitBarrel Social Graph Demo ==="
   echo()
 
   # Setup server connection
-  var client = newClient("localhost", 9876.Port)
+  var client = newClient("localhost", Port(9876))
 
   # Create and use a barrel
   if not client.createBarrel("social"):
@@ -40,7 +41,7 @@ proc main() =
       "posts": ["post:alice1", "post:alice2"]
     }
   }
-  client.set("user:alice", $aliceData)
+  discard client.set("user:alice", $aliceData)
 
   let bobData = %*{
     "name": "Bob",
@@ -51,7 +52,7 @@ proc main() =
       "posts": ["post:bob1"]
     }
   }
-  client.set("user:bob", $bobData)
+  discard client.set("user:bob", $bobData)
 
   let charlieData = %*{
     "name": "Charlie",
@@ -62,7 +63,7 @@ proc main() =
       "posts": ["post:charlie1", "post:charlie2", "post:charlie3"]
     }
   }
-  client.set("user:charlie", $charlieData)
+  discard client.set("user:charlie", $charlieData)
 
   let dianaData = %*{
     "name": "Diana",
@@ -73,7 +74,7 @@ proc main() =
       "posts": ["post:diana1"]
     }
   }
-  client.set("user:diana", $dianaData)
+  discard client.set("user:diana", $dianaData)
 
   echo "✓ Created 4 users with friend relationships"
   echo()
@@ -90,7 +91,7 @@ proc main() =
       "comments": ["comment:post1_1", "comment:post1_2"]
     }
   }
-  client.set("post:alice1", $post1)
+  discard client.set("post:alice1", $post1)
 
   let post2 = %*{
     "author": "user:bob",
@@ -101,7 +102,7 @@ proc main() =
       "comments": ["comment:post2_1"]
     }
   }
-  client.set("post:bob1", $post2)
+  discard client.set("post:bob1", $post2)
 
   echo "✓ Created 2 posts with likes and comments"
   echo()
@@ -112,7 +113,7 @@ proc main() =
   let friends = client.traversePath("user:alice", "friends")
   for f in friends:
     let friendData = parseJson(f.value)
-    echo fmt("  - {friendData["name"].getStr()} ({f.key})")
+    echo fmt("  - {friendData[\"name\"].getStr()} ({f.key})")
   echo()
 
   # Demo 2: Friends of friends (2nd degree connections)
@@ -123,7 +124,7 @@ proc main() =
     # Skip direct friends
     if f.key notin ["user:alice"] and not f.path.contains("->friends->friends->"):
       let personData = parseJson(f.value)
-      echo fmt("  - {personData["name"].getStr()} ({f.key})")
+      echo fmt("  - {personData[\"name\"].getStr()} ({f.key})")
       echo fmt("    via path: {f.path}")
   echo()
 
@@ -134,8 +135,8 @@ proc main() =
                                TraverseOptions(includeFullData: true))
   for p in posts:
     let postData = parseJson(p.value)
-    echo fmt("  - {postData["content"].getStr()}")
-    echo fmt("    by: {postData["author"].getStr()}")
+    echo fmt("  - {postData[\"content\"].getStr()}")
+    echo fmt("    by: {postData[\"author\"].getStr()}")
     echo fmt("    path: {p.path}")
   echo()
 
@@ -148,7 +149,7 @@ proc main() =
     if l.key notin uniqueLikers:
       uniqueLikers.add(l.key)
       let personData = parseJson(l.value)
-      echo fmt("  - {personData["name"].getStr()} ({l.key})")
+      echo fmt("  - {personData[\"name\"].getStr()} ({l.key})")
   echo()
 
   # Demo 5: Find commenters on Alice's posts
@@ -187,7 +188,7 @@ proc main() =
 
   for personKey in common:
     let personData = parseJson(client.get(personKey))
-    echo fmt("  - {personData["name"].getStr()} ({personKey})")
+    echo fmt("  - {personData[\"name\"].getStr()} ({personKey})")
   echo()
 
   # Demo 8: Wildcard traversal (all relationships)
