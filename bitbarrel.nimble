@@ -53,6 +53,45 @@ task demoTuning, "Run performance tuning demo":
 task demoCompression, "Run compression demo":
   exec "nim c -r --path:src examples/compression_demo.nim"
 
+task demoBarrelModes, "Run barrel modes demo":
+  exec "nim c -r --path:src examples/barrel_modes_demo.nim"
+
+task demoBuffer, "Run buffer performance demo":
+  exec "nim c -r --path:src examples/buffer_demo.nim"
+
+task demoConfig, "Run configuration demo":
+  exec "nim c -r --path:src examples/configuration_demo.nim"
+
+task demoContentGraph, "Run content graph traversal demo":
+  exec "nim c -r --path:src examples/content_graph_demo.nim"
+
+task demoDemo, "Run basic operations demo":
+  exec "nim c -r --path:src examples/demo.nim"
+
+task demoOrgChart, "Run organization chart demo":
+  exec "nim c -r --path:src examples/org_chart_demo.nim"
+
+task demoPerfSimple, "Run simple performance demo":
+  exec "nim c -r --path:src examples/performance_tuning_simple.nim"
+
+task demoSocialGraph, "Run social graph traversal demo":
+  exec "nim c -r --path:src examples/social_graph_demo.nim"
+
+task checkDemos, "Compile all examples (verification check) - exits on first error":
+  exec "nim c --verbosity:0 --path:src examples/basic_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/simple_kv_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/performance_tuning_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/compression_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/barrel_modes_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/buffer_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/configuration_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/content_graph_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/org_chart_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/performance_tuning_simple.nim"
+  exec "nim c --verbosity:0 --path:src examples/social_graph_demo.nim"
+  echo "✓ All examples compiled successfully!"
+
 # Task for benchmarking
 
 task bench, "Run comprehensive benchmark suite":
