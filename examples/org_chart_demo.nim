@@ -3,16 +3,18 @@
 ## This example demonstrates hierarchical data navigation using
 ## the reference model for org charts and reporting structures.
 
-import std/[json, strformat, os]
+import std/[json, strformat, os, strutils]
 import bitbarrel
 import network/client
+from std/net import Port
+import bitbarrel/refs
 
 proc main() =
   echo "=== BitBarrel Organization Chart Demo ==="
   echo()
 
   # Setup
-  var client = newClient("localhost", 9876.Port)
+  var client = newClient("localhost", Port(9876))
   if not client.createBarrel("org"):
     discard client.openBarrel("org")
   discard client.useBarrel("org")
@@ -31,7 +33,7 @@ proc main() =
       "direct_reports": ["emp:cto", "emp:cfo", "emp:vp_sales"]
     }
   }
-  client.set("emp:ceo", $ceoData)
+  discard client.set("emp:ceo", $ceoData)
 
   let ctoData = %*{
     "name": "Sarah Johnson",
@@ -42,7 +44,7 @@ proc main() =
       "manager": ["emp:ceo"]
     }
   }
-  client.set("emp:cto", $ctoData)
+  discard client.set("emp:cto", $ctoData)
 
   let cfoData = %*{
     "name": "Michael Brown",
@@ -53,7 +55,7 @@ proc main() =
       "manager": ["emp:ceo"]
     }
   }
-  client.set("emp:cfo", $cfoData)
+  discard client.set("emp:cfo", $cfoData)
 
   let vpSalesData = %*{
     "name": "Emily Davis",
@@ -64,7 +66,7 @@ proc main() =
       "manager": ["emp:ceo"]
     }
   }
-  client.set("emp:vp_sales", $vpSalesData)
+  discard client.set("emp:vp_sales", $vpSalesData)
 
   let engMgr1Data = %*{
     "name": "David Wilson",
@@ -75,7 +77,7 @@ proc main() =
       "manager": ["emp:cto"]
     }
   }
-  client.set("emp:eng_mgr1", $engMgr1Data)
+  discard client.set("emp:eng_mgr1", $engMgr1Data)
 
   let seniorDev1Data = %*{
     "name": "Lisa Anderson",
@@ -85,7 +87,7 @@ proc main() =
       "manager": ["emp:eng_mgr1"]
     }
   }
-  client.set("emp:senior_dev1", $seniorDev1Data)
+  discard client.set("emp:senior_dev1", $seniorDev1Data)
 
   echo "✓ Created 6-person org hierarchy"
   echo()
@@ -96,7 +98,7 @@ proc main() =
   let ceoReports = client.traversePath("emp:ceo", "direct_reports")
   for r in ceoReports:
     let emp = parseJson(r.value)
-    echo fmt("  - {emp["title"].getStr()}: {emp["name"].getStr()}")
+    echo fmt("  - {emp[\"title\"].getStr()}: {emp[\"name\"].getStr()}")
   echo()
 
   # Demo 2: Full reporting tree under CEO
@@ -109,7 +111,7 @@ proc main() =
   for r in allReports:
     let level = r.path.count("direct_reports")
     let emp = parseJson(r.value)
-    echo fmt("{indent.repeat(level)}- {emp["title"].getStr()}: {emp["name"].getStr()}")
+    echo fmt("{indent.repeat(level)}- {emp[\"title\"].getStr()}: {emp[\"name\"].getStr()}")
   echo()
 
   # Demo 3: Find all Engineering department members
@@ -120,7 +122,7 @@ proc main() =
   for e in allEmps:
     let emp = parseJson(e.value)
     if emp["department"].getStr() == "Engineering":
-      engineers.add(fmt("{emp["title"].getStr()}: {emp["name"].getStr()}"))
+      engineers.add(fmt("{emp[\"title\"].getStr()}: {emp[\"name\"].getStr()}"))
 
   for eng in engineers:
     echo fmt("  - {eng}")
@@ -165,7 +167,7 @@ proc main() =
     for fm in cfoMgr:
       if cm.key == fm.key:
         let ceo = parseJson(cm.value)
-        echo fmt("  - {ceo["title"].getStr()}: {ceo["name"].getStr()}")
+        echo fmt("  - {ceo[\"title\"].getStr()}: {ceo[\"name\"].getStr()}")
   echo()
 
   # Demo 6: Department size analysis
@@ -198,8 +200,8 @@ proc main() =
     let parts = r.path.split("->")
     let managerKey = parts[1]  # Get the manager in the path
     let manager = parseJson(client.get(managerKey))
-    echo fmt("  - {emp["name"].getStr()} ({emp["title"].getStr()})")
-    echo fmt("    reports to: {manager["name"].getStr()}")
+    echo fmt("  - {emp[\"name\"].getStr()} ({emp[\"title\"].getStr()})")
+    echo fmt("    reports to: {manager[\"name\"].getStr()}")
   echo()
 
   echo "=== Org Chart Demo Complete ==="
