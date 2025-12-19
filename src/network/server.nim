@@ -2,11 +2,12 @@
 ##
 ## WebSocket/HTTP server built on MummyX for remote BitBarrel access
 
-import std/[net, locks, tables, strutils, os, cpuinfo]
+import std/[net, locks, tables, strutils, os, cpuinfo, json]
 import mummy
 import mummy/routers
 import session
 import ../bitbarrel/barrel
+import ../bitbarrel/refs
 
 # Import protocol module
 import protocol
@@ -195,6 +196,80 @@ proc handleWebSocketMessage*(
             let keys = b.listKeys()
             resp.status = statusOk
             resp.value = keys.join(",")
+
+          of cmdTraverse:
+            # Decode traversal request
+            try:
+              let tReq = decodeTraverseRequest(req.value)
+              let pathSteps = parsePathSpec(tReq.pathSpec)
+              var results: seq[TraverseResult]
+              var visited = initHashSet[string]()
+
+              proc buildResult(key: string, path: string): TraverseResult =
+                result = TraverseResult(path: path, key: key)
+                if (tReq.options and 0x01) != 0:  # includeFullData bit
+                  result.value = b.get(key)
+
+              proc followPath(currentKey: string, currentStep: int,
+                             currentPath: seq[string]) =
+                if currentStep >= pathSteps.len:
+                  # Reached end of path
+                  results.add(buildResult(currentKey, currentPath.join("->")))
+                  if (tReq.options and 0x04) != 0:  # firstOnly bit
+                    return
+                  return
+
+                if currentKey in visited:
+                  return
+                visited.incl(currentKey)
+
+                let value = b.get(currentKey)
+                if value.len == 0:
+                  return
+
+                let refs = extractRefs(value)
+                if refs.len == 0:
+                  return
+
+                let step = pathSteps[currentStep]
+                var refsToFollow: seq[string]
+
+                if step.relType == "*":
+                  # Wildcard: follow all reference types
+                  for keys in refs.values:
+                    refsToFollow = refsToFollow.concat(keys)
+                else:
+                  # Specific relationship type
+                  refsToFollow = refs.getOrDefault(step.relType, @[])
+
+                # Apply array slicing
+                if step.isArraySlice:
+                  refsToFollow = applySlice(refsToFollow, step.arraySlice)
+
+                # Follow each reference
+                for refKey in refsToFollow:
+                  var newPath = currentPath
+                  newPath.add(fmt("{step.relType}->{refKey}"))
+
+                  if currentStep + 1 < pathSteps.len:
+                    followPath(refKey, currentStep + 1, newPath)
+                  else:
+                    results.add(buildResult(refKey, newPath.join("->")))
+                    if (tReq.options and 0x04) != 0:  # firstOnly bit
+                      return
+
+              # Start traversal
+              var startPath = @[tReq.key]
+              followPath(tReq.key, 0, startPath)
+
+              # Encode and send results
+              let resultData = encodeTraverseResults(results, req.seq)
+              ws.send(resultData, BinaryMessage)
+              continue  # Skip normal response sending
+
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Traversal error: " & e.msg
 
           else:
             discard  # Never reached
@@ -385,6 +460,16 @@ proc restHandler*(server: var BitBarrelServer, request: mummy.Request) =
       else:
         request.respond(400)
 
+    elif request.path.startsWith("/barrels/") and request.path.contains("/traverse/"):
+      # Path: /barrels/{name}/traverse/{key} -> ["", "barrels", "{name}", "traverse", "{key}"]
+      let parts = request.path.split('/')
+      if parts.len >= 5 and parts[3] == "traverse":
+        let barrelName = parts[2]
+        let key = parts[4]
+        handleRestTraverse(server, request, barrelName, key.decodeUrl())
+      else:
+        request.respond(400)
+
     elif request.path.startsWith("/barrels/") and request.path.contains("/kv/"):
       # Path: /barrels/{name}/kv/{key} -> ["", "barrels", "{name}", "kv", "{key}"]
       let parts = request.path.split('/')
@@ -397,6 +482,120 @@ proc restHandler*(server: var BitBarrelServer, request: mummy.Request) =
 
     else:
       request.respond(404)
+
+proc handleRestTraverse(server: var BitBarrelServer, request: mummy.Request,
+                       barrelName: string, key: string) =
+  ## Handle REST API traversal requests
+  ## GET /barrels/{name}/traverse/{key}?path=friends->team&includeData=true
+  {.gcsafe.}:
+    if request.httpMethod != "GET":
+      request.respond(405, "Use GET for traversal")
+      return
+
+    let barrel = server.registry.getBarrel(barrelName)
+    if barrel.isNone():
+      request.respond(404, fmt("{{\"error\":\"Barrel not found: {barrelName}\"}}"))
+      return
+
+    let b = barrel.get()
+
+    # Parse query parameters
+    let queryParams = parseQuery(request.queryString)
+    let pathSpec = queryParams.getOrDefault("path", "")
+    let includeData = queryParams.getOrDefault("includeData", "false").toLower() == "true"
+    let firstOnly = queryParams.getOrDefault("firstOnly", "false").toLower() == "true"
+
+    if pathSpec.len == 0:
+      request.respond(400, "{\"error\":\"Missing path parameter\"}")
+      return
+
+    # Perform traversal
+    try:
+      let pathSteps = parsePathSpec(pathSpec)
+      var results: seq[protocol.TraverseResult]
+      var visited = initHashSet[string]()
+
+      proc buildResult(key: string, path: string): protocol.TraverseResult =
+        result = protocol.TraverseResult(path: path, key: key)
+        if includeData:
+          result.value = b.get(key)
+
+      proc followPath(currentKey: string, currentStep: int,
+                     currentPath: seq[string]) =
+        if currentStep >= pathSteps.len:
+          results.add(buildResult(currentKey, currentPath.join("->")))
+          if firstOnly:
+            return
+          return
+
+        if currentKey in visited:
+          return
+        visited.incl(currentKey)
+
+        let value = b.get(currentKey)
+        if value.len == 0:
+          return
+
+        let refs = extractRefs(value)
+        if refs.len == 0:
+          return
+
+        let step = pathSteps[currentStep]
+        var refsToFollow: seq[string]
+
+        if step.relType == "*":
+          for keys in refs.values:
+            refsToFollow = refsToFollow.concat(keys)
+        else:
+          refsToFollow = refs.getOrDefault(step.relType, @[])
+
+        if step.isArraySlice:
+          refsToFollow = applySlice(refsToFollow, step.arraySlice)
+
+        for refKey in refsToFollow:
+          var newPath = currentPath
+          newPath.add(fmt("{step.relType}->{refKey}"))
+
+          if currentStep + 1 < pathSteps.len:
+            followPath(refKey, currentStep + 1, newPath)
+          else:
+            results.add(buildResult(refKey, newPath.join("->")))
+            if firstOnly:
+              return
+
+      var startPath = @[key]
+      followPath(key, 0, startPath)
+
+      # Build JSON response
+      var jsonResponse = "{"
+      jsonResponse.add(fmt("\"startKey\":\"{key}\","))
+      jsonResponse.add(fmt("\"pathSpec\":\"{pathSpec}\","))
+      jsonResponse.add(fmt("\"resultsCount\":{results.len},"))
+      jsonResponse.add("\"results\":[")
+
+      for i, res in results:
+        if i > 0: jsonResponse.add(",")
+        jsonResponse.add("{")
+        jsonResponse.add(fmt("\"path\":\"{res.path}\","))
+        jsonResponse.add(fmt("\"key\":\"{res.key}\""))
+        if includeData and res.value.len > 0:
+          let escapedValue = res.value.multiReplace(
+            ("\\", "\\\\"),
+            ("\"", "\\\""),
+            ("\n", "\\n"),
+            ("\r", "\\r")
+          )
+          jsonResponse.add(fmt(",\"value\":\"{escapedValue}\""))
+        jsonResponse.add("}")
+
+      jsonResponse.add("]}")
+
+      var headers: HttpHeaders
+      headers["Content-Type"] = "application/json"
+      request.respond(200, headers, jsonResponse)
+
+    except CatchableError as e:
+      request.respond(500, fmt("{{\"error\":\"{e.msg}\"}}"))
 
 proc newServer*(config: ServerConfig): BitBarrelServer =
   ## Create a new BitBarrel server instance
@@ -422,6 +621,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   router.get("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(result, req))
   router.delete("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(result, req))
   router.head("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(result, req))
+  router.get("/barrels/*/traverse/*", proc(req: mummy.Request) = restHandler(result, req))
 
   # Create server with TaskPools for performance
   result.mummyServer = newServer(
