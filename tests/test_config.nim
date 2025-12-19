@@ -25,9 +25,9 @@ suite "Configuration Tests":
     check config.performance.workerThreads == 4
     check config.performance.writeBufferSize == 1000
 
-    # Test merge defaults
-    check config.merge.enabled == true
-    check config.merge.triggerThreshold == 0.3
+    # Test compact defaults
+    check config.compact.enabled == true
+    check config.compact.triggerThreshold == 0.3
 
     # Test logging defaults
     check config.logging.level == "info"
@@ -51,7 +51,7 @@ storage:
 performance:
   worker_threads: 8
 
-merge:
+compact:
   enabled: false
 
 logging:
@@ -74,7 +74,7 @@ logging:
 
       check config.performance.workerThreads == 8
 
-      check config.merge.enabled == false
+      check config.compact.enabled == false
 
       check config.logging.level == "debug"
 
@@ -86,7 +86,7 @@ logging:
     putEnv("BITBARREL_SERVER_PORT", "7777")
     putEnv("BITBARREL_STORAGE_DATA_DIR", "/env/data")
     putEnv("BITBARREL_LOGGING_LEVEL", "warn")
-    putEnv("BITBARREL_MERGE_ENABLED", "false")
+    putEnv("BITBARREL_COMPACT_ENABLED", "false")
 
     var config = getDefaultConfig()
 
@@ -97,14 +97,14 @@ logging:
       check config.server.port == 7777
       check config.storage.dataDir == "/env/data"
       check config.logging.level == "warn"
-      check config.merge.enabled == false
+      check config.compact.enabled == false
 
     finally:
       # Clean up environment
       delEnv("BITBARREL_SERVER_PORT")
       delEnv("BITBARREL_STORAGE_DATA_DIR")
       delEnv("BITBARREL_LOGGING_LEVEL")
-      delEnv("BITBARREL_MERGE_ENABLED")
+      delEnv("BITBARREL_COMPACT_ENABLED")
 
   test "Configuration validation":
     var config = getDefaultConfig()
@@ -123,7 +123,7 @@ logging:
 
     # Fix key size but add invalid merge threshold
     config.storage.maxKeySize = 64 * 1024
-    config.merge.triggerThreshold = 1.5  # Above 1.0
+    config.compact.triggerThreshold = 1.5  # Above 1.0
     check validateConfig(config) == false
 
   test "Size parsing from YAML":

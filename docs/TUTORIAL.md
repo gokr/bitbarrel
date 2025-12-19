@@ -328,7 +328,7 @@ storage:
 1. Write buffering: Configurable batching reduces I/O overhead
 2. Read-ahead buffering: LRU cache for frequently accessed data
 3. Hint files: Fast recovery from crashes
-4. Background merge: Automatic space reclamation without blocking
+4. Background compaction: Automatic space reclamation without blocking
 5. Optional compression: Reduces I/O and storage for large values
 
 **Implementation Features:**

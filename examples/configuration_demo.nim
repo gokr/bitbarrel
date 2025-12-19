@@ -84,7 +84,7 @@ proc demonstrateFullConfig*() =
       keyValue("Data Directory", config.storage.dataDir)
       keyValue("Sync Mode", $config.storage.syncMode)
       keyValue("Worker Threads", config.performance.workerThreads)
-      keyValue("Merge Enabled", config.merge.enabled)
+      keyValue("Compact Enabled", config.compact.enabled)
       echo ""
     except Exception as e:
       error(&"Failed to load config: {e.msg}")

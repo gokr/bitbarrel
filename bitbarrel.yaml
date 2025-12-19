@@ -27,11 +27,11 @@ performance:
   read_ahead_size: 64         # KB
   cache_size: 256             # MB
 
-merge:
+compact:
   enabled: true
   trigger_threshold: 0.3      # 30% fragmentation
-  max_merge_threads: 1
-  merge_interval: 60          # minutes
+  max_compact_threads: 1
+  compact_interval: 60        # minutes
   min_file_size: 1048576      # 1MB
 
 logging:

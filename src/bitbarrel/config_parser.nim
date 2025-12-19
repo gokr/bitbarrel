@@ -156,13 +156,15 @@ proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
   result.fsyncInterval = getYamlInt("fsync_interval", 100)
 
   # Parse compression configuration if present
-  var compressionNode: YamlNode
+  var compressionNode: YamlNode = nil
+  var foundCompression = false
   for k, v in fields.pairs:
     if k.content == "compression":
       compressionNode = v
+      foundCompression = true
       break
 
-  if compressionNode != nil and compressionNode.kind == yMapping:
+  if foundCompression and compressionNode.kind == yMapping:
     let compFields = compressionNode.fields
 
     proc getYamlBoolNested(key: string, default: bool): bool =

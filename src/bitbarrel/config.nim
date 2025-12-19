@@ -154,13 +154,12 @@ proc validateConfig*(config: BitBarrelConfig): bool =
     echo "Error: Worker threads must be positive"
     result = false
 
-  # Validate merge settings
-  # Note: Merge config doesn't exist in BitBarrelConfig - commenting out
-  # if config.merge.triggerThreshold < 0.0 or config.merge.triggerThreshold > 1.0:
-  #   echo "Error: Merge trigger threshold must be between 0.0 and 1.0"
-  #   result = false
+  # Validate compact settings
+  if config.compact.triggerThreshold < 0.0 or config.compact.triggerThreshold > 1.0:
+    echo "Error: Compact trigger threshold must be between 0.0 and 1.0"
+    result = false
 
-  # if config.merge.enabled and config.merge.maxMergeThreads < 1:
-  #   echo "Error: Max merge threads must be positive when merge is enabled"
-  #   result = false
+  if config.compact.enabled and config.compact.compactInterval < 1:
+    echo "Error: Compact interval must be positive when compaction is enabled"
+    result = false
 

@@ -150,11 +150,11 @@ Instead of stop-the-world compaction, BitBarrel performs merging in the backgrou
 ```nim
 # Configurable thresholds
 var cfg = defaultBarrelConfig()
-cfg.mergeEnabled = true
-cfg.mergeThreshold = 0.5  # Merge when 50% of file is garbage
-cfg.mergeMaxFiles = 4    # Merge up to 4 files at once
+cfg.compactEnabled = true
+cfg.compactThreshold = 0.5  # Compact when 50% of file is garbage
+cfg.compactMaxFiles = 4     # Compact up to 4 files at once
 
-# Background thread handles merge automatically
+# Background thread handles compaction automatically
 ```
 
 ### Compression Support
