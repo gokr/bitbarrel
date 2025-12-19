@@ -5,7 +5,13 @@ A key/value store implemented in Nim using the enhanced Bitcask storage model.
 ## ✅ Status & Features
 
 **Current Status:**
-- **Test Suite**: 20 test files with 250+ test cases, all passing
+- **Test Suite**: 27 test files with 350+ test cases, all passing
+  - ✅ 35+ new edge case tests for production readiness
+  - ✅ Filesystem stress testing (permissions, disk full, corruption)
+  - ✅ Concurrent access testing (multi-threaded operations)
+  - ✅ Crash recovery testing (process killed mid-write, power loss)
+  - ✅ Memory pressure testing (OOM, leaks, fragmentation)
+  - ✅ Network resilience testing (WebSocket fragmentation, timeouts)
 - **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
 - **Compression**: LZ4 (~2.1x ratio) and Snappy (~1.7x ratio) support
 - **Stability**: Stress-tested with 25K+ keys
@@ -354,20 +360,33 @@ bitbarrel/
 │   ├── simple_bench.nim     # Performance benchmark
 │   └── stress_test.nim      # Stress testing suite
 ├── tests/                   # Test suites
-│   ├── test_barrel.nim      # Barrel API tests (30 tests)
-│   ├── test_compact.nim     # Compaction tests (13 tests)
-│   ├── test_compression.nim # Compression tests (8 tests)
-│   ├── test_config.nim      # Configuration tests (9 tests)
-│   ├── test_error_handling.nim # Error handling tests (11 tests)
-│   ├── test_hintfile.nim    # Hint file tests (11 tests)
-│   ├── test_hintfile_recovery.nim # Hint recovery tests (4 tests)
-│   ├── test_protocol.nim    # Protocol tests (17 tests)
-│   ├── test_refs.nim        # Reference model tests (22 tests, NEW!)
-│   ├── test_integration.nim # Integration tests (3 tests)
-│   ├── test_keydir.nim      # KeyDir tests (11 tests)
-│   ├── test_recovery.nim    # Recovery tests (18 tests)
-│   ├── test_session.nim     # Session tests (11 tests)
-│   └── ... (more test files)
+│   ├── test_barrel.nim      # Barrel API tests
+│   ├── test_client.nim      # WebSocket client tests
+│   ├── test_compact.nim     # Compaction tests
+│   ├── test_compression.nim # Compression tests
+│   ├── test_config.nim      # Configuration tests
+│   ├── test_concurrent_access.nim # Concurrent access tests (NEW!)
+│   ├── test_crash_recovery.nim # Crash recovery tests (NEW!)
+│   ├── test_error_handling.nim # Error handling tests (expanded)
+│   ├── test_filesystem_stress.nim # Filesystem stress tests (NEW!)
+│   ├── test_hintfile.nim    # Hint file tests
+│   ├── test_integration.nim # Integration tests
+│   ├── test_keydir.nim      # KeyDir tests
+│   ├── test_memory_pressure.nim # Memory pressure tests (NEW!)
+│   ├── test_protocol.nim    # Protocol tests
+│   ├── test_rangekeydir.nim # Range index tests
+│   ├── test_range_management.nim # Range query tests
+│   ├── test_readbuffer.nim  # Read buffer tests
+│   ├── test_record.nim      # Record format tests
+│   ├── test_recovery.nim    # Recovery tests (expanded)
+│   ├── test_refs.nim        # Reference model tests
+│   ├── test_server.nim      # Server tests (expanded)
+│   ├── test_session.nim     # Session tests
+│   ├── test_storage.nim     # Storage tests
+│   ├── test_ttl.nim         # TTL tests
+│   ├── test_writebuffer.nim # Write buffer tests
+│   ├── testutils.nim        # Test utilities (NEW!)
+│   └── README.md            # Test suite documentation (NEW!)
 ├── docs/                    # Documentation
 │   ├── TUTORIAL.md          # Comprehensive tutorial
 │   └── REFERENCES.md        # Reference model guide (NEW!)
@@ -400,11 +419,32 @@ bitbarrel/
 
 ## Documentation
 
+### Getting Started
 - **[docs/TUTORIAL.md](docs/TUTORIAL.md)**: Comprehensive tutorial with examples
 - **[examples/README.md](examples/README.md)**: Demo documentation
+
+### Test Suite
+- **[tests/README.md](tests/README.md)**: Complete test suite guide
+  - Running tests (all, by category, individual files)
+  - Test organization and coverage
+  - Writing new tests
+  - Test utilities documentation
+
+### Performance & Benchmarks
 - **[TEST_RESULTS.md](TEST_RESULTS.md)**: Test suite results
+- **[docs/BENCHMARK_GUIDE.md](docs/BENCHMARK_GUIDE.md)**: Benchmarking guide
+- **[bench/](bench/)**: Benchmark suites
+
+### Architecture & Design
+- **[docs/DESIGN.md](docs/DESIGN.md)**: System design document
+- **[docs/COMPRESSION.md](docs/COMPRESSION.md)**: Compression implementation
+- **[docs/NETWORK_IMPLEMENTATION.md](docs/NETWORK_IMPLEMENTATION.md)**: Network layer architecture
 - **[FEEDBACK.md](FEEDBACK.md)**: Code review and improvements
 - **[PLAN.md](PLAN.md)**: Implementation plan and roadmap
+
+### Advanced Features
+- **[docs/REFERENCES.md](docs/REFERENCES.md)**: Reference model (graph traversal) guide
+- **[docs/CRC.md](docs/CRC.md)**: CRC32 implementation details
 
 
 ## Future Enhancements
