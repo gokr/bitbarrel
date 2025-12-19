@@ -3,7 +3,7 @@
 ## Provides a unified interface for key-value storage operations
 ## with support for multiple index modes: Hash, CritBit (ordered), and HugeCritBit (massive datasets)
 
-import std/[times, options, os, strformat, strutils]
+import std/[times, options, os, strformat, strutils, endians]
 import types
 import ../storage
 import ../storage/datafile
@@ -11,6 +11,9 @@ import ../storage/keydir
 import ../storage/critbitindex
 import ../storage/record
 import ../storage/compact
+import ../storage/crc32
+import ../storage/recovery
+import ../storage/hintfile
 
 export types, datafile
 
@@ -47,9 +50,146 @@ proc defaultBarrelConfig*(): BarrelConfig =
       maxEntriesPerRange: 100_000,
       rangeCacheSize: 10,
       maxDataFileSizeMB: 1024,
-      autoSplitEnabled: true
+      autoSplitEnabled: true,
+      flushIntervalMs: 1000,
+      enableBarrel2Recovery: true
     )
   )
+
+proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
+  ## Rebuild the in-memory index from data file
+  ## Uses hint files for fast recovery when available, falls back to full scan
+  ## Returns number of records recovered
+  ## This is called automatically when opening an existing barrel
+
+  let filePath = barrel.path
+  let fileSize = getFileSize(filePath)
+
+  if fileSize <= HEADER_SIZE:
+    return 0  # Empty or header-only file
+
+  # Try hint file first (much faster than full scan)
+  let hintPath = getHintPath(filePath)
+  if hintFileExists(filePath):
+    # Try to load from hint file
+    var loaded = 0
+
+    # Load from hint file into the appropriate index
+    case barrel.mode
+    of bmHash:
+      loaded = loadKeyDirFromHint(hintPath, barrel.keyDir)
+    of bmCritBit:
+      # Hint files work with KeyDirEntry, so we need to read and add to CritBitIndex
+      var tempKeyDir: KeyDir
+      loaded = loadKeyDirFromHint(hintPath, tempKeyDir)
+      if loaded > 0:
+        # Transfer entries from KeyDir to CritBitIndex
+        for key, entry in tempKeyDir.pairs():
+          barrel.critBit.add(key, entry)
+    of bmHugeCritBit:
+      discard  # Not used for HugeBarrel
+
+    if loaded > 0:
+      echo fmt"Fast recovery: Loaded {loaded} records from hint file"
+      return loaded
+    else:
+      echo fmt"Hint file invalid or corrupted, falling back to full scan"
+
+  # Fall back to full scan
+  var recordCount = 0
+  var offset = HEADER_SIZE.int64
+
+  let file = open(filePath, fmRead)
+  defer: file.close()
+
+  while offset < fileSize:
+    file.setFilePos(offset, fspSet)
+
+    # Read CRC32 (4 bytes)
+    var storedCrc: uint32
+    if file.readBuffer(addr storedCrc, 4) != 4:
+      break
+
+    # Read timestamp (8 bytes)
+    var rawTimestamp: int64
+    if file.readBuffer(addr rawTimestamp, 8) != 8:
+      break
+    var timestamp: int64
+    littleEndian64(addr timestamp, addr rawTimestamp)
+
+    # Read key length (4 bytes)
+    var rawKeyLen: uint32
+    if file.readBuffer(addr rawKeyLen, 4) != 4:
+      break
+    var keyLen: uint32
+    littleEndian32(addr keyLen, addr rawKeyLen)
+
+    # Validate key length
+    if keyLen > MAX_KEY_SIZE.uint32 or keyLen == 0:
+      break
+
+    # Read key
+    var key = newString(keyLen.int)
+    if file.readBuffer(addr key[0], keyLen.int) != keyLen.int:
+      break
+
+    # Read value length (4 bytes)
+    var rawValueLen: uint32
+    if file.readBuffer(addr rawValueLen, 4) != 4:
+      break
+    var valueLen: uint32
+    littleEndian32(addr valueLen, addr rawValueLen)
+
+    # Validate value length
+    if valueLen > MAX_VALUE_SIZE.uint32:
+      break
+
+    # Skip flags (1 byte) and algorithm (1 byte)
+    file.setFilePos(file.getFilePos() + 2, fspSet)
+
+    # Calculate record size: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + flags(1) + algo(1) + value
+    let recordSize = (4 + 8 + 4 + keyLen.int + 4 + 1 + 1 + valueLen.int).uint32
+
+    # Validate CRC if enabled
+    if validateCrc:
+      let recordDataLen = recordSize.int - 4  # Exclude CRC
+      file.setFilePos(offset + 4, fspSet)  # Position after CRC
+      var recordData = newString(recordDataLen)
+      if file.readBuffer(addr recordData[0], recordDataLen) != recordDataLen:
+        break
+      let computedCrc = crc32(recordData)
+      if storedCrc != computedCrc:
+        # CRC mismatch - try to continue from next byte
+        offset += 1
+        continue
+
+    # Build KeyDirEntry
+    let recordPos = offset.uint64 + 4  # Position after CRC
+    let valuePos = recordPos + 8 + 4 + keyLen.uint64 + 4 + 1 + 1  # Position of value
+
+    let entry = KeyDirEntry(
+      fileId: barrel.fileId,
+      recordPos: recordPos,
+      valuePos: valuePos,
+      valueSize: valueLen,
+      timestamp: timestamp,
+      recordSize: recordSize,
+      deleted: valueLen == 0  # Tombstone if value is empty
+    )
+
+    # Add to index (newer entries overwrite older)
+    case barrel.mode
+    of bmHash:
+      barrel.keyDir.add(key, entry)
+    of bmCritBit:
+      barrel.critBit.add(key, entry)
+    of bmHugeCritBit:
+      discard  # Not used for HugeBarrel
+
+    inc recordCount
+    offset += recordSize.int64
+
+  return recordCount
 
 proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
   ## Open a barrel with optional configuration
@@ -84,6 +224,11 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
   of bmHugeCritBit:
     # TODO: Initialize HugeBarrel (Phase 3)
     raise newException(ValueError, "bmHugeCritBit mode not yet implemented")
+
+  # Rebuild index from data file (for existing barrels)
+  let recoveredCount = rebuildIndexFromDataFile(result, config.validateCrc)
+  if recoveredCount > 0:
+    echo fmt"Recovered {recoveredCount} records from data file"
 
   # Initialize compaction
   if config.autoCompact:
@@ -166,17 +311,6 @@ proc indexAdd(barrel: Barrel, key: string, entry: KeyDirEntry) =
     barrel.critBit.add(key, entry)
   of bmHugeCritBit:
     # TODO: HugeBarrel add (Phase 3)
-    raise newException(ValueError, "bmHugeCritBit not yet implemented")
-
-# Helper to get all keys from index
-proc indexKeys(barrel: Barrel): seq[string] =
-  case barrel.mode
-  of bmHash:
-    result = barrel.keyDir.keys()
-  of bmCritBit:
-    result = barrel.critBit.keys()
-  of bmHugeCritBit:
-    # TODO: HugeBarrel keys (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
 # Helper to clear index
@@ -480,6 +614,22 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int =
   of bmHugeCritBit:
     # TODO: HugeBarrel keysInRange (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
+
+iterator keys*(barrel: Barrel): string =
+  ## Iterate over all non-deleted keys in the barrel
+  if not barrel.closed:
+    case barrel.mode
+    of bmCritBit:
+      for key, entry in barrel.critBit.pairs():
+        if not entry.deleted:
+          yield key
+    of bmHash:
+      for key, entry in barrel.keyDir.pairs():
+        if not entry.deleted:
+          yield key
+    of bmHugeCritBit:
+      # TODO: HugeBarrel keys (Phase 3)
+      raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
 proc countWithPrefix*(barrel: Barrel, prefix: string): int =
   ## Count non-deleted keys with given prefix
