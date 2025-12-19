@@ -1,6 +1,6 @@
 ## BitBarrel Barrel Modes Demo
 ##
-## Demonstrates the three different barrel modes (bmHash, bmCritBit, bmRanged)
+## Demonstrates the three different barrel modes (bmHash, bmCritBit, bmHugeCritBit)
 ## with practical use cases for each mode.
 ##
 ## Run with: nim c -r examples/barrel_modes_demo.nim
@@ -12,9 +12,9 @@ import times
 import sequtils
 import options
 import random
-import ../src/bitbarrel
-from ../src/bitbarrel/types import BarrelMode, BarrelConfig
-from ../src/bitbarrel/barrel import defaultBarrelConfig
+import bitbarrel
+from bitbarrel/types import BarrelMode, BarrelConfig
+from bitbarrel/barrel import defaultBarrelConfig
 
 proc printHeader(title: string) =
   echo ""
@@ -182,22 +182,21 @@ proc demoCritBitMode() =
         removeFile(file.path)
 
 proc demoRangedMode() =
-  ## Demonstrate bmRanged mode - lazy-loaded partitions for large datasets
-  printSection("Barrel Mode 3: bmRanged (Lazy-Loaded Partitions)")
+  ## Demonstrate bmHugeCritBit mode - two-tier for massive datasets
+  printSection("Barrel Mode 3: bmHugeCritBit (Two-Tier Index)")
 
-  echo "Use case: Analytics data, large datasets, limited RAM"
+  echo "Use case: Massive datasets, time-series, analytics data"
   echo "Characteristics:"
-  echo "  • O(1) lookup + partition loading overhead (~1ms)"
-  echo "  • Keys distributed across configurable partitions"
-  echo "  • Only active partitions loaded into memory"
-  echo "  • Handles billions of keys with limited RAM"
+  echo "  • O(key_len) lookup with two-tier indexing"
+  echo "  • RangeKeyDir partitions for efficient range queries"
+  echo "  • Configurable max entries per partition"
+  echo "  • Optimized for workloads with sequential key access"
   echo ""
 
-  # Create bmRanged barrel
+  # Create bmHugeCritBit barrel
   var cfg = defaultBarrelConfig()
-  cfg.mode = BarrelMode.bmRanged      # Enable ranged mode
-  cfg.numRanges = 50                    # 50 hash partitions
-  cfg.maxLoadedRanges = 5               # Keep 5 partitions in memory
+  cfg.mode = BarrelMode.bmHugeCritBit  # Enable huge critbit mode
+  cfg.hugeConfig.rangeCacheSize = 5    # Keep 5 partitions in memory
   cfg.syncMode = UserSyncMode.Sync
 
   var analyticsDb = openBarrel("examples/data/analytics.db", cfg)
@@ -238,21 +237,13 @@ proc demoRangedMode() =
 
   echo ""
 
-  echo "📊 Checking partition statistics..."
-  let stats = analyticsDb.rangeStats()
-  echo &"   ✓ Loaded partitions: {stats.loaded}"
-  echo &"   ✓ Max partitions: {stats.maxRanges}"
-  echo &"   ✓ Total keys: {stats.totalKeys}"
+  echo "📊 Checking statistics..."
+  echo &"   ✓ Total keys: {analyticsDb.count()}"
+  echo &"   ✓ Barrel mode: {analyticsDb.getMode()}"
+  echo ""
   echo ""
 
-  echo "💾 Flushing partitions to disk..."
-  let flushStart = epochTime()
-  let flushed = analyticsDb.flushRanges()
-  let flushTime = epochTime() - flushStart
-  echo &"   ✓ Flushed {flushed} partitions in {flushTime*1000:.2f}ms"
-  echo ""
-
-  echo "🏆 bmRanged is perfect for: Analytics data, user activity logs,"
+  echo "🏆 bmHugeCritBit is perfect for: Analytics data, user activity logs,"
   echo "   large-scale event tracking, and datasets with billions of keys"
   echo ""
 
@@ -270,7 +261,7 @@ proc main() =
   echo "Available modes:"
   echo "  📦 bmHash  - Hash table for O(1) lookups (default)"
   echo "  🌳 bmCritBit - Sorted keys with range queries"
-  echo "  🗂️  bmRanged  - Lazy-loaded partitions for large datasets"
+  echo "  🗂️  bmHugeCritBit  - Lazy-loaded partitions for large datasets"
   echo ""
 
   # Run demos
@@ -286,11 +277,11 @@ proc main() =
   echo "├───────────┼───────────────────────────────┼─────────────┼──────────┤"
   echo "│ bmHash  │ Session storage, caching      │ Fastest     │ Moderate │"
   echo "│ bmCritBit │ Time-series, leaderboards     │ Fast        │ Moderate │"
-  echo "│ bmRanged  │ Analytics, large datasets     │ Good        │ Low      │"
+  echo "│ bmHugeCritBit  │ Analytics, large datasets     │ Good        │ Low      │"
   echo "└─────────────────────────────────────────────────────────────────────┘"
   echo ""
   echo "💡 Choose bmHash for maximum performance, bmCritBit for ordered data,"
-  echo "   and bmRanged when you have more keys than can fit in memory."
+  echo "   and bmHugeCritBit when you have more keys than can fit in memory."
   echo ""
 
   printHeader("Demo Complete!")

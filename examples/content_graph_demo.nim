@@ -3,16 +3,18 @@
 ## This example shows how to use reference traversal for content
 ## management systems: articles, tags, comments, and related content.
 
-import std/[json, strformat, os, tables]
+import std/[json, strformat, os, tables, sequtils, algorithm, strutils]
 import bitbarrel
 import network/client
+from std/net import Port
+import bitbarrel/refs
 
 proc main() =
   echo "=== BitBarrel Content Graph Demo ==="
   echo()
 
   # Setup
-  var client = newClient("localhost", 9876.Port)
+  var client = newClient("localhost", Port(9876))
   if not client.createBarrel("content"):
     discard client.openBarrel("content")
   discard client.useBarrel("content")
@@ -34,7 +36,7 @@ proc main() =
       "comments": ["comment:1_1", "comment:1_2"]
     }
   }
-  client.set("article:1", $article1)
+  discard client.set("article:1", $article1)
 
   let article2 = %*{
     "title": "Advanced Bitcask Techniques",
@@ -46,7 +48,7 @@ proc main() =
       "comments": ["comment:2_1"]
     }
   }
-  client.set("article:2", $article2)
+  discard client.set("article:2", $article2)
 
   let article3 = %*{
     "title": "Understanding Log-Structured Merge Trees",
@@ -58,7 +60,7 @@ proc main() =
       "comments": []
     }
   }
-  client.set("article:3", $article3)
+  discard client.set("article:3", $article3)
 
   let article4 = %*{
     "title": "BitBarrel in Production: A Case Study",
@@ -70,7 +72,7 @@ proc main() =
       "comments": ["comment:4_1", "comment:4_2", "comment:4_3"]
     }
   }
-  client.set("article:4", $article4)
+  discard client.set("article:4", $article4)
 
   # Comments
   let comment1 = %*{
@@ -79,7 +81,7 @@ proc main() =
     "content": "Great introduction! Very helpful.",
     "_refs": {}
   }
-  client.set("comment:1_1", $comment1)
+  discard client.set("comment:1_1", $comment1)
 
   let comment2 = %*{
     "article": "article:1",
@@ -87,7 +89,7 @@ proc main() =
     "content": "Should mention the reference model feature!",
     "_refs": {}
   }
-  client.set("comment:1_2", $comment2)
+  discard client.set("comment:1_2", $comment2)
 
   let comment3 = %*{
     "article": "article:4",
@@ -95,13 +97,13 @@ proc main() =
     "content": "Performance numbers would be helpful.",
     "_refs": {}
   }
-  client.set("comment:4_1", $comment3)
+  discard client.set("comment:4_1", $comment3)
 
   # Tags
-  client.set("tag:nosql", %*{ "description": "NoSQL databases" })
-  client.set("tag:database", %*{ "description": "Database technologies" })
-  client.set("tag:performance", %*{ "description": "Performance optimization" })
-  client.set("tag:tutorial", %*{ "description": "Tutorial articles" })
+  discard client.set("tag:nosql", $(%*{ "description": "NoSQL databases" }))
+  discard client.set("tag:database", $(%*{ "description": "Database technologies" }))
+  discard client.set("tag:performance", $(%*{ "description": "Performance optimization" }))
+  discard client.set("tag:tutorial", $(%*{ "description": "Tutorial articles" }))
 
   echo "✓ Created 4 articles, 3 comments, 4 tags"
   echo()
@@ -112,7 +114,8 @@ proc main() =
   let related = client.traversePath("article:1", "related")
   for r in related:
     let article = parseJson(r.value)
-    echo fmt("  - {article["title"].getStr()}")
+    let title = article["title"].getStr()
+    echo fmt"  - {title}"
   echo()
 
   # Demo 2: Tags for an article
@@ -121,7 +124,8 @@ proc main() =
   let tags = client.traversePath("article:1", "tags")
   for t in tags:
     let tagData = parseJson(t.value)
-    echo fmt("  - {tagData["description"].getStr()}")
+    let desc = tagData["description"].getStr()
+    echo fmt"  - {desc}"
   echo()
 
   # Demo 3: Find all articles with a specific tag
@@ -166,10 +170,12 @@ proc main() =
   echo "Demo 5: Comments on 'Getting Started with BitBarrel'"
   echo "Path: comments"
   let comments = client.traversePath("article:1", "comments")
-  echo fmt("  Found {comments.len} comments:"
+  echo fmt("  Found {comments.len} comments:")
   for c in comments:
     let comment = parseJson(c.value)
-    echo fmt("    - {comment["author"].getStr()}: {comment["content"].getStr()}")
+    let author = comment["author"].getStr()
+    let content = comment["content"].getStr()
+    echo fmt"    - {author}: {content}"
   echo()
 
   # Demo 6: Content graph analysis
@@ -214,9 +220,8 @@ proc main() =
 
     totalConnections.add((articleKey, title, total))
 
-  # Sort by total connections
-  totalConnections.sort(proc (a, b: auto): int =
-    return b.total - a.total)
+  # Sort by total connections (descending)
+  totalConnections.sort(proc(a, b: auto): int = b.total - a.total)
 
   echo "  Content ranked by total connections:"
   for i, tc in totalConnections:
@@ -240,14 +245,16 @@ proc main() =
           tagPairs[pair] = tagPairs.getOrDefault(pair, 0) + 1
 
   # Show top pairs
-  var sortedPairs = toSeq(tagPairs.pairs)
+  var sortedPairs = newSeq[tuple[key: string, val: int]]()
+  for k, v in tagPairs.pairs:
+    sortedPairs.add((k, v))
   sortedPairs.sort(proc (a, b: auto): int = b.val - a.val)
 
   echo "  Top tag co-occurrences:"
   for i, pair in sortedPairs:
     if i >= 3: break
     let tags = pair.key.split("-")
-    echo fmt("  - {tags[0]} + {tags[1]} (appears together {pair.val} times)")
+    echo fmt"  - {tags[0]} + {tags[1]} (appears together {pair.val} times)"
   echo()
 
   echo "=== Content Graph Demo Complete ==="
