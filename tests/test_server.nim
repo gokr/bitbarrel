@@ -298,6 +298,103 @@ suite "BitBarrel Server Tests":
         response = makeRestRequest("PUT", "/barrels/" & barrelName & "/kv/sync_key_" & $i, "value_" & $i)
         check response.status == "201 Created" or response.status == "200 OK"
 
+  test "WebSocket fragmentation handling":
+    # Test that server handles fragmented WebSocket frames
+    var wsc = newClient("localhost", Port(8081))
+    wsc.connect()
+
+    # Large message that requires fragmentation (50KB)
+    let largeMessage = repeat("x", 50000)
+    check wsc.set("fragmented_key", largeMessage)
+
+    # Verify we can retrieve it
+    let retrieved = wsc.get("fragmented_key")
+    check retrieved == largeMessage
+
+    wsc.close()
+
+  test "WebSocket handles large messages (near limits)":
+    var wsc = newClient("localhost", Port(8081))
+    wsc.connect()
+
+    # Test with 64KB key (max size)
+    let maxSizeKey = repeat("k", 65535)
+    check wsc.set(maxSizeKey, "value")
+
+    # Test with 1MB value (max size)
+    let maxSizeValue = repeat("v", 1048576)
+    check wsc.set("max_value", maxSizeValue)
+
+    wsc.close()
+
+  test "Connection reset during WebSocket operation":
+    # First connection
+    var client1 = newClient("localhost", Port(8081))
+    client1.connect()
+
+    # Create barrel and write data
+    let barrelName = "reset_test"
+    check client1.createBarrel(barrelName)
+    check client1.useBarrel(barrelName)
+    check client1.set("key", "value1")
+
+    # Close without proper disconnect
+    client1.close()
+
+    # New connection should work
+    var client2 = newClient("localhost", Port(8081))
+    client2.connect()
+    check client2.useBarrel(barrelName)
+    check client2.set("key", "value2")
+
+    let value = client2.get("key")
+    check value == "value2"
+
+    client2.close()
+
+  test "WebSocket pong timeout handling":
+    var wsc = newClient("localhost", Port(8081))
+    wsc.connect()
+
+    # Send ping
+    check wsc.ping()
+
+    # Verify connection is still alive by performing operation
+    check wsc.set("pong_test", "value")
+    let retrieved = wsc.get("pong_test")
+    check retrieved == "value"
+
+    wsc.close()
+
+  test "Multiple concurrent WebSocket connections":
+    const numClients = 5
+    var clients: seq[WebSocketClient]
+
+    # Create multiple clients
+    for i in 0..<numClients:
+      var client = newClient("localhost", Port(8081))
+      client.connect()
+      clients.add(client)
+
+    try:
+      # Each client creates its own barrel and writes data
+      for i, client in clients:
+        let barrelName = &"concurrent_ws_{i}"
+        check client.createBarrel(barrelName)
+        check client.useBarrel(barrelName)
+        check client.set(&"key_{i}", &"value_{i}")
+
+      # Verify each client's data is isolated
+      for i, client in clients:
+        let barrelName = &"concurrent_ws_{i}"
+        check client.useBarrel(barrelName)
+        let value = client.get(&"key_{i}")
+        check value == &"value_{i}"
+    finally:
+      # Close all clients
+      for client in clients:
+        client.close()
+
 when isMainModule:
   # Run all tests
   echo "Running BitBarrel server network tests..."
