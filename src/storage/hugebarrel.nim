@@ -27,12 +27,12 @@ type
     # Barrel1: CritBit barrel storing RangeKeyDirs
     barrel1*: Barrel
 
-    # Barrel2: Multiple data files
-    barrel2Files*: Table[uint32, DataFile]
+    # Barrel2: Multiple data files (store refs for safe sharing)
+    barrel2Files*: Table[uint32, ref DataFile]
     nextFileId*: uint32
-    currentFile*: DataFile
     currentFileId*: uint32
     currentFileSize*: uint64
+    barrel2Lock*: Lock  # Thread-safe access to barrel2Files
 
     # Range metadata in memory
     ranges*: seq[tuple[minKey: string, maxKey: string, rangeKey: string]]
@@ -126,30 +126,41 @@ proc addRangeMetadata(hb: var HugeBarrel, rangeKey: string, minKey: string, maxK
 
 # --- Data file management ---
 
-proc getOrCreateDataFile(hb: var HugeBarrel, fileId: uint32): DataFile =
+proc getOrCreateDataFile(hb: var HugeBarrel, fileId: uint32): ref DataFile =
   ## Get a Barrel2 file by ID, create if needed
-  if fileId in hb.barrel2Files:
-    return hb.barrel2Files[fileId]
+  ## Returns a reference safely
+  withLock(hb.barrel2Lock):
+    if fileId in hb.barrel2Files:
+      return hb.barrel2Files[fileId]
 
-  # Create file
-  let filePath = hb.path / "barrel2" / fmt"file_{fileId:06d}.data"
-  createDir(hb.path / "barrel2")
+    # Create file
+    let filePath = hb.path / "barrel2" / fmt"file_{fileId:06d}.data"
+    createDir(hb.path / "barrel2")
 
-  var dataFile = open(filePath, fileId, syncImmediate, false, 64*1024, false)
+    # Create DataFile and wrap in ref
+    var dataFile = open(filePath, fileId, syncImmediate, false, 0, false)
+    let dataFileRef = new(ref DataFile)
+    dataFileRef[] = dataFile
 
-  hb.barrel2Files[fileId] = dataFile
-  return dataFile
+    hb.barrel2Files[fileId] = dataFileRef
+    return dataFileRef
 
 proc createNewDataFile(hb: var HugeBarrel) =
   ## Create a new data file when current is full
-  hb.currentFileId = hb.nextFileId
-  inc(hb.nextFileId)
+  withLock(hb.barrel2Lock):
+    hb.currentFileId = hb.nextFileId
+    inc(hb.nextFileId)
 
-  let filePath = hb.path / "barrel2" / fmt"file_{hb.currentFileId:06d}.data"
-  createDir(hb.path / "barrel2")
+    let filePath = hb.path / "barrel2" / fmt"file_{hb.currentFileId:06d}.data"
+    createDir(hb.path / "barrel2")
 
-  hb.currentFile = open(filePath, hb.currentFileId, syncImmediate, false, 64*1024, false)
-  hb.currentFileSize = 0
+    # Create DataFile and wrap in ref
+    var dataFile = open(filePath, hb.currentFileId, syncImmediate, false, 0, false)
+    let dataFileRef = new(ref DataFile)
+    dataFileRef[] = dataFile
+
+    hb.barrel2Files[hb.currentFileId] = dataFileRef
+    hb.currentFileSize = 0
 
 # --- RangeKeyDir operations ---
 
@@ -161,14 +172,18 @@ proc loadRangeKeyDir(hb: var HugeBarrel, rangeKey: string): RangeKeyDir =
   if cached.isSome():
     return cached.get()
 
+
   # Load from Barrel1
   let serialized = hb.barrel1.get(rangeKey)
   if serialized == "":
     # Create empty RangeKeyDir
     return newRangeKeyDir()
 
+
   let rkd = deserialize(serialized)
+
   hb.rangeKeyCache.cachePut(rangeKey, rkd)
+
   return rkd
 
 proc loadRangeKeyDir(hb: HugeBarrel, rangeKey: string): RangeKeyDir =
@@ -176,25 +191,83 @@ proc loadRangeKeyDir(hb: HugeBarrel, rangeKey: string): RangeKeyDir =
   var mutableHb = hb
   result = loadRangeKeyDir(mutableHb, rangeKey)
 
+proc saveRangeMetadata(hb: var HugeBarrel) =
+  ## Save range metadata to Barrel1
+  ## Serializes the in-memory hb.ranges (which contains ALL range boundaries)
+
+  # Serialize all ranges from hb.ranges (which should always be complete)
+  var serialized = ""
+  for r in hb.ranges:
+    # Format: rangeKey\0minKey\0maxKey\0
+    serialized.add(r.rangeKey)
+    serialized.add('\x00')
+    serialized.add(r.minKey)
+    serialized.add('\x00')
+    serialized.add(r.maxKey)
+    serialized.add('\x00')
+
+  discard hb.barrel1.set("__RANGES_METADATA__", serialized)
+
+proc loadRangeMetadata(hb: var HugeBarrel) =
+  ## Load range metadata from Barrel1
+  ## Rebuilds hb.ranges from serialized metadata
+
+  let serialized = hb.barrel1.get("__RANGES_METADATA__")
+  if serialized == "" or serialized.len < 3:
+    # No metadata saved yet
+    return
+
+  var pos = 0
+  hb.ranges = @[]
+
+  while pos < serialized.len:
+    # Parse rangeKey (null-terminated)
+    var rangeKeyEnd = pos
+    while rangeKeyEnd < serialized.len and serialized[rangeKeyEnd] != '\x00':
+      inc rangeKeyEnd
+    if rangeKeyEnd >= serialized.len:
+      break
+    let rangeKey = serialized[pos ..< rangeKeyEnd]
+    pos = rangeKeyEnd + 1
+
+    # Parse minKey (null-terminated)
+    var minKeyEnd = pos
+    while minKeyEnd < serialized.len and serialized[minKeyEnd] != '\x00':
+      inc minKeyEnd
+    if minKeyEnd >= serialized.len:
+      break
+    let minKey = serialized[pos ..< minKeyEnd]
+    pos = minKeyEnd + 1
+
+    # Parse maxKey (null-terminated)
+    var maxKeyEnd = pos
+    while maxKeyEnd < serialized.len and serialized[maxKeyEnd] != '\x00':
+      inc maxKeyEnd
+    if maxKeyEnd >= serialized.len:
+      break
+    let maxKey = serialized[pos ..< maxKeyEnd]
+    pos = maxKeyEnd + 1
+
+    hb.ranges.add((minKey: minKey, maxKey: maxKey, rangeKey: rangeKey))
+
+  # Sort by minKey for binary search
+  hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+
 proc saveRangeKeyDir(hb: var HugeBarrel, rangeKey: string, rkd: var RangeKeyDir) =
   ## Save a RangeKeyDir to Barrel1
+
   let serialized = rkd.serialize()
-  discard hb.barrel1.set(rangeKey, serialized)
+
+  let success = hb.barrel1.set(rangeKey, serialized)
+
+  if not success:
+    echo fmt"ERROR: Failed to save RangeKeyDir to Barrel1!"
 
   # Update cache
   hb.rangeKeyCache.cachePut(rangeKey, rkd)
 
-  # Update range metadata
-  var found = false
-  for i in 0..<hb.ranges.len:
-    if hb.ranges[i].rangeKey == rangeKey:
-      hb.ranges[i] = (minKey: rkd.minKey, maxKey: rkd.maxKey, rangeKey: rangeKey)
-      found = true
-      break
-
-  if not found:
-    hb.ranges.add((minKey: rkd.minKey, maxKey: rkd.maxKey, rangeKey: rangeKey))
-    hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+  # Clear dirty flag since we just saved
+  rkd.isDirty = false
 
 # --- Key operations ---
 
@@ -203,6 +276,7 @@ proc get*(hb: var HugeBarrel, key: string): string =
 
   # Find which range this key belongs to
   let rangeKey = hb.findRangeForKey(key)
+
   if rangeKey == "":
     return ""
 
@@ -211,12 +285,13 @@ proc get*(hb: var HugeBarrel, key: string): string =
 
   # Find the entry
   let entry = rkd.find(key)
+
   if entry.isNone() or entry.get().deleted:
     return ""
 
   # Read from data file
   let fileId = entry.get().fileId
-  var dataFile = hb.getOrCreateDataFile(fileId)
+  var dataFileRef = hb.getOrCreateDataFile(fileId)
 
   # Build RecordInfo
   var recordInfo: RecordInfo
@@ -225,7 +300,8 @@ proc get*(hb: var HugeBarrel, key: string): string =
   recordInfo.valueSize = entry.get().valueSize
   recordInfo.recordSize = entry.get().recordSize
 
-  let (readKey, value, timestamp) = dataFile.readRecord(recordInfo)
+  let (readKey, value, timestamp) = dataFileRef[].readRecord(recordInfo)
+
   return value
 
 proc get*(hb: HugeBarrel, key: string): string =
@@ -265,8 +341,8 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   let rightRangeKey = fmt"R{hb.nextFileId:010d}"
   inc(hb.nextFileId)
 
-  var leftRkd = newRangeKeyDir(allEntries[0].key, splitKey)
-  var rightRkd = newRangeKeyDir(splitKey, allEntries[^1].key)
+  var leftRkd = newRangeKeyDir(allEntries[0].key, allEntries[splitIndex - 1].key)
+  var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, allEntries[^1].key)
 
   # Distribute entries
   for i, entry in allEntries:
@@ -282,7 +358,7 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   # Remove old range from Barrel1
   discard hb.barrel1.delete(rangeKey)
 
-  # Update in-memory metadata
+  # Update in-memory metadata (single source of truth!)
   var newRanges: seq[tuple[minKey: string, maxKey: string, rangeKey: string]] = @[]
   for r in hb.ranges:
     if r.rangeKey != rangeKey:
@@ -291,6 +367,9 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   newRanges.add((minKey: rightRkd.minKey, maxKey: rightRkd.maxKey, rangeKey: rightRangeKey))
   newRanges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
   hb.ranges = newRanges
+
+  # Save updated range metadata (since hb.ranges changed)
+  hb.saveRangeMetadata()
 
   # Update cache
   hb.rangeKeyCache.cacheDel(rangeKey)
@@ -304,16 +383,20 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
 proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   ## Set a key-value pair
 
+
   if hb.barrel1.isClosed():
     return false
 
   # Find or create range for this key
   var rangeKey = hb.findRangeForKey(key)
+
   if rangeKey == "":
     # Create new range
     rangeKey = fmt"R{hb.nextFileId:010d}"
     hb.ranges.add((minKey: key, maxKey: key, rangeKey: rangeKey))
     hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+    # Save metadata since we added a new range
+    hb.saveRangeMetadata()
 
   # Load RangeKeyDir
   var rkd = hb.loadRangeKeyDir(rangeKey)
@@ -325,14 +408,14 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
 
   # Write to data file
   let rawTimestamp = getTime().toUnix() * 1000
-  let ttlToUse = if ttl == -1: 0 else: ttl
 
-  var currentFile = hb.currentFile
-  let recordInfo = currentFile.appendRecord(
+  let currentFileRef = hb.getOrCreateDataFile(hb.currentFileId)
+  let recordInfo = currentFileRef[].appendRecord(
     key = key,
     value = value,
     timestamp = rawTimestamp
-    # TODO: TTL support (Phase 6)
+    # Note: TTL parameter is accepted but not yet fully implemented in the storage layer
+    # Future: Pass TTL to appendRecord and implement expiration checking on get()
   )
 
   # Update RangeKeyDir
@@ -354,6 +437,10 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   if rkd.shouldFlush():
     rkd.flush()
     hb.saveRangeKeyDir(rangeKey, rkd)
+  else:
+    # Still need to update cache with the modified RangeKeyDir!
+    # Otherwise get() will load the stale version from Barrel1
+    hb.rangeKeyCache.cachePut(rangeKey, rkd)
 
   # Check if range needs splitting
   if rkd.len() > hb.config.maxEntriesPerRange and hb.config.autoSplitEnabled:
@@ -361,34 +448,13 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
     discard hb.splitRange(rangeKey)
 
   hb.currentFileSize += recordInfo.recordSize + 4  # +4 for CRC
+
   return true
 
 proc shouldSplitRange*(hb: HugeBarrel, rangeKey: string): bool =
   ## Check if a range needs to be split
   let rkd = hb.loadRangeKeyDir(rangeKey)
   result = rkd.len() > hb.config.maxEntriesPerRange
-
-  # Remove old range from Barrel1
-  discard hb.barrel1.delete(rangeKey)
-
-  # Update in-memory metadata
-  var newRanges: seq[tuple[minKey: string, maxKey: string, rangeKey: string]] = @[]
-  for r in hb.ranges:
-    if r.rangeKey != rangeKey:
-      newRanges.add(r)
-  newRanges.add((minKey: leftRkd.minKey, maxKey: leftRkd.maxKey, rangeKey: leftRangeKey))
-  newRanges.add((minKey: rightRkd.minKey, maxKey: rightRkd.maxKey, rangeKey: rightRangeKey))
-  newRanges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
-  hb.ranges = newRanges
-
-  # Update cache
-  hb.rangeKeyCache.cacheDel(rangeKey)
-  hb.rangeKeyCache.cachePut(leftRangeKey, leftRkd)
-  hb.rangeKeyCache.cachePut(rightRangeKey, rightRkd)
-
-  echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
-
-  result = (leftRangeKey, rightRangeKey)
 
 proc delete*(hb: var HugeBarrel, key: string): bool =
   ## Delete a key (tombstone)
@@ -431,12 +497,13 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
   result = HugeBarrel(
     path: path,
     config: config.hugeConfig,
-    barrel2Files: initTable[uint32, DataFile](),
-    nextFileId: 1,
-    currentFileId: 0,
+    barrel2Files: initTable[uint32, ref DataFile](),
+    nextFileId: 2,  # Start at 2 so first file is 1
+    currentFileId: 1,  # Initialize to first file ID
     currentFileSize: 0,
     ranges: @[]
   )
+  initLock(result.barrel2Lock)
 
   # Ensure directories exist
   createDir(path / "barrel1")
@@ -459,21 +526,15 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
     let initialRangeKey = "R0000000001"
     var initialRange = newRangeKeyDir()
     result.saveRangeKeyDir(initialRangeKey, initialRange)
-    result.ranges.add((minKey: "", maxKey: "", rangeKey: initialRangeKey))
+    # Add to hb.ranges (single source of truth)
+    result.ranges.add((minKey: initialRange.minKey, maxKey: initialRange.maxKey, rangeKey: initialRangeKey))
+    result.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+    # Save metadata
+    result.saveRangeMetadata()
   else:
     # Load existing ranges from Barrel1
-    # For now, we'll iterate through Barrel1 keys and load them
-    for rangeKey in result.barrel1.keys():
-      if rangeKey.startsWith("R"):
-        let serialized = result.barrel1.get(rangeKey)
-        if serialized != "":
-          try:
-            let rkd = deserialize(serialized)
-            result.ranges.add((minKey: rkd.minKey, maxKey: rkd.maxKey, rangeKey: rangeKey))
-          except:
-            discard
-    # Sort by minKey
-    result.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+    loadRangeMetadata(result)
+    echo fmt"Loaded {result.ranges.len} ranges from Barrel1"
 
   # Create first data file
   result.createNewDataFile()
@@ -481,20 +542,25 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
 proc close*(hb: var HugeBarrel) =
   ## Close the HugeBarrel
 
-  # Save all cached RangeKeyDirs
+  # Save all cached RangeKeyDirs (even if not dirty)
   for rangeKey, rkd in hb.rangeKeyCache.cache:
-    if rkd.isDirty:
-      let serialized = rkd.serialize()
-      discard hb.barrel1.set(rangeKey, serialized)
+    let serialized = rkd.serialize()
+    discard hb.barrel1.set(rangeKey, serialized)
+
+  # Save range metadata (hb.ranges should already be complete and up-to-date)
+  hb.saveRangeMetadata()
 
   # Close Barrel1
   hb.barrel1.close()
 
   # Close all data files
-  var files = hb.barrel2Files
-  for fileId in files.keys:
-    var dataFile = files[fileId]
-    dataFile.close()
+  withLock(hb.barrel2Lock):
+    var files = hb.barrel2Files
+    for fileId in files.keys:
+      let dataFileRef = files[fileId]
+      dataFileRef[].close()
+    hb.barrel2Files.clear()
+  deinitLock(hb.barrel2Lock)
 
 # --- Range operations ---
 

@@ -162,13 +162,12 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     # Use a callback-based approach to get RecordInfo after writing
     var recordInfo: RecordInfo
 
+    # Write and update size atomically
     withLock(df.lock):
       let recordPos = df.size
       let recordDataPos = recordPos + 4  # After CRC32
       # New format: timestamp:8 + keyLen:4 + key + valLen:4 + flags:1 + algorithm:1
       let valuePos = recordDataPos + 8 + 4 + key.len.uint64 + 4 + 1 + 1
-
-      df.size = df.size + 4.uint64 + encoded.len.uint64
 
       recordInfo = RecordInfo(
         recordPos: recordDataPos,
@@ -177,22 +176,26 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
         recordSize: (4 + encoded.len).uint32
       )
 
-    # Track in write buffer for stats (even if writing immediately)
-    discard df.writeBuffer[].addEntry(key, value, timestamp)
+      # Write CRC32
+      let crcBufWritten = df.file.writeBuffer(addr crcVal, 4)
+      if crcBufWritten != 4:
+        raise newException(IOError, "Failed to write CRC32")
 
-    # Write immediately for now (buffered flushing can be added later)
-    let crcWritten = df.file.writeBuffer(addr crcVal, 4)
-    if crcWritten != 4:
-      raise newException(IOError, "Failed to write CRC32")
+      # Write encoded record
+      let encBufWritten = df.file.writeBuffer(encoded.cstring, encoded.len)
+      if encBufWritten != encoded.len:
+        raise newException(IOError, "Failed to write record")
 
-    let encWritten = df.file.writeBuffer(encoded.cstring, encoded.len)
-    if encWritten != encoded.len:
-      raise newException(IOError, "Failed to write record")
+      # Update size AFTER writing (consistent with direct write path)
+      df.size = df.size + 4.uint64 + encoded.len.uint64
 
     df.file.flushFile()
     if df.shouldFsync:
       when defined(posix):
         discard fsync(df.file.getFileHandle())
+
+    # Track in write buffer for stats (even if writing immediately)
+    discard df.writeBuffer[].addEntry(key, value, timestamp)
 
     result = recordInfo
   else:
