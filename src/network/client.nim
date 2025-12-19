@@ -12,7 +12,7 @@ type
     host: string
     port: int
     buffer: string
-    connected: bool
+    connected*: bool
     clientId*: uint64
 
   WebSocketException* = object of CatchableError

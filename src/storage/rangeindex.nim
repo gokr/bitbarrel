@@ -32,6 +32,7 @@ type
     created*: int64
     lastModified*: int64
     lock*: Lock
+    managementConfig*: RangeManagementConfig  # Dynamic range management settings
 
 proc getRangeDir*(dataDir: string, accessModel: AccessModel): string =
   ## Get directory path for ranges based on access model
@@ -236,6 +237,17 @@ proc initRangeIndex*(numRanges: int, accessModel: AccessModel, dataDir: string):
   result.lastModified = result.created
   initLock(result.lock)
 
+  # Initialize default management config
+  result.managementConfig = RangeManagementConfig(
+    enabled: false,  # Disabled by default for backward compatibility
+    splitThresholdKeys: 100000,
+    mergeThresholdKeys: 10000,
+    maxRangeSizeHintMB: 10,
+    minRangeSizeHintMB: 1,
+    autoSplit: true,
+    autoMerge: true
+  )
+
   # Create range directory if needed
   let rangeDir = getRangeDir(dataDir, accessModel)
   if not dirExists(rangeDir):
@@ -249,7 +261,10 @@ proc initRangeIndex*(numRanges: int, accessModel: AccessModel, dataDir: string):
       lastAccess: 0,
       hintPath: getRangeHintPath(dataDir, RangeId(i), accessModel),
       isLoaded: false,
-      isDirty: false
+      isDirty: false,
+      minKey: "",  # Will be populated during writes
+      maxKey: "",  # Will be populated during writes
+      accessModel: accessModel
     )
 
 # Backward compatibility
@@ -479,3 +494,46 @@ proc ensureRangeDir*(dataDir: string): bool =
 proc getRangeIndexPath*(dataDir: string): string =
   ## Get the path for the range index file
   result = dataDir / "ranges" / "range_index.meta"
+
+proc setManagementConfig*(index: var RangeIndex, config: RangeManagementConfig) =
+  ## Set the range management configuration
+  withLock(index.lock):
+    index.managementConfig = config
+
+proc getManagementConfig*(index: var RangeIndex): RangeManagementConfig =
+  ## Get the current range management configuration
+  withLock(index.lock):
+    result = index.managementConfig
+
+proc enableRangeManagement*(index: var RangeIndex, enabled: bool = true) =
+  ## Enable or disable range management
+  withLock(index.lock):
+    index.managementConfig.enabled = enabled
+
+proc getRangeHealthStats*(index: var RangeIndex): tuple[
+    totalRanges: int,
+    healthyRanges: int,
+    rangesNeedingSplit: int,
+    rangesNeedingMerge: int,
+    criticalRanges: int
+  ] =
+  ## Get statistics about range health across the index
+  ## This is a simple version without importing orderedrange
+
+  withLock(index.lock):
+    result.totalRanges = index.ranges.len
+    result.healthyRanges = 0
+    result.rangesNeedingSplit = 0
+    result.rangesNeedingMerge = 0
+    result.criticalRanges = 0
+
+    for meta in index.ranges:
+      # Simple health check based on key count
+      if meta.keyCount > index.managementConfig.splitThresholdKeys:
+        if meta.keyCount > index.managementConfig.splitThresholdKeys * 2:
+          inc(result.criticalRanges)
+        inc(result.rangesNeedingSplit)
+      elif meta.keyCount < index.managementConfig.mergeThresholdKeys:
+        inc(result.rangesNeedingMerge)
+      else:
+        inc(result.healthyRanges)

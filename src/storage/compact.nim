@@ -13,6 +13,9 @@ type
   CompactControllerObj* = object
     config*: types.CompactConfig
     updateEntry*: IndexUpdateProc     # Callback to update index (KeyDir or CritBit)
+    # Auto-compaction support
+    barrelPath*: string               # Store data directory path
+    currentFileId*: uint32            # Track current file ID
     # Background compact support
     shutdownFlag*: Atomic[bool]       # Signal to stop background thread
     compactThread*: Thread[ptr CompactControllerObj]  # Background worker thread
@@ -27,6 +30,7 @@ type
 
 # Forward declarations
 proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc): CompactController
+proc newCompactController*(config: types.CompactConfig): CompactController
 proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir): CompactController
 proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex): CompactController
 proc performCompact*(controller: CompactController, dataPath: string, fileId: uint32): bool
@@ -38,6 +42,8 @@ proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdate
   result = CompactController()
   result.config = config
   result.updateEntry = updateEntry
+  result.barrelPath = ""  # Will be set later
+  result.currentFileId = 0'u32  # Will be updated by worker
   result.shutdownFlag.store(false)
   result.hasWorker = false
   result.pendingCompact = false
@@ -53,6 +59,11 @@ proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdate
     timeStarted: getTime(),
     timeCompleted: getTime()
   )
+
+proc newCompactController*(config: types.CompactConfig): CompactController =
+  ## Create a new compact controller with no index update callback
+  ## Used for ranged modes where index updates are handled separately
+  result = newCompactController(config, nil)
 
 proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir): CompactController =
   ## Create a new compact controller for KeyDir (backward compatible)
@@ -101,6 +112,33 @@ proc calculateFragmentation*(dataPath: string): tuple[live: int, total: int, rat
 
   let ratio = if total > 0: (float(total - live) / float(total)) else: 0.0
   (live: live, total: total, ratio: ratio)
+
+proc setBarrelPath*(controller: CompactController, path: string) =
+  ## Set the barrel data path for auto-compaction
+  controller.barrelPath = path
+
+proc getCurrentFileId*(dataPath: string): uint32 =
+  ## Get the current (highest) file ID in the data directory
+  ## Assumes files are named like: data/000001.data, data/000002.data, etc.
+  var maxId: uint32 = 0
+
+  try:
+    for kind, path in walkDir(dataPath):
+      if kind == pcFile and path.endsWith(".data"):
+        let filename = path.extractFilename()
+        # Extract ID from filename like "000001.data"
+        let idStr = filename.split('.')[0]
+        if idStr.len == 6:
+          try:
+            let id = parseUInt(idStr).uint32
+            if id > maxId:
+              maxId = id
+          except CatchableError:
+            discard
+  except CatchableError:
+    discard
+
+  maxId
 
 proc performCompact*(controller: CompactController, dataPath: string, fileId: uint32): bool =
   ## Perform compaction on a single data file
@@ -166,15 +204,16 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
         controller.stats.bytesWritten += recordSize.int64
 
         # Update index with new position using callback
-        controller.updateEntry(key, KeyDirEntry(
-          fileId: newFileId,
-          recordPos: newPos.recordPos,
-          valuePos: newPos.valuePos,
-          valueSize: newPos.valueSize,
-          timestamp: timestamp,
-          recordSize: newPos.recordSize,
-          deleted: false  # Non-tombstone records only reach here
-        ))
+        if controller.updateEntry != nil:
+          controller.updateEntry(key, KeyDirEntry(
+            fileId: newFileId,
+            recordPos: newPos.recordPos,
+            valuePos: newPos.valuePos,
+            valueSize: newPos.valueSize,
+            timestamp: timestamp,
+            recordSize: newPos.recordSize,
+            deleted: false  # Non-tombstone records only reach here
+          ))
         inc(controller.stats.recordsKept)
 
     except IOError:
@@ -245,17 +284,48 @@ proc compactWorker*(controllerPtr: ptr CompactControllerObj) {.thread.} =
     if controller.shutdownFlag.load():
       break
 
-    # Check for pending compact or auto-compact trigger
-    withLock(controller.compactLock):
-      if controller.compactInProgress:
-        continue  # Already running, skip this cycle
+    # Skip if no barrel path set
+    if controller.barrelPath.len == 0:
+      continue
 
-      # Handle explicit pending compact requests
+    # Check if we need to compact current file
+    let currentFile = getCurrentFileId(controller.barrelPath)
+
+    # Initialize currentFileId on first run
+    if controller.currentFileId == 0:
+      controller.currentFileId = currentFile
+
+    # Check if it's a new file or if we should check the current file
+    if currentFile != controller.currentFileId or currentFile == controller.currentFileId:
+      controller.currentFileId = currentFile
+
+      # Build the actual data file path
+      let dataFilePath = joinPath(controller.barrelPath, &"{currentFile:06d}.data")
+
+      # Check if file exists before trying to calculate fragmentation
+      if fileExists(dataFilePath):
+        # Check fragmentation
+        let (_, _, fragmentation) = calculateFragmentation(dataFilePath)
+
+        # Trigger compaction if fragmentation exceeds threshold
+        if fragmentation > controller.config.triggerThreshold:
+          withLock(controller.compactLock):
+            if not controller.compactInProgress:
+              echo &"Auto-compaction triggered: fragmentation {fragmentation:.2f} > threshold {controller.config.triggerThreshold}"
+              # Note: This will make the file, but the barrel needs to be notified to reopen it
+              # For now, we just perform the compaction
+              discard performCompact(controller, dataFilePath, currentFile)
+
+    # Handle explicit pending compact requests
+    withLock(controller.compactLock):
       if controller.pendingCompact:
         controller.pendingCompact = false
-        # Note: In single-file mode, compact needs to be triggered with actual data file info
-        # The caller should use performCompact directly with the file path
-        continue
+        # For manual triggers, compact the current file
+        if controller.barrelPath.len > 0:
+          let currentFile = getCurrentFileId(controller.barrelPath)
+          let dataFilePath = joinPath(controller.barrelPath, &"{currentFile:06d}.data")
+          if fileExists(dataFilePath):
+            discard performCompact(controller, dataFilePath, currentFile)
 
 proc startCompactWorker*(controller: CompactController) =
   ## Start the background compact worker thread
