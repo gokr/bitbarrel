@@ -39,7 +39,7 @@ proc cleanupTestDir*(testDir: string) =
 
 template withTestDir*(testDirBase: string, body: untyped) =
   ## Execute block with a test directory that is automatically cleaned up
-  let testDir = setupTestDir(testDirBase)
+  var testDir {.inject.} = setupTestDir(testDirBase)
   defer: cleanupTestDir(testDir)
   body
 
@@ -218,15 +218,15 @@ const crc32TestVectors* = [
   ("abcdefghijklmnopqrstuvwxyz", 0x4C2750BD'u32),
   ("123456789", 0xCBF43926'u32),
   ("The quick brown fox jumps over the lazy dog", 0x414FA339'u32),
-  ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 0x29F0D8BD'u32),
-  ("~{ÿ¡üîøúåß∂®", 0xC9022B1B'u32),
-  ("中文测试", 0xF7E1E24B'u32),
-  ("🚀🔥💯", 0xA1C3E2D4'u32),
-  ("Hello, World!", 0xE7C3AFA4'u32),
-  ("Nim is great!", 0xE5A68DA3'u32),
-  ("https://github.com", 0x7B9E5A1C'u32),
-  ("2023-12-01", 0xA9B8C7D6'u32),
-  ("test@example.com", 0x3F2E1D5A'u32),
+  ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 0x1FC2E6D2'u32),
+  ("~{ÿ¡üîøúåß∂®", 0xE2DBB75A'u32),
+  ("中文测试", 0x48B37900'u32),
+  ("🚀🔥💯", 0x6887DC21'u32),
+  ("Hello, World!", 0xEC4AC3D0'u32),
+  ("Nim is great!", 0xE06F4B38'u32),
+  ("https://github.com", 0x69608D28'u32),
+  ("2023-12-01", 0x3C8245E0'u32),
+  ("test@example.com", 0x9708878A'u32),
 ]
 
 # =============================================================================

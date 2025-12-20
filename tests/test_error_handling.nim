@@ -229,8 +229,7 @@ suite "Error Handling Tests":
       # Try to reopen - should fail
       expect OSError, IOError, CatchableError:
         var df2 = datafile.open(testFile, 1'u32)
-        if not df2.isNil:
-          df2.close()
+        df2.close()
 
   test "Handles truncated data files":
     withTestDir("truncation"):
@@ -238,7 +237,7 @@ suite "Error Handling Tests":
       let testFile = testDir / "truncated.data"
       var df = datafile.open(testFile, 1'u32)
       for i in 0..<5:
-        discard df.appendRecord(&"key_{i}", &"value_{i}", now())
+        discard df.appendRecord("key_" & $i, "value_" & $i, now())
       df.close()
 
       # Truncate file in middle of record
@@ -248,8 +247,7 @@ suite "Error Handling Tests":
       # Try to reopen - should handle gracefully
       expect OSError, IOError, CatchableError:
         var df2 = datafile.open(testFile, 1'u32)
-        if not df2.isNil:
-          df2.close()
+        df2.close()
 
   test "Handles system clock rollback":
     withTestDir("clock_rollback"):
@@ -299,8 +297,7 @@ suite "Error Handling Tests":
       # Try to reopen - should handle corruption
       expect OSError, IOError, CatchableError:
         var df2 = datafile.open(testFile, 1'u32)
-        if not df2.isNil:
-          df2.close()
+        df2.close()
 
   test "Validates file header on open":
     withTestDir("header_validation"):
@@ -312,7 +309,6 @@ suite "Error Handling Tests":
 
       # File should open successfully
       var df2 = datafile.open(testFile, 1'u32)
-      check not df2.isNil
       df2.close()
 
       # Now corrupt the header
@@ -321,5 +317,4 @@ suite "Error Handling Tests":
       # Try to open corrupt file
       expect OSError, IOError, CatchableError:
         var df3 = datafile.open(testFile, 1'u32)
-        if not df3.isNil:
-          df3.close()
+        df3.close()
