@@ -233,8 +233,8 @@ suite "Error Handling Tests":
 
   test "Handles truncated data files":
     withTestDir("truncation"):
-      # Create file with multiple records
-      let testFile = testDir / "truncated.data"
+      # Create file with multiple records - use proper filename pattern
+      let testFile = testDir / "000001.data"
       var df = datafile.open(testFile, 1'u32)
       for i in 0..<5:
         discard df.appendRecord("key_" & $i, "value_" & $i, now())
@@ -244,15 +244,20 @@ suite "Error Handling Tests":
       let fileSize = getFileSize(testFile)
       truncateFileAt(testFile, fileSize - 20)
 
-      # Try to reopen - should handle gracefully
-      expect OSError, IOError, CatchableError:
-        var df2 = datafile.open(testFile, 1'u32)
-        df2.close()
+      # File should open successfully (header is valid)
+      var df2 = datafile.open(testFile, 1'u32)
+      df2.close()
+
+      # Recovery should handle truncated records gracefully
+      let engine = initRecoveryEngine(testDir)
+      let stats = engine.recover()
+      # Should recover some valid records before truncation
+      check stats.validRecords > 0
 
   test "Handles system clock rollback":
     withTestDir("clock_rollback"):
-      # Write records with timestamps
-      let testFile = testDir / "clock.data"
+      # Write records with timestamps - use proper filename pattern
+      let testFile = testDir / "000001.data"
       var df = datafile.open(testFile, 1'u32)
 
       let now = now()
@@ -275,8 +280,8 @@ suite "Error Handling Tests":
 
   test "Handles partial record writes":
     withTestDir("partial_records"):
-      # Create file with records
-      let testFile = testDir / "partial.data"
+      # Create file with records - use proper filename pattern
+      let testFile = testDir / "000001.data"
       var df = datafile.open(testFile, 1'u32)
 
       # Write complete records
@@ -294,10 +299,15 @@ suite "Error Handling Tests":
       let corruptPos = pos1 + 10
       truncateFileAt(testFile, int(corruptPos))
 
-      # Try to reopen - should handle corruption
-      expect OSError, IOError, CatchableError:
-        var df2 = datafile.open(testFile, 1'u32)
-        df2.close()
+      # File should open successfully (header is valid)
+      var df2 = datafile.open(testFile, 1'u32)
+      df2.close()
+
+      # Recovery should handle partial records gracefully
+      let engine = initRecoveryEngine(testDir)
+      let stats = engine.recover()
+      # Should recover at least the first valid record
+      check stats.validRecords >= 1
 
   test "Validates file header on open":
     withTestDir("header_validation"):
