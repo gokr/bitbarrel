@@ -55,7 +55,24 @@ proc open*(path: string, fileId: uint32): DataFile =
       discard fsync(file.getFileHandle())
     file.setFilePos(0, fspEnd)
   else:
-    file.setFilePos(0, fspEnd)
+    # Validate existing file header
+    let oldPos = file.getFilePos()
+    file.setFilePos(0)
+
+    var header: FileHeader
+    let bytesRead = file.readBuffer(addr header, HEADER_SIZE)
+    if bytesRead != HEADER_SIZE:
+      raise newException(IOError, "Failed to read file header")
+
+    # Validate header
+    let expectedMagic = ['B', 'C', 'K', 'S']
+    if header.magic != expectedMagic:
+      raise newException(IOError, "Invalid file header magic number")
+
+    if header.version != VERSION:
+      raise newException(IOError, "Unsupported file version: " & $header.version)
+
+    file.setFilePos(oldPos)
 
   let size = getFileSize(path).uint64
 
@@ -98,7 +115,24 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
       discard fsync(file.getFileHandle())
     file.setFilePos(0, fspEnd)
   else:
-    file.setFilePos(0, fspEnd)
+    # Validate existing file header
+    let oldPos = file.getFilePos()
+    file.setFilePos(0)
+
+    var header: FileHeader
+    let bytesRead = file.readBuffer(addr header, HEADER_SIZE)
+    if bytesRead != HEADER_SIZE:
+      raise newException(IOError, "Failed to read file header")
+
+    # Validate header
+    let expectedMagic = ['B', 'C', 'K', 'S']
+    if header.magic != expectedMagic:
+      raise newException(IOError, "Invalid file header magic number")
+
+    if header.version != VERSION:
+      raise newException(IOError, "Unsupported file version: " & $header.version)
+
+    file.setFilePos(oldPos)
 
   let size = getFileSize(path).uint64
 
