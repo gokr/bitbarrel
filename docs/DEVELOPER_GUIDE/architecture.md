@@ -42,7 +42,7 @@ Application → KeyDir lookup → Get disk position → DataFile read → Return
 
 BitBarrel supports three different index modes to optimize for different use cases:
 
-### bmNormal: Hash Table Mode (Default)
+### bmHash: Hash Table Mode (Default)
 - Uses `Table[string, KeyDirEntry]` for O(1) lookups
 - Simple hash map, no ordering guarantees
 - Memory overhead: ~50 bytes per key
@@ -54,7 +54,11 @@ BitBarrel supports three different index modes to optimize for different use cas
 - Memory: All keys kept in sorted tree structure
 - Best for: Time-series data, leaderboards, ordered traversal
 
-**Note:** The bmRanged mode (for billion-key datasets) is currently in the design phase. See `docs/research/HUGECRITBIT.md` for details.
+### bmHugeCritBit: Two-Tier Mode
+- Two-tier design for billion-key datasets
+- Automatic range splitting and management
+- Supports range queries with lazy loading
+- Best for: Massive datasets, limited RAM, ordered access patterns
 
 ## File Formats
 
@@ -172,7 +176,7 @@ Key configuration options:
 ```nim
 var cfg = defaultBarrelConfig()
 
-cfg.mode = BarrelMode.bmHash        # Or bmCritBit (no bmRanged - see research/)
+cfg.mode = BarrelMode.bmHash        # Or bmCritBit
 cfg.syncMode = UserSyncMode.None    # Or Sync, Fsync
 cfg.writeBufferSize = 64 * 1024     # 64KB buffer
 cfg.autoCompact = true              # Enable background compaction
@@ -274,7 +278,7 @@ BitBarrel enhances the classic Bitcask model:
 - **Reliability**: Append-only writes are inherently crash-safe
 
 ### Limitations
-- **Memory**: KeyDir requires RAM (practical limit with bmNormal: 100M keys)
+- **Memory**: KeyDir requires RAM (practical limit with bmHash: 100M keys)
 - **Write amplification**: Append-only creates overhead (mitigated by merge)
 - **Single writer**: One write queue limits parallelism
 - **No multi-key transactions**: Each operation is atomic
