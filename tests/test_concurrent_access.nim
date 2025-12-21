@@ -3,7 +3,8 @@
 ## Tests for multi-threaded and multi-process access patterns to ensure
 ## thread safety and proper synchronization.
 
-import std/[unittest, os, times, threadpool, atomic]
+import std/[unittest, os, times, threadpool]
+import std/atomics
 import ../src/storage/keydir
 import ../src/storage/datafile
 import ../src/bitbarrel/types

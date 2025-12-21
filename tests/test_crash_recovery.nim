@@ -15,6 +15,9 @@ import ../src/storage/keydir
 import ../src/bitbarrel/types
 import testutils
 
+# Use testutils.now to avoid ambiguity with times.now
+proc now(): int64 = testutils.now()
+
 suite "Crash Recovery Tests":
 
   test "Recovery after process killed mid-write":
