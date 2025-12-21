@@ -151,7 +151,7 @@ See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
 
 BitBarrel supports three different index modes to optimize for different use cases:
 
-#### bmNormal Mode (Default)
+#### bmHash Mode (Default)
 Hash table-based index for O(1) lookups. Best for simple key-value operations where ordering is not needed.
 
 ```nim
@@ -159,7 +159,7 @@ import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmNormal  # Default mode
+cfg.mode = BarrelMode.bmHash  # Default mode
 
 var db = openBarrel("mydb", cfg)
 discard db.set("key", "value")
@@ -198,31 +198,32 @@ let allUsers = db.keysWithPrefix("user:")
 **Performance**: O(k) where k is key length, supports ordered iteration
 **Use case**: Leaderboards, time-series data, prefix searches, ordered traversal
 
-#### bmRanged Mode
-Lazy-loaded hash partitions for massive datasets that don't fit in memory. Only active partitions are loaded into memory.
+#### bmHugeCritBit Mode
+Two-tier design for massive datasets that don't fit in memory. Supports range queries with lazy-loaded partitions.
 
 ```nim
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmRanged
-cfg.numRanges = 100      # 100 hash partitions
-cfg.maxLoadedRanges = 10  # Keep max 10 partitions in memory
+cfg.mode = BarrelMode.bmHugeCritBit
+cfg.hugeConfig.maxEntriesPerRange = 500_000
+cfg.hugeConfig.rangeCacheSize = 10
 
 var db = openBarrel("bigdb", cfg)
 
-# Store billions of keys - only active partitions stay in memory
+# Store billions of keys - only active ranges stay in memory
 discard db.set("key:1", "value1")
 discard db.set("key:999999999", "value2")
 
-# Check range loading stats
+# Check range statistics
 let stats = db.rangeStats()
-echo "Loaded partitions: ", stats.loaded
+echo "Total ranges: ", stats.total
+echo "Loaded ranges: ", stats.loaded
 ```
 
-**Performance**: O(1) lookup with ~1ms partition loading overhead when needed
-**Use case**: Datasets with billions of keys, limited RAM, bursty access patterns
+**Performance**: O(1) lookup with range management overhead
+**Use case**: Datasets with billions of keys, limited RAM, bursty access patterns, ordered data
 
 ## Performance
 
