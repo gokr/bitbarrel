@@ -19,7 +19,7 @@ For users who want to use BitBarrel in their applications:
 - **[User Guide](USER_GUIDE/)**
   - [Tutorial](USER_GUIDE/tutorial.md) - Complete usage tutorial
   - [Configuration](USER_GUIDE/configuration.md) - All configuration options
-  - [API Reference](USER_GUIDE/api-reference.md) - Full API documentation
+  - API Documentation - Generated from code comments via `nim doc`
 
 ### Developer Documentation
 For developers who want to contribute or understand internals:
@@ -53,7 +53,7 @@ Background information and experimental features:
 1. [Getting Started](GETTING_STARTED.md)
 2. [User Tutorial](USER_GUIDE/tutorial.md)
 3. [Configuration](USER_GUIDE/configuration.md)
-4. [API Reference](USER_GUIDE/api-reference.md)
+4. API Documentation - Run `nim doc src/bitbarrel.nim` to generate
 
 ### I want to understand how it works
 1. [Architecture](DEVELOPER_GUIDE/architecture.md)
