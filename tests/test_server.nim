@@ -8,6 +8,11 @@ import ../src/bitbarrel/[types, config]
 var serverThread: Thread[void]
 var testDataDir: string
 
+proc serverStarter(param: pointer) {.thread.} =
+  let serverPtr = cast[ptr BitBarrelServer](param)
+  {.gcsafe.}:
+    serverPtr[].start()
+
 proc setupTestServer(): BitBarrelServer =
   testDataDir = getTempDir() / "bitbarrel_server_test_" & $rand(1000000)
   createDir(testDataDir)
@@ -20,11 +25,7 @@ proc setupTestServer(): BitBarrelServer =
   )
 
   result = newServer(config)
-
-  proc serve() =
-    result.start()
-
-  createThread(serverThread, serve)
+  createThread(serverThread, serverStarter, result.addr)
   # Wait for server to be ready
   sleep(200)
 
@@ -35,10 +36,10 @@ proc teardownTestServer(server: var BitBarrelServer) =
   removeDir(testDataDir, true)
 
 # Helper for REST API calls
-proc makeRestRequest(method, path: string, body: string = ""): Response =
+proc makeRestRequest(httpMethod, path: string, body: string = ""): Response =
   var client = newHttpClient()
   try:
-    case method:
+    case httpMethod:
     of "GET":
       result = client.get("http://127.0.0.1:8081" & path)
     of "POST":
@@ -48,9 +49,9 @@ proc makeRestRequest(method, path: string, body: string = ""): Response =
     of "DELETE":
       result = client.delete("http://127.0.0.1:8081" & path)
     of "HEAD":
-      result = client.request(method = "HEAD", url = "http://127.0.0.1:8081" & path)
+      result = client.head("http://127.0.0.1:8081" & path)
     else:
-      raise newException(ValueError, "Unsupported HTTP method: " & method)
+      raise newException(ValueError, "Unsupported HTTP method: " & httpMethod)
   finally:
     client.close()
 
