@@ -188,7 +188,7 @@ server:
     writeFile(tempFile, yamlContent)
 
     # Set environment variable
-    putEnv("BITBARREL_SERVER__ADDRESS", "1.1.1.1")
+    putEnv("BITBARREL_SERVER_ADDRESS", "1.1.1.1")
 
     try:
       let config = initConfig(tempFile)
@@ -200,7 +200,7 @@ server:
 
     finally:
       removeFile(tempFile)
-      delEnv("BITBARREL_SERVER__ADDRESS")
+      delEnv("BITBARREL_SERVER_ADDRESS")
 
 suite "Configuration Integration Tests":
 
