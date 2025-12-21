@@ -91,16 +91,29 @@ proc cacheGet(cache: var RangeKeyDirCache, rangeKey: string): Option[RangeKeyDir
 proc cachePut(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
   ## Put RangeKeyDir in cache with automatic eviction
   withLock(hb.rangeKeyCache.lock):
-    # Evict if at capacity
-    if hb.rangeKeyCache.lruList.len >= hb.rangeKeyCache.maxSize:
+    # Check if key already exists in cache (update in place)
+    if rangeKey in hb.rangeKeyCache.cache:
+      # Update existing entry and move to end of LRU (most recently used)
+      hb.rangeKeyCache.cache[rangeKey] = rkd
+      let index = hb.rangeKeyCache.lruList.find(rangeKey)
+      if index >= 0:
+        hb.rangeKeyCache.lruList.delete(index)
+        hb.rangeKeyCache.lruList.add(rangeKey)
+      return
+
+    # Key is new - evict if at capacity
+    while hb.rangeKeyCache.lruList.len >= hb.rangeKeyCache.maxSize:
       let (evictedKey, evictedRkd, wasDirty) = hb.rangeKeyCache.evictLRU()
+      # If we got a stale entry (key not in cache), keep evicting
+      if evictedKey == "":
+        continue
       # Save evicted range if it was dirty
       if wasDirty:
         let evictedSerialized = evictedRkd.serialize()
         discard hb.barrel1.set(evictedKey, evictedSerialized)
-        echo fmt"Saved evicted dirty range {evictedKey}"
+      break  # Successfully evicted a real entry
 
-    # Add to cache and LRU list
+    # Add new entry to cache and LRU list
     hb.rangeKeyCache.cache[rangeKey] = rkd
     hb.rangeKeyCache.lruList.add(rangeKey)
 
@@ -114,15 +127,22 @@ proc cacheDel*(cache: var RangeKeyDirCache, rangeKey: string) =
   ## Remove a RangeKeyDir from cache
   withLock(cache.lock):
     cache.cache.del(rangeKey)
-    let index = cache.lruList.find(rangeKey)
-    if index >= 0:
+    # Remove ALL occurrences from LRU list (shouldn't be duplicates, but just in case)
+    var index = cache.lruList.find(rangeKey)
+    while index >= 0:
       cache.lruList.delete(index)
+      index = cache.lruList.find(rangeKey)
 
 # --- Range finding ---
 
 proc findRangeForKey*(hb: HugeBarrel, key: string): string =
   ## Find which range a key belongs to by binary search
   ## Returns rangeKey or empty string if not found
+  ##
+  ## Range semantics:
+  ## - Empty minKey: matches any key (initial wildcard range)
+  ## - Empty maxKey: matches any key >= minKey (no upper bound)
+  ## - All ranges use inclusive bounds: [minKey, maxKey]
 
   if hb.ranges.len == 0:
     return ""
@@ -135,13 +155,22 @@ proc findRangeForKey*(hb: HugeBarrel, key: string): string =
     let mid = (lo + hi) div 2
     let (minKey, maxKey, rangeKey) = hb.ranges[mid]
 
-    # Handle empty bounds as wildcard (initial range)
-    if (minKey.len == 0 or key >= minKey) and (maxKey.len == 0 or key <= maxKey):
+    # Empty minKey - wildcard that matches anything
+    if minKey.len == 0:
       return rangeKey
-    elif maxKey.len > 0 and key < minKey:
-      hi = mid - 1
+
+    # Check if key is within this range's bounds
+    # Use inclusive comparison: minKey <= key <= maxKey
+    if key >= minKey:
+      # Key is >= minKey, now check if it's <= maxKey (or maxKey is empty = no upper bound)
+      if maxKey.len == 0 or key <= maxKey:
+        return rangeKey
+      else:
+        # Key > maxKey, search right half
+        lo = mid + 1
     else:
-      lo = mid + 1
+      # Key < minKey, search left half
+      hi = mid - 1
 
   return ""
 
@@ -196,21 +225,15 @@ proc loadRangeKeyDir(hb: var HugeBarrel, rangeKey: string): RangeKeyDir =
   # Check cache first
   let cached = hb.rangeKeyCache.cacheGet(rangeKey)
   if cached.isSome():
-    echo fmt"loadRangeKeyDir: Cache hit for {rangeKey}, entryCount={cached.get().len()}"
     return cached.get()
 
   # Load from Barrel1
   let serialized = hb.barrel1.get(rangeKey)
-  echo fmt"loadRangeKeyDir: Cache miss for {rangeKey}, loading from Barrel1, serializedSize={serialized.len}"
   if serialized == "":
-    echo fmt"loadRangeKeyDir: No data in Barrel1 for {rangeKey}, creating empty RangeKeyDir"
     # Create empty RangeKeyDir
     return newRangeKeyDir()
 
-
   let rkd = deserialize(serialized)
-  echo fmt"loadRangeKeyDir: Deserialized {rangeKey} from Barrel1, entryCount={rkd.len()}"
-
   hb.cachePut(rangeKey, rkd)
 
   return rkd
@@ -326,24 +349,17 @@ proc rebuildRangesFromBarrel1*(hb: var HugeBarrel) =
 
 proc saveRangeKeyDir(hb: var HugeBarrel, rangeKey: string, rkd: var RangeKeyDir) =
   ## Save a RangeKeyDir to Barrel1
-
-  echo fmt"saveRangeKeyDir: Saving {rangeKey}, entryCount={rkd.len()}, isDirty={rkd.isDirty}"
   let serialized = rkd.serialize()
-  echo fmt"saveRangeKeyDir: Serialized size={serialized.len} bytes"
-
   let success = hb.barrel1.set(rangeKey, serialized)
 
   if not success:
-    raise newException(IOError, fmt"Failed to save RangeKeyDir {rangeKey} to Barrel1")
-  else:
-    echo fmt"saveRangeKeyDir: Successfully saved {rangeKey} to Barrel1"
+    raise newException(IOError, fmt("Failed to save RangeKeyDir {rangeKey} to Barrel1"))
 
   # Update cache - let cachePut handle eviction and save
   hb.cachePut(rangeKey, rkd)
 
   # Clear dirty flag since we just saved
   rkd.isDirty = false
-  echo fmt"saveRangeKeyDir: Cleared dirty flag for {rangeKey}"
 
 # --- Key operations ---
 
@@ -352,27 +368,19 @@ proc get*(hb: var HugeBarrel, key: string): string =
 
   # Find which range this key belongs to
   let rangeKey = hb.findRangeForKey(key)
-  echo fmt"get: Looking for key '{key}', found range '{rangeKey}', total ranges={hb.ranges.len}"
-
   if rangeKey == "":
-    echo fmt"get: No range found for key '{key}'"
     return ""
 
   # Load the RangeKeyDir
   let rkd = hb.loadRangeKeyDir(rangeKey)
-  echo fmt"get: Loaded range {rangeKey}, entryCount={rkd.len()}"
 
   # Find the entry
   let entry = rkd.find(key)
-  echo fmt"get: Looking for key '{key}' in range {rangeKey}, found={entry.isSome()}"
-
   if entry.isNone() or entry.get().deleted:
-    echo fmt"get: Key '{key}' not found or deleted"
     return ""
 
   # Read from data file
   let fileId = entry.get().fileId
-  echo fmt"get: Key found at fileId={fileId}, recordPos={entry.get().recordPos}"
   var dataFileRef = hb.getOrCreateDataFile(fileId)
 
   # Build RecordInfo
@@ -383,16 +391,12 @@ proc get*(hb: var HugeBarrel, key: string): string =
   recordInfo.recordSize = entry.get().recordSize
 
   let (_, value, _) = dataFileRef[].readRecord(recordInfo)
-  echo fmt"get: Read value '{value}' for key '{key}'"
-
   return value
 
 proc get*(hb: HugeBarrel, key: string): string =
   ## Get value for a key (const version)
-  echo fmt"get(const): Looking for key '{key}'"
   var mutableHb = hb
   result = get(mutableHb, key)
-  echo fmt"get(const): Returning '{result}' for key '{key}'"
 
 proc flushAllCachedRanges*(hb: var HugeBarrel): int =
   ## Flush all dirty cached ranges to Barrel1
@@ -411,9 +415,7 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   ## Returns (leftRangeKey, rightRangeKey)
 
   # Before splitting, save all dirty cached ranges to prevent data loss during eviction
-  let dirtyCount = hb.flushAllCachedRanges()
-  if dirtyCount > 0:
-    echo fmt"Flushed {dirtyCount} dirty ranges before split"
+  discard hb.flushAllCachedRanges()
 
   # Load the current RangeKeyDir
   var rkd = hb.loadRangeKeyDir(rangeKey)
@@ -477,13 +479,10 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   hb.saveRangeKeyDir(leftRangeKey, leftRkd)
   hb.saveRangeKeyDir(rightRangeKey, rightRkd)
 
-  echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
-
   result = (leftRangeKey, rightRangeKey)
 
 proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   ## Set a key-value pair
-
 
   if hb.barrel1.isClosed():
     return false
@@ -493,7 +492,8 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
 
   if rangeKey == "":
     # Create new range
-    rangeKey = fmt"R{hb.nextFileId:010d}"
+    rangeKey = fmt("R{hb.nextFileId:010d}")
+    inc(hb.nextFileId)
     var newRange = newRangeKeyDir(key, key)
     hb.saveRangeKeyDir(rangeKey, newRange)
     hb.ranges.add((minKey: key, maxKey: key, rangeKey: rangeKey))
@@ -666,19 +666,13 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
 proc close*(hb: var HugeBarrel) =
   ## Close the HugeBarrel
 
-  echo fmt"close: Flushing all ranges..."
-
   # First, flush ALL dirty ranges (not just cached ones)
   # This ensures data in ranges that were never loaded into cache is also saved
-  let flushedCount = hb.flushDirtyRanges()
-  echo fmt"close: Flushed {flushedCount} dirty ranges"
-
-  echo fmt"close: Saving {hb.rangeKeyCache.cache.len} cached RangeKeyDirs"
+  discard hb.flushDirtyRanges()
 
   # Save all cached RangeKeyDirs (even if not dirty)
   for rangeKey in hb.rangeKeyCache.cache.keys:
     var rkd = hb.rangeKeyCache.cache[rangeKey]
-    echo fmt"close: Saving {rangeKey}, entryCount={rkd.len()}, isDirty={rkd.isDirty}"
     let serialized = rkd.serialize()
     discard hb.barrel1.set(rangeKey, serialized)
 
@@ -712,16 +706,13 @@ proc getRangeKeys*(hb: HugeBarrel): seq[string] =
 proc flushDirtyRanges*(hb: var HugeBarrel): int =
   ## Flush all dirty ranges to Barrel1
   ## Iterates over ALL ranges (not just cached ones) to ensure complete persistence
-  echo fmt"flushDirtyRanges: Starting flush of {hb.ranges.len} ranges"
   var count = 0
   for r in hb.ranges:
     var rkd = hb.loadRangeKeyDir(r.rangeKey)  # Load from cache or Barrel1
-    echo fmt"flushDirtyRanges: Range {r.rangeKey} isDirty={rkd.isDirty}"
     if rkd.isDirty:
       rkd.flush()
       hb.saveRangeKeyDir(r.rangeKey, rkd)
       inc count
-  echo fmt"flushDirtyRanges: Flushed {count} dirty ranges"
   return count
 
 # --- Time-based flush ---
@@ -1077,8 +1068,18 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   # Sort by key
   allEntries.sort(proc(a, b: RangeKeyDirEntry): int = cmp(a.key, b.key))
 
+  # Guard: Don't split if we don't have enough entries
+  if allEntries.len < 2:
+    echo fmt"Warning: Cannot split range {rangeKey} with only {allEntries.len} entries"
+    return ("", "")
+
   # Find split point (median)
   let splitIndex = allEntries.len div 2
+
+  # Guard: Ensure splitIndex is valid
+  if splitIndex <= 0 or splitIndex >= allEntries.len:
+    echo fmt"Warning: Invalid split index {splitIndex} for {allEntries.len} entries"
+    return ("", "")
 
   # Create new range keys
   let leftRangeKey = fmt"R{hb.nextFileId:010d}"
@@ -1096,6 +1097,9 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   discard hb.barrel1.set(PENDING_SPLIT_KEY, serializePendingSplit(pendingSplit))
 
   # Step 2: Create and populate new RangeKeyDirs
+  # Use inclusive bounds for all ranges: [minKey, maxKey]
+  # Left range gets entries [0..splitIndex-1]
+  # Right range gets entries [splitIndex..end]
   var leftRkd = newRangeKeyDir(allEntries[0].key, allEntries[splitIndex - 1].key)
   var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, allEntries[^1].key)
 
@@ -1115,9 +1119,10 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   for r in hb.ranges:
     if r.rangeKey != rangeKey:
       newRanges.add(r)
-  newRanges.add((minKey: leftRkd.minKey, maxKey: leftRkd.maxKey, rangeKey: leftRangeKey))
-  newRanges.add((minKey: rightRkd.minKey, maxKey: rightRkd.maxKey, rangeKey: rightRangeKey))
-  newRanges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
+  # Use the explicit min/max we set, not from RangeKeyDir which might be empty
+  newRanges.add((minKey: allEntries[0].key, maxKey: allEntries[splitIndex - 1].key, rangeKey: leftRangeKey))
+  newRanges.add((minKey: allEntries[splitIndex].key, maxKey: allEntries[^1].key, rangeKey: rightRangeKey))
+  newRanges.sort(proc(a, b: tuple[minKey: string, maxKey: string, rangeKey: string]): int = cmp(a.minKey, b.minKey))
   hb.ranges = newRanges
 
   # Step 5: Save updated range metadata
