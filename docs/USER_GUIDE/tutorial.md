@@ -421,7 +421,7 @@ db.close()
 
 BitBarrel provides three different index modes to optimize for different use cases. Each mode has different performance characteristics and memory requirements.
 
-#### bmNormal Mode (Default)
+#### bmHash Mode (Default)
 
 The default mode uses a hash table for O(1) lookups. This is ideal for simple key-value operations where key ordering is not needed.
 
@@ -434,9 +434,9 @@ The default mode uses a hash table for O(1) lookups. This is ideal for simple ke
 import bitbarrel
 from bitbarrel/types import BarrelMode, BarrelConfig, defaultBarrelConfig
 
-# Use default bmNormal mode
+# Use default bmHash mode
 var cfg = defaultBarrelConfig()
-# cfg.mode is already bmNormal by default
+# cfg.mode is already bmHash by default
 
 var db = openBarrel("myapp.db", cfg)
 db.set("session:abc123", "user_data")
@@ -452,7 +452,7 @@ This mode uses a CritBit tree to keep all keys sorted in memory. It enables rang
 
 **Key characteristics:**
 - **Lookup**: O(k) where k is key length
-- **Memory**: Similar to bmNormal but with tree overhead
+- **Memory**: Similar to bmHash but with tree overhead
 - **Ordering**: Keys are sorted lexicographically
 - **Features**: Range queries, prefix searches, ordered iteration
 
@@ -487,25 +487,25 @@ echo "Total January records: ", count
 
 **Best for**: Time-series data, leaderboards, ordered data, prefix matching
 
-#### bmRanged Mode
+#### bmHugeCritBit Mode
 
-This mode uses lazy-loaded hash partitions for datasets that are too large to fit in memory. Only actively used partitions are loaded into RAM.
+This mode uses a two-tier design for datasets that are too large to fit in memory. It supports range queries with lazy-loaded partitions.
 
 **Key characteristics:**
-- **Lookup**: O(1) plus possible partition loading overhead (~1ms)
-- **Memory**: Configurable - only loaded partitions consume memory
-- **Partitions**: Keys are distributed across multiple ranges using consistent hashing
-- **Features**: Automatic loading/unloading of partitions based on access patterns
+- **Lookup**: O(1) with range management overhead
+- **Memory**: Configurable - only loaded ranges consume memory
+- **Ranges**: Keys are distributed across multiple ranges with automatic splitting
+- **Features**: Range queries, automatic range management, ordered iteration
 
 ```nim
 import bitbarrel
 from bitbarrel/types import BarrelMode, BarrelConfig, defaultBarrelConfig
 
-# Configure for Ranged mode
+# Configure for HugeCritBit mode
 var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmRanged
-cfg.numRanges = 100        # Create 100 partitions
-cfg.maxLoadedRanges = 10   # Keep only 10 partitions in memory at once
+cfg.mode = BarrelMode.bmHugeCritBit
+cfg.hugeConfig.maxEntriesPerRange = 500_000  # 500K keys per range
+cfg.hugeConfig.rangeCacheSize = 10            # Keep 10 ranges in memory
 
 var db = openBarrel("analytics.db", cfg)
 
@@ -513,19 +513,18 @@ var db = openBarrel("analytics.db", cfg)
 db.set("user:1:action:view", "product:12345")
 db.set("user:999999:action:purchase", "product:67890")
 
-# Partition statistics
+# Range statistics
 let stats = db.rangeStats()
-echo "Loaded partitions: ", stats.loaded
-# Loaded partitions: 2 (only partitions for user:1 and user:999999)
-echo "Max partitions: ", stats.maxRanges
+echo "Total ranges: ", stats.total
+echo "Loaded ranges: ", stats.loaded
 echo "Total keys: ", stats.totalKeys
 
-# Flush all loaded partitions to disk (useful before shutdown)
-let flushed = db.flushRanges()
-echo "Flushed partitions: ", flushed
+# Flush all loaded ranges to disk (useful before shutdown)
+let flushed = db.flushAllRanges()
+echo "Flushed ranges: ", flushed
 ```
 
-**Best for**: Analytics data, user activity logs, large datasets with bursty access patterns
+**Best for**: Analytics data, user activity logs, large datasets with bursty access patterns, ordered data
 
 ## Advanced Usage
 
