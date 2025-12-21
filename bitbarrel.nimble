@@ -27,6 +27,33 @@ task test, "Run all tests":
   exec "nim c -r tests/test_error_handling.nim"
   exec "nim c -r tests/test_recovery.nim"
 
+task testAll, "Run complete test suite (all test files)":
+  exec "nim c -r tests/test_storage.nim"
+  exec "nim c -r tests/test_keydir.nim"
+  exec "nim c -r tests/test_integration.nim"
+  exec "nim c -r tests/test_record.nim"
+  exec "nim c -r tests/test_compression.nim"
+  exec "nim c -r tests/test_error_handling.nim"
+  exec "nim c -r tests/test_recovery.nim"
+  exec "nim c -r tests/test_config.nim"
+  exec "nim c -r tests/test_barrel.nim"
+  exec "nim c -r tests/test_hintfile.nim"
+  exec "nim c -r tests/test_compact.nim"
+  exec "nim c -r tests/test_writebuffer.nim"
+  exec "nim c -r tests/test_readbuffer.nim"
+  exec "nim c -r tests/test_ttl.nim"
+  exec "nim c -r tests/test_refs.nim"
+  exec "nim c -r tests/test_protocol.nim"
+  exec "nim c -r tests/test_session.nim"
+  exec "nim c -r tests/test_client.nim"
+  exec "nim c -r tests/test_server.nim"
+  exec "nim c -r tests/test_simple_memory.nim"
+  exec "nim c -r tests/test_crash_recovery.nim"
+  exec "nim c -r tests/test_filesystem_stress.nim"
+  exec "nim c -r tests/test_memory_pressure.nim"
+  exec "nim c -r tests/test_concurrent_access.nim"
+  echo "✓ All tests completed successfully!"
+
 task testStorage, "Run storage tests":
   exec "nim c -r tests/test_storage.nim"
 
