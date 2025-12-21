@@ -67,8 +67,8 @@ suite "Hint File Tests":
     check validateHintFile("/nonexistent/path.hint") == false
 
   test "Hint file validation - corrupted magic":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    let testDir = setupTestDir("hint_corrupted")
+    defer: cleanupTestDir(testDir)
 
     let path = testDir / "test.hint"
     discard writeHintFile(path, 1, @[])

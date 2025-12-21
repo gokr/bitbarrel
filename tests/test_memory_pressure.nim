@@ -175,28 +175,28 @@ suite "Memory Pressure Tests":
   test "Memory fragmentation test":
     var keyDir = init()
 
-      # Add and remove entries to simulate memory fragmentation
-      const numOps = 1000
+    # Add and remove entries to simulate memory fragmentation
+    const numOps = 1000
 
-      for i in 0..<numOps:
-        let entry = KeyDirEntry(
-          fileId: 1,
-          recordPos: uint64(i * 100),
-          valuePos: uint64(i * 100 + 50),
-          valueSize: 10,
-          timestamp: now(),
-          recordSize: 25
-        )
-        keyDir.add(&"key_{i}", entry)
+    for i in 0..<numOps:
+      let entry = KeyDirEntry(
+        fileId: 1,
+        recordPos: uint64(i * 100),
+        valuePos: uint64(i * 100 + 50),
+        valueSize: 10,
+        timestamp: now(),
+        recordSize: 25
+      )
+      keyDir.add(&"key_{i}", entry)
 
-        # Remove every 10th key to create fragmentation
-        if i > 0 and i mod 10 == 0:
-          keyDir.remove(&"key_{i-5}")
+      # Remove every 10th key to create fragmentation
+      if i > 0 and i mod 10 == 0:
+        keyDir.remove(&"key_{i-5}")
 
-      # Verify KeyDir still works
-      withLock(keyDir.lock):
-        let result = keyDir.get("key_500")
-        # May or may not exist due to removals
-        discard result
+    # Verify KeyDir still works
+    withLock(keyDir.lock):
+      let result = keyDir.get("key_500")
+      # May or may not exist due to removals
+      discard result
 
-      echo &"Performed {numOps} operations with interspersed removals"
+    echo &"Performed {numOps} operations with interspersed removals"

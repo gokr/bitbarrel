@@ -14,7 +14,7 @@ suite "RangeKeyDir Tests":
     check not rkd.isDirty
 
   test "Insert and find single entry":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     let entry = RangeKeyDirEntry(
       key: "test_key",
@@ -38,7 +38,7 @@ suite "RangeKeyDir Tests":
     check found.get().recordPos == 100
 
   test "Insert multiple entries and find":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     for i in 0..<10:
       let entry = RangeKeyDirEntry(
@@ -76,7 +76,7 @@ suite "RangeKeyDir Tests":
     check restored.entryCount == 0
 
   test "Serialize and deserialize with entries":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     for i in 0..<100:
       let entry = RangeKeyDirEntry(

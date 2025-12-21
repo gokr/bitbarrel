@@ -16,8 +16,7 @@ suite "Filesystem Stress Tests":
     let testPath = "/nonexistent/directory/that/does/not/exist/test.data"
     expect OSError, IOError, CatchableError:
       var df = datafile.open(testPath, 1'u32)
-      if not df.isNil:
-        df.close()
+      df.close()
 
   test "Handles read-only directory":
     withTestDir("readonly_test"):
@@ -32,8 +31,7 @@ suite "Filesystem Stress Tests":
         let testFile = readonlyDir / "test.data"
         expect OSError, IOError, CatchableError:
           var df = datafile.open(testFile, 1'u32)
-          if not df.isNil:
-            df.close()
+          df.close()
 
         # Restore permissions for cleanup
         discard execShellCmd("chmod 755 " & readonlyDir)

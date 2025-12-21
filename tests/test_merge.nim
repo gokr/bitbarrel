@@ -5,7 +5,8 @@ import std/os except FileInfo
 import ../src/bitbarrel/types
 import ../src/storage/datafile
 import ../src/storage/keydir
-import ../src/storage/merge
+# TODO: Uncomment when merge module is implemented
+# import ../src/storage/merge
 
 const TestDir = "/tmp/bitbarrel_test_merge"
 

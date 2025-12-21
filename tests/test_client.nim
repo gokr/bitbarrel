@@ -131,7 +131,7 @@ suite "BitBarrel Client Tests":
     try:
       discard client.get("test_key")
       check false  # Should not reach here
-    except:
+    except CatchableError:
       check true  # Expected to raise
 
   test "Unicode and binary data":
@@ -162,7 +162,7 @@ suite "BitBarrel Client Tests":
     try:
       discard client.get("any_key")
       check false
-    except:
+    except CatchableError:
       check true
 
     client.connect()
@@ -172,7 +172,7 @@ suite "BitBarrel Client Tests":
     try:
       discard client.get("any_key")
       check false
-    except:
+    except CatchableError:
       check true
 
     # Connect to non-existent barrel
