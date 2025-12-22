@@ -271,3 +271,24 @@ task buildSnappy, "Build with Snappy compression support":
 task buildDefault, "Build without compression (default)":
   echo "Building BitBarrel without compression..."
   exec "nim c -d:release src/bitbarrel.nim"
+
+# Documentation generation tasks
+
+task doc, "Generate HTML documentation using nim doc":
+  exec "mkdir -p docs/html"
+  exec "nim doc --out:docs/html/bitbarrel.html --project src/bitbarrel.nim"
+  exec "nim doc --out:docs/html/client.html src/bitbarrel/client.nim"
+  exec "nim doc --out:docs/html/protocol.html src/network/protocol.nim"
+  exec "nim doc --out:docs/html/server.html src/network/server.nim"
+  echo "Documentation generated in docs/html/"
+
+task docServer, "Serve documentation locally (assumes Python is installed)":
+  exec "nimble doc"
+  try:
+    exec "cd docs/html && python3 -m http.server 8000"
+  except:
+    try:
+      exec "cd docs/html && python -m SimpleHTTPServer 8000"
+    except:
+      echo "Please manually serve docs/html/ folder with your web server"
+      echo "Or open docs/html/index.html in your browser"
