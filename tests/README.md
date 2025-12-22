@@ -11,16 +11,16 @@ nimble test              # Run all tests
 
 ### Specific Test Categories
 ```bash
-nimble testUnit          # Unit tests (record, keydir, datafile)
+nimble testUnit          # Unit tests (storage, keydir, record, compression)
 nimble testIntegration   # Integration tests (writebuffer, hints, recovery)
-nimble testAPI           # API tests (barrel, ttl, range)
-nimble testNetwork       # Network tests (WebSocket, REST)
+nimble testAPI           # API tests (barrel, ttl, range, refs, merge)
 nimble testSystem        # System tests (concurrent, crash, memory, filesystem)
-nimble testFilesystem    # Filesystem stress tests
-nimble testConcurrent    # Concurrent access tests
-nimble testCrashRecovery # Crash recovery tests
-nimble testMemory        # Memory pressure tests
+nimble testNetwork       # Network tests (WebSocket, REST, protocol)
 nimble testError         # Error handling tests
+nimble testHugeBarrel    # HugeBarrel feature tests
+nimble testStorage       # Storage layer tests only
+nimble testKeydir        # KeyDir tests only
+nimble testRecovery      # Recovery system tests only
 ```
 
 ### Individual Test Files
