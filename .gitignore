@@ -23,6 +23,9 @@ nimcache/
 *.nim.out
 *.exe
 
+# Generated documentation
+docs/html/
+
 # Data files
 *.data
 *.log
