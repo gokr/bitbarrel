@@ -3,16 +3,25 @@
 ## This module handles compaction of a single data file to reclaim space
 ## from deleted and expired records.
 
-import std/[os, times, strformat, strutils, locks, atomics, typedthreads]
+import std/[os, times, strformat, strutils, locks, atomics, typedthreads, tables]
 import ../bitbarrel/types, datafile, keydir, record, critbitindex
 
 type
   # Callback type for updating index entries after compaction
   IndexUpdateProc* = proc(key: string, entry: KeyDirEntry) {.gcsafe.}
 
+  # Callback type for clearing all index entries before compaction
+  IndexClearProc* = proc() {.gcsafe.}
+
+  # Callback type for notifying compaction completion - takes barrel and new file ID
+  CompactCallbackProc* = proc(barrel: pointer, newFileId: uint32) {.gcsafe.}
+
   CompactControllerObj* = object
     config*: types.CompactConfig
     updateEntry*: IndexUpdateProc     # Callback to update index (KeyDir or CritBit)
+    clearIndex*: IndexClearProc       # Callback to clear index before compaction
+    compactCallback*: CompactCallbackProc  # Callback after compaction completes
+    compactCallbackData*: pointer     # User data for callback (e.g., pointer to Barrel)
     # Auto-compaction support
     barrelPath*: string               # Store data directory path
     currentFileId*: uint32            # Track current file ID
@@ -46,19 +55,22 @@ proc `=destroy`*(controller: var CompactControllerObj) =
   deinitCond(controller.compactCondition)
 
 # Forward declarations
-proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc): CompactController
+proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
 proc newCompactController*(config: types.CompactConfig): CompactController
-proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir): CompactController
-proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex): CompactController
+proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
+proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
 proc performCompact*(controller: CompactController, dataPath: string, fileId: uint32): bool
 
 # Implementation
 
-proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc): CompactController =
+proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
   ## Create a new compact controller with callback for index updates
   result = CompactController()
   result.config = config
   result.updateEntry = updateEntry
+  result.clearIndex = clearIndex
+  result.compactCallback = compactCallback
+  result.compactCallbackData = callbackData
   result.barrelPath = ""  # Will be set later
   result.currentFileId = 0'u32  # Will be updated by worker
   result.shutdownFlag.store(false)
@@ -80,29 +92,33 @@ proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdate
 proc newCompactController*(config: types.CompactConfig): CompactController =
   ## Create a new compact controller with no index update callback
   ## Used for ranged modes where index updates are handled separately
-  result = newCompactController(config, nil)
+  result = newCompactController(config, nil, nil, nil, nil)
 
-proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir): CompactController =
+proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
   ## Create a new compact controller for KeyDir (backward compatible)
-  ## Creates a callback that updates the KeyDir
+  ## Creates callbacks for updating and clearing the KeyDir
   proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
     keyDir[].add(key, entry)
-  result = newCompactController(config, updateCallback)
+  proc clearCallback() {.gcsafe.} =
+    keyDir[].clear()
+  result = newCompactController(config, updateCallback, clearCallback, compactCallback, callbackData)
 
-proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir): CompactController =
+proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
   ## Create a new compact controller for KeyDir (backward compatible)
-  result = newCompactController(config, addr(keyDir))
+  result = newCompactController(config, addr(keyDir), compactCallback, callbackData)
 
-proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex): CompactController =
+proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
   ## Create a new compact controller for CritBit index
-  ## Creates a callback that updates the CritBit index
+  ## Creates callbacks for updating and clearing the CritBit index
   proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
     critBit[].add(key, entry)
-  result = newCompactController(config, updateCallback)
+  proc clearCallback() {.gcsafe.} =
+    critBit[].clear()
+  result = newCompactController(config, updateCallback, clearCallback, compactCallback, callbackData)
 
-proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex): CompactController =
+proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
   ## Create a new compact controller for CritBit index
-  result = newCompactController(config, addr(critBit))
+  result = newCompactController(config, addr(critBit), compactCallback, callbackData)
 
 proc calculateFragmentation*(dataPath: string, validateCrc: bool = false): tuple[live: int, total: int, ratio: float] =
   ## Calculate fragmentation ratio of a data file
@@ -185,6 +201,10 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
   controller.stats.bytesScanned = fileSize.int64
   controller.stats.bytesWritten = 0
 
+  # Clear the index before repopulating with compacted records
+  if controller.clearIndex != nil:
+    controller.clearIndex()
+
   let newFileId = fileId + 1  # Use next ID for compacted file
 
   # Calculate new path - handle both numbered (000001.data) and simple (test.data) filenames
@@ -232,44 +252,54 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
     # Create new data file for compacted output
     var newDataFile = datafile.open(tempPath, newFileId)
 
-    # Scan and copy live records to new file
+    # Two-pass compaction:
+    # Pass 1: Build map of key -> (position, value, timestamp, isTombstone) for latest record of each key
+    # Pass 2: Write non-tombstone records to new file
+
+    type KeyInfo = tuple[pos: uint64, value: string, timestamp: int64, isTombstone: bool, recordSize: uint32]
+    var latestRecords: Table[string, KeyInfo]
+
+    # Pass 1: Find latest record for each key
     var filePos: uint64 = HEADER_SIZE.uint64  # Skip header
 
     try:
       while filePos < originalFile.size:
+        let currentPos = filePos
         let (key, value, timestamp, recordSize) = originalFile.readRecordAt(filePos)
         filePos += recordSize.uint64
         inc(controller.stats.recordsScanned)
 
-        # Skip tombstones
-        if value.len == 0:
-          inc(controller.stats.recordsDropped)
-          continue
+        let isTombstone = value.len == 0
+        let isExpiredRecord = isExpired(timestamp)
 
-        # Skip expired records
-        if isExpired(timestamp):
-          inc(controller.stats.recordsDropped)
-          continue
-
-        # Write the record to new file
-        let newPos = newDataFile.appendRecord(key, value, timestamp)
-        controller.stats.bytesWritten += recordSize.int64
-
-        # Update index with new position using callback
-        if controller.updateEntry != nil:
-          controller.updateEntry(key, KeyDirEntry(
-            fileId: newFileId,
-            recordPos: newPos.recordPos,
-            valuePos: newPos.valuePos,
-            valueSize: newPos.valueSize,
-            timestamp: timestamp,
-            recordSize: newPos.recordSize,
-            deleted: false  # Non-tombstone records only reach here
-          ))
-        inc(controller.stats.recordsKept)
+        # Track this as the latest record for this key (overwrites previous entries)
+        latestRecords[key] = (currentPos, value, timestamp, isTombstone or isExpiredRecord, recordSize)
 
     except IOError:
       discard  # End of file or read error
+
+    # Pass 2: Write only live (non-tombstone, non-expired) records
+    for key, info in latestRecords:
+      if info.isTombstone:
+        inc(controller.stats.recordsDropped)
+        continue
+
+      # Write the record to new file
+      let newPos = newDataFile.appendRecord(key, info.value, info.timestamp)
+      controller.stats.bytesWritten += info.recordSize.int64
+
+      # Update index with new position using callback
+      if controller.updateEntry != nil:
+        controller.updateEntry(key, KeyDirEntry(
+          fileId: newFileId,
+          recordPos: newPos.recordPos,
+          valuePos: newPos.valuePos,
+          valueSize: newPos.valueSize,
+          timestamp: info.timestamp,
+          recordSize: newPos.recordSize,
+          deleted: false
+        ))
+      inc(controller.stats.recordsKept)
 
     # Capture size before closing
     newFileSize = newDataFile.size
@@ -293,6 +323,11 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
 
     controller.stats.timeCompleted = getTime()
     controller.compactInProgress = false
+
+    # Notify barrel that compaction completed with new file ID
+    if controller.compactCallback != nil:
+      controller.compactCallback(controller.compactCallbackData, newFileId)
+
     return true
 
   except Exception as e:
