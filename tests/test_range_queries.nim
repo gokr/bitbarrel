@@ -222,6 +222,26 @@ suite "Barrel API - Range Queries with Values":
 
     barrel.close()
 
+  test "debug itemsInRange with cursor pagination":
+    var config = defaultBarrelConfig()
+    config.mode = bmCritBit
+    let barrel = openBarrel(TestDir / "debug.db", config)
+
+    for i in 0..9:
+      let key = "user:" & chr(ord('a') + i)
+      check barrel.set(key, "User" & $(i))
+
+    let (page1, cursor1, hasMore1) = barrel.itemsInRange("user:a", "user:aaaz", 3, "")
+    echo "DEBUG: Page1 returned ", page1.len, " items"
+    for i in 0..<page1.len:
+      echo "  Item ", i, ": ", page1[i][0]
+
+    if page1.len >= 1:
+      let (page2, cursor2, hasMore2) = barrel.itemsInRange("user:a", "user:aaaz", 3, cursor1)
+      echo "DEBUG: Page2 returned ", page2.len, " items"
+
+    barrel.close()
+
   test "iterator itemsInRange":
     var config = defaultBarrelConfig()
     config.mode = bmCritBit
