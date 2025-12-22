@@ -254,9 +254,39 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     # Initialize with appropriate index based on mode
     case config.mode
     of bmHash:
-      result.compactController = newCompactController(compactConfig, result.keyDir)
+      # Create callback to update barrel's file reference after compaction
+      proc onCompactionComplete(barrelPtr: pointer, newFileId: uint32) {.gcsafe.} =
+        let barrel = cast[Barrel](barrelPtr)
+        # Close old data file (it may have been deleted)
+        barrel.dataFile.close()
+        # Calculate new path - replace old file ID with new one
+        let oldPath = barrel.path
+        let newPath = oldPath.replace(fmt("{barrel.fileId:06d}.data"), fmt("{newFileId:06d}.data"))
+        # Update file ID and path
+        barrel.fileId = newFileId
+        barrel.path = newPath
+        barrel.dataFile = open(barrel.path, barrel.fileId, storageSyncMode,
+                               shouldFsync = (config.syncMode == UserSyncMode.Fsync),
+                               bufferSize = config.writeBufferSize,
+                               validateCrc = config.validateCrc)
+      result.compactController = newCompactController(compactConfig, addr(result.keyDir), onCompactionComplete, cast[pointer](result))
     of bmCritBit:
-      result.compactController = newCompactController(compactConfig, result.critBit)
+      # Create callback to update barrel's file reference after compaction
+      proc onCompactionComplete(barrelPtr: pointer, newFileId: uint32) {.gcsafe.} =
+        let barrel = cast[Barrel](barrelPtr)
+        # Close old data file (it may have been deleted)
+        barrel.dataFile.close()
+        # Calculate new path - replace old file ID with new one
+        let oldPath = barrel.path
+        let newPath = oldPath.replace(fmt("{barrel.fileId:06d}.data"), fmt("{newFileId:06d}.data"))
+        # Update file ID and path
+        barrel.fileId = newFileId
+        barrel.path = newPath
+        barrel.dataFile = open(barrel.path, barrel.fileId, storageSyncMode,
+                               shouldFsync = (config.syncMode == UserSyncMode.Fsync),
+                               bufferSize = config.writeBufferSize,
+                               validateCrc = config.validateCrc)
+      result.compactController = newCompactController(compactConfig, addr(result.critBit), onCompactionComplete, cast[pointer](result))
     of bmHugeCritBit:
       # TODO: HugeBarrel compaction (Phase 5)
       result.compactController = nil
@@ -693,34 +723,8 @@ proc triggerCompact*(barrel: var Barrel): bool =
   of bmHash, bmCritBit:
     # Build file path
     let dataPath = barrel.path
-    let success = barrel.compactController.performCompact(dataPath, barrel.fileId)
-
-    # If successful, the old file is deleted and we need to reopen the new file
-    if success:
-      # Close old data file
-      barrel.dataFile.close()
-
-      # Update file ID to the new compacted file
-      barrel.fileId = barrel.fileId + 1
-
-      # Convert UserSyncMode to storage SyncMode
-      var storageSyncMode = syncImmediate
-      case barrel.config.syncMode
-      of UserSyncMode.None:
-        storageSyncMode = syncBuffered
-      of UserSyncMode.Sync:
-        storageSyncMode = syncImmediate
-      of UserSyncMode.Fsync:
-        storageSyncMode = syncImmediate
-
-      # Reopen the new data file
-      let newPath = dataPath.replace(&"{barrel.fileId - 1:06d}.data", &"{barrel.fileId:06d}.data")
-      barrel.dataFile = open(newPath, barrel.fileId, storageSyncMode,
-                           shouldFsync = (barrel.config.syncMode == UserSyncMode.Fsync),
-                           bufferSize = barrel.config.writeBufferSize,
-                           validateCrc = barrel.config.validateCrc)
-
-    return success
+    # performCompact will call the compactCallback which updates the barrel's file reference
+    return barrel.compactController.performCompact(dataPath, barrel.fileId)
   of bmHugeCritBit:
     # TODO: HugeBarrel compaction (Phase 5)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
