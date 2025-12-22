@@ -3,7 +3,7 @@
 ## Tests for file system errors, permission issues, and environmental edge cases
 ## that can occur in production deployments.
 
-import std/[unittest, os, times, strformat, osproc]
+import std/[unittest, os, times, strformat, osproc, options, strutils]
 import ../src/storage/datafile
 import ../src/storage/keydir
 import ../src/storage/recovery
@@ -48,8 +48,7 @@ suite "Filesystem Stress Tests":
       for invalidPath in invalidPaths:
         expect OSError, IOError, CatchableError:
           var df = datafile.open(invalidPath, 1'u32)
-          if not df.isNil:
-            df.close()
+          df.close()
 
   test "Handles path traversal attempts":
     withTestDir("path_traversal"):
@@ -63,8 +62,7 @@ suite "Filesystem Stress Tests":
       for maliciousPath in maliciousPaths:
         expect OSError, IOError, CatchableError:
           var df = datafile.open(maliciousPath, 1'u32)
-          if not df.isNil:
-            df.close()
+          df.close()
 
   test "Handles insufficient disk space":
     withTestDir("disk_full"):
@@ -79,12 +77,12 @@ suite "Filesystem Stress Tests":
         var dfOpt: Option[datafile.DataFile]
         try:
           dfOpt = some(datafile.open(testFile, 1'u32))
-        except:
+        except CatchableError:
           # Expected to fail if disk is full or permission denied
           check true  # Test passes if we detect the error condition
 
         if dfOpt.isSome:
-          let df = dfOpt.get
+          var df = dfOpt.get
           defer:
             df.close()
 
@@ -96,9 +94,9 @@ suite "Filesystem Stress Tests":
           for i in 0..<maxAttempts:
             try:
               let dummyData = repeat("x", chunkSize)
-              discard df.appendRecord(&"key_{i}", dummyData, now())
+              discard df.appendRecord(&"key_{i}", dummyData, testutils.now())
               written += chunkSize
-            except:
+            except CatchableError:
               # Stop when we can't write anymore
               break
 
@@ -121,8 +119,7 @@ suite "Filesystem Stress Tests":
         # Try to open it for writing
         expect OSError, IOError, CatchableError:
           var df = datafile.open(testFile, 1'u32)
-          if not df.isNil:
-            df.close()
+          df.close()
 
         # Restore permissions for cleanup
         discard execShellCmd("chmod 644 " & testFile)
@@ -141,10 +138,10 @@ suite "Filesystem Stress Tests":
       try:
         dfOpt = some(datafile.open(longPath, 1'u32))
         if dfOpt.isSome:
-          let df = dfOpt.get
+          var df = dfOpt.get
           defer: df.close()
-          discard df.appendRecord("key", "value", now())
-      except:
+          discard df.appendRecord("key", "value", testutils.now())
+      except CatchableError:
         # Some filesystems may have lower limits
         check true  # Test passes if error is handled gracefully
 
@@ -160,8 +157,7 @@ suite "Filesystem Stress Tests":
         # Try to open the symlink
         expect OSError, IOError, CatchableError:
           var df = datafile.open(symlinkFile, 1'u32)
-          if not df.isNil:
-            df.close()
+          df.close()
 
   test "Handles symbolic link loop":
     withTestDir("symlink_loop"):
@@ -176,8 +172,7 @@ suite "Filesystem Stress Tests":
         # Try to open one of the files
         expect OSError, IOError, CatchableError:
           var df = datafile.open(file1, 1'u32)
-          if not df.isNil:
-            df.close()
+          df.close()
 
   test "Handles concurrent access to same file":
     withTestDir("concurrent_file"):
@@ -190,7 +185,7 @@ suite "Filesystem Stress Tests":
 
       try:
         df1 = some(datafile.open(testFile, 1'u32))
-      except:
+      except CatchableError:
         check true  # Expected - can't open file that's already in use
 
       if df1.isSome:
@@ -213,12 +208,11 @@ suite "Filesystem Stress Tests":
         var dfOpt: Option[datafile.DataFile]
         try:
           dfOpt = some(datafile.open(testFile, 1'u32))
-        except:
+        except CatchableError:
           check true  # Expected if we can't create the file
-          return
 
         if dfOpt.isSome:
-          let df = dfOpt.get
+          var df = dfOpt.get
           defer: df.close()
 
           # Try to write increasingly large records
@@ -227,8 +221,8 @@ suite "Filesystem Stress Tests":
           for size in sizes:
             try:
               let largeValue = repeat("x", int(size))
-              discard df.appendRecord(&"large_key_{size}", largeValue, now())
-            except:
+              discard df.appendRecord(&"large_key_{size}", largeValue, testutils.now())
+            except CatchableError:
               # Stop when we hit the limit
               break
 
@@ -243,8 +237,7 @@ suite "Filesystem Stress Tests":
       # Try to open existing file with bad header
       expect OSError, IOError, CatchableError:
         var df = datafile.open(testFile, 1'u32)
-        if not df.isNil:
-          df.close()
+        df.close()
 
   test "Handles write interruption (simulated)":
     withTestDir("write_interruption"):
@@ -254,16 +247,15 @@ suite "Filesystem Stress Tests":
       var dfOpt: Option[datafile.DataFile]
       try:
         dfOpt = some(datafile.open(testFile, 1'u32))
-      except:
+      except CatchableError:
         check true  # Expected if we can't create the file
-        return
 
       if dfOpt.isSome:
-        let df = dfOpt.get
+        var df = dfOpt.get
         defer: df.close()
 
         # Write some data
-        discard df.appendRecord("key1", "value1", now())
+        discard df.appendRecord("key1", "value1", testutils.now())
 
         # Simulate write interruption by truncating file
         truncateFileAt(testFile, 10)
@@ -271,8 +263,8 @@ suite "Filesystem Stress Tests":
         # Try to continue writing
         # This tests recovery from partial writes
         try:
-          discard df.appendRecord("key2", "value2", now())
-        except:
+          discard df.appendRecord("key2", "value2", testutils.now())
+        except CatchableError:
           check true  # Expected if file is corrupted
 
         # Close and try to reopen
@@ -281,8 +273,7 @@ suite "Filesystem Stress Tests":
         # Reopen - should detect corruption
         expect OSError, IOError, CatchableError:
           var df2 = datafile.open(testFile, 1'u32)
-          if not df2.isNil:
-            df2.close()
+          df2.close()
 
   test "Resource cleanup on error":
     withTestDir("resource_cleanup"):
@@ -293,17 +284,16 @@ suite "Filesystem Stress Tests":
       var dfOpt: Option[datafile.DataFile]
       try:
         dfOpt = some(datafile.open(testFile, 1'u32))
-      except:
+      except CatchableError:
         check true  # Can't create file, test passes by not crashing
-        return
 
       if dfOpt.isSome:
-        let df = dfOpt.get
+        var df = dfOpt.get
 
         # Try operations that might fail
         try:
-          discard df.appendRecord("key", "value", now())
-        except:
+          discard df.appendRecord("key", "value", testutils.now())
+        except CatchableError:
           discard
 
         # Close explicitly
@@ -315,7 +305,6 @@ suite "Filesystem Stress Tests":
         # Try to reopen - should work if cleanup was proper
         try:
           var df2 = datafile.open(testFile, 1'u32)
-          if not df2.isNil:
-            df2.close()
-        except:
+          df2.close()
+        except CatchableError:
           check true  # May fail if data is corrupted, but cleanup should still happen
