@@ -28,6 +28,23 @@ type
 
   CompactController* = ref CompactControllerObj
 
+proc `=destroy`*(controller: var CompactControllerObj) =
+  ## Destructor for CompactController
+  ## Properly clean up locks and condition variables
+  ## This is called by ORC when the object is being garbage collected
+  if controller.hasWorker:
+    # Signal shutdown to worker thread
+    controller.shutdownFlag.store(true)
+    withLock(controller.compactLock):
+      controller.compactCondition.signal()
+    # Don't join here - it can cause deadlocks during GC
+    controller.hasWorker = false
+
+  # Deinitialize lock and condition variable
+  # These are designed to be safe to call multiple times
+  deinitLock(controller.compactLock)
+  deinitCond(controller.compactCondition)
+
 # Forward declarations
 proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc): CompactController
 proc newCompactController*(config: types.CompactConfig): CompactController
