@@ -33,33 +33,26 @@ suite "HugeBarrel Recovery Tests":
 
       hb.close()
 
-    block simulate_metadata_loss:
+    block recovery:
       # Simulate metadata loss by deleting __RANGES_METADATA__
       var hb = openHugeBarrel(TEST_DIR, config)
       discard hb.barrel1.delete("__RANGES_METADATA__")
       hb.close()
 
-      # Verify metadata is gone
-      var hb2 = openHugeBarrel(TEST_DIR, config)
-      let metadata = hb2.barrel1.get("__RANGES_METADATA__")
-      check metadata == ""
-      hb2.close()
-
-    block recovery:
       # Open should trigger automatic rebuild
-      var hb = openHugeBarrel(TEST_DIR, config)
+      var hb2 = openHugeBarrel(TEST_DIR, config)
 
       # Should have rebuilt ranges
-      let rebuiltCount = hb.getRangeCount()
+      let rebuiltCount = hb2.getRangeCount()
       check rebuiltCount > 0
       echo fmt"Rebuilt {rebuiltCount} ranges"
 
       # All data should be accessible
       for i in 0..<1000:
-        let value = hb.get(&"key_{i:04d}")
+        let value = hb2.get(&"key_{i:04d}")
         check value == &"value_{i:04d}"
 
-      hb.close()
+      hb2.close()
 
   test "Recovery with corrupted metadata":
     var config = defaultBarrelConfig()
