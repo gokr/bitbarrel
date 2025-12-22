@@ -274,10 +274,10 @@ task buildDefault, "Build without compression (default)":
 
 # Documentation generation tasks
 
-task doc, "Generate HTML documentation using nim doc":
+task genDocs, "Generate HTML documentation using nim doc":
   exec "mkdir -p docs/html"
   exec "nim doc --out:docs/html/bitbarrel.html --project src/bitbarrel.nim"
-  exec "nim doc --out:docs/html/client.html src/bitbarrel/client.nim"
+  exec "nim doc --out:docs/html/client.html src/network/client.nim"
   exec "nim doc --out:docs/html/protocol.html src/network/protocol.nim"
   exec "nim doc --out:docs/html/server.html src/network/server.nim"
   echo "Documentation generated in docs/html/"
