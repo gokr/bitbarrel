@@ -383,6 +383,90 @@ proc ping*(client: var BitBarrelClient): bool =
   let resp = client.sendAndWait(req)
   return resp.status == statusOk and resp.value == "pong"
 
+# Range query operations (require bmCritBit mode barrel)
+
+proc rangeQuery*(client: var BitBarrelClient, startKey: string, endKey: string,
+                 limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  ## Query key-value pairs in range [startKey, endKey) with cursor-based pagination
+  ## Requires barrel opened in bmCritBit mode
+  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if client.conn == nil:
+    client.connect()
+
+  # Build range query request
+  let params = protocol.RangeRequest(
+    startKey: startKey,
+    endKey: endKey,
+    limit: limit,
+    cursor: cursor
+  )
+
+  let req = Request(command: cmdRangeQuery, value: protocol.encodeRangeRequest(params))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Range query failed: {resp.status}")
+
+  # Decode range response
+  let rangeResp = protocol.decodeRangeResponse(resp.value)
+  result = (rangeResp.items, rangeResp.nextCursor, rangeResp.hasMore)
+
+proc prefixQuery*(client: var BitBarrelClient, prefix: string,
+                  limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  ## Query key-value pairs with prefix with cursor-based pagination
+  ## Requires barrel opened in bmCritBit mode
+  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if client.conn == nil:
+    client.connect()
+
+  # Build prefix query request
+  let params = protocol.PrefixRequest(
+    prefix: prefix,
+    limit: limit,
+    cursor: cursor
+  )
+
+  let req = Request(command: cmdPrefixQuery, value: protocol.encodePrefixRequest(params))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Prefix query failed: {resp.status}")
+
+  # Decode range response (same format for both range and prefix)
+  let rangeResp = protocol.decodeRangeResponse(resp.value)
+  result = (rangeResp.items, rangeResp.nextCursor, rangeResp.hasMore)
+
+proc rangeCount*(client: var BitBarrelClient, startKey: string, endKey: string): int =
+  ## Count keys in range [startKey, endKey)
+  ## Requires barrel opened in bmCritBit mode
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if client.conn == nil:
+    client.connect()
+
+  # Build count request (using range query format)
+  let params = protocol.RangeRequest(
+    startKey: startKey,
+    endKey: endKey,
+    limit: 0,
+    cursor: ""
+  )
+
+  let req = Request(command: cmdRangeCount, value: protocol.encodeRangeRequest(params))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Range count failed: {resp.status}")
+
+  result = parseInt(resp.value)
+
 # Reference traversal operations
 type
   TraverseOptions* = object

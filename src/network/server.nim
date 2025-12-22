@@ -8,6 +8,7 @@ import mummy/routers
 import session
 import ../bitbarrel/barrel
 import ../bitbarrel/refs
+import ../bitbarrel/config_json
 
 # Import protocol module
 import protocol
@@ -19,7 +20,7 @@ type
     registry*: BarrelRegistry         ## All open barrels
     sessions*: Table[uint64, Session] ## WebSocket client -> session
     mummyServer: Server
-    config: ServerConfig
+    config*: ServerConfig              ## Server configuration (public for tests)
     sessionsLock: Lock
     seqCounter: uint64                ## Global seq counter for requests
     startTime: float                  ## Server start time (epochTime)
@@ -97,8 +98,7 @@ proc handleWebSocketMessage*(
   of cmdCreateBarrel:
     try:
       let config = if req.value.len > 0:
-        # TODO: Parse config from JSON
-        defaultBarrelConfig()
+        parseBarrelConfigJson(req.value)
       else:
         defaultBarrelConfig()
 
@@ -106,6 +106,9 @@ proc handleWebSocketMessage*(
         resp.status = statusOk
       else:
         resp.status = statusBarrelExists
+    except ConfigValidationError as e:
+      resp.status = statusInvalid
+      resp.value = e.msg
     except CatchableError:
       resp.status = statusError
 
@@ -149,6 +152,23 @@ proc handleWebSocketMessage*(
           server.sessions[ws.clientId].clearCurrentBarrel()
     else:
       resp.status = statusBarrelNotFound
+
+  of cmdGetBarrelConfig:
+    try:
+      let barrel = server.registry.getBarrel(req.key)
+      if barrel.isNone():
+        resp.status = statusBarrelNotFound
+      else:
+        resp.status = statusOk
+        resp.value = serializeBarrelConfig(barrel.get().config)
+    except CatchableError as e:
+      resp.status = statusError
+      resp.value = e.msg
+
+  of cmdSetBarrelConfig:
+    # TODO: Implement setBarrelConfig in BarrelRegistry
+    resp.status = statusError
+    resp.value = "setBarrelConfig not yet implemented"
 
   of cmdGet, cmdSet, cmdDelete, cmdExists, cmdCount, cmdListKeys:
     # These require a current barrel
@@ -202,6 +222,18 @@ proc handleWebSocketMessage*(
             let keys = b.listKeys()
             resp.status = statusOk
             resp.value = keys.join(",")
+
+          of cmdPing, cmdCreateBarrel, cmdOpenBarrel, cmdUseBarrel, cmdCloseBarrel, cmdListBarrels, cmdDropBarrel:
+            # These commands are handled at the outer level
+            discard
+
+          of cmdGetBarrelConfig, cmdSetBarrelConfig:
+            # These commands are handled at the outer level
+            discard
+
+          of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount:
+            # These commands are handled at the outer level
+            discard
 
           of cmdTraverse:
             # Decode traversal request
@@ -277,8 +309,93 @@ proc handleWebSocketMessage*(
               resp.status = statusError
               resp.value = "Traversal error: " & e.msg
 
-          else:
-            discard  # Never reached
+  of cmdRangeQuery:
+    # Range query requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          let b = barrel.get()
+          try:
+            # Decode range query request
+            let params = protocol.decodeRangeRequest(req.value)
+
+            # Execute range query
+            let (items, nextCursor, hasMore) = b.itemsInRange(
+              params.startKey, params.endKey, params.limit, params.cursor)
+
+            # Encode and send response
+            let respData = protocol.encodeRangeResponse(
+              protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
+            let finalResp = protocol.okResponse(req.seq, respData)
+            ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
+            return  # Skip normal response sending
+
+          except CatchableError as e:
+            resp.status = statusError
+            resp.value = "Range query error: " & e.msg
+
+  of cmdPrefixQuery:
+    # Prefix query requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          let b = barrel.get()
+          try:
+            # Decode prefix query request
+            let params = protocol.decodePrefixRequest(req.value)
+
+            # Execute prefix query
+            let (items, nextCursor, hasMore) = b.itemsWithPrefix(
+              params.prefix, params.limit, params.cursor)
+
+            # Encode and send response
+            let respData = protocol.encodeRangeResponse(
+              protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
+            let finalResp = protocol.okResponse(req.seq, respData)
+            ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
+            return  # Skip normal response sending
+
+          except CatchableError as e:
+            resp.status = statusError
+            resp.value = "Prefix query error: " & e.msg
+
+  of cmdRangeCount:
+    # Count query requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          let b = barrel.get()
+          try:
+            # Decode count request (similar to range query format)
+            let params = protocol.decodeRangeRequest(req.value)
+            let count = b.keysInRange(params.startKey, params.endKey).len
+            resp.status = statusOk
+            resp.value = $count
+
+          except CatchableError as e:
+            resp.status = statusError
+            resp.value = "Range count error: " & e.msg
 
   else:
     resp.status = statusInvalid
