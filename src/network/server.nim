@@ -783,7 +783,7 @@ proc start*(server: BitBarrelServer) =
   # Ensure data directory exists
   createDir(server.config.dataDir)
 
-  server.mummyServer.serve(Port(server.config.port), server.config.address)
+  server.mummyServer.serve(server.config.port, server.config.address)
 
 proc stop*(server: BitBarrelServer) =
   ## Gracefully stop the server

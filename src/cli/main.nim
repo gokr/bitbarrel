@@ -5,7 +5,6 @@
 
 import std/[os, parseopt, strformat, strutils, osproc, posix]
 import ../bitbarrel/[config, config_parser]
-import ../storage
 
 type
   CliArgs = object

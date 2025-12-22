@@ -22,7 +22,7 @@ type
 
 proc encode*(record: Record; compressionConfig: ptr CompressionConfig = nil): string =
   ## Encode a record using portable binary format (little-endian)
-  ## Format: [timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:1][value]
+  ## Format: ``[timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:1][value]``
 
   # Use default compression config if none provided
   var threshold = 256

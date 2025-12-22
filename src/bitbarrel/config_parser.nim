@@ -132,13 +132,6 @@ proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
           return default
     return default
 
-  proc getYamlBool(key: string, default: bool): bool =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        let content = v.content.toLowerAscii()
-        return content == "true" or content == "yes" or content == "1"
-    return default
-
   proc parseCompressionLevel(s: string): CompressionLevel =
     case s.toLowerAscii():
       of "fast": result = clFast

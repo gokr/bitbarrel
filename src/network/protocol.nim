@@ -104,7 +104,7 @@ proc readString(data: string, pos: var int, length: int): string =
 
 proc encodeRequest*(req: Request): string =
   ## Encode a request to binary format.
-  ## Format: [type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
+  ## Format: ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
   if req.key.len > MaxKeySize:
     raise newException(ProtocolError, "Key too large: " & $req.key.len)
   if req.value.len > MaxValueSize:
@@ -146,7 +146,7 @@ proc decodeRequest*(data: string): Request =
 
 proc encodeResponse*(resp: Response): string =
   ## Encode a response to binary format.
-  ## Format: [status:1][seq:4][valLen:4][value:M]
+  ## Format: ``[status:1][seq:4][valLen:4][value:M]``
   if resp.value.len > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $resp.value.len)
 
@@ -190,7 +190,7 @@ type
 
 proc encodeTraverseRequest*(req: TraverseRequest): string =
   ## Encode a traversal request
-  ## Format: [seq:4][keyLen:2][key:N][pathLen:2][path:N][options:1]
+  ## Format: ``[seq:4][keyLen:2][key:N][pathLen:2][path:N][options:1]``
   result = newStringOfCap(4 + 2 + req.key.len + 2 + req.pathSpec.len + 1)
   result.writeUint32BE(req.seq)
   result.writeUint16BE(uint16(req.key.len))
@@ -218,8 +218,8 @@ proc decodeTraverseRequest*(data: string): TraverseRequest =
 
 proc encodeTraverseResults*(results: seq[TraverseResult], seq: uint32): string =
   ## Encode traversal results
-  ## Format: [status:1][seq:4][count:4][results...]
-  ## Each result: [pathLen:2][path:N][valLen:4][val:M][extFlags:1][extLen:4][ext:M]
+  ## Format: ``[status:1][seq:4][count:4][results...]``
+  ## Each result: ``[pathLen:2][path:N][valLen:4][val:M][extFlags:1][extLen:4][ext:M]``
   result = newStringOfCap(1 + 4 + 4)
   result.writeByte(byte(ord(statusOk)))
   result.writeUint32BE(seq)
@@ -298,7 +298,7 @@ type
 
 proc encodeRangeRequest*(req: RangeRequest): string =
   ## Encode a range query request
-  ## Format: [startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]
+  ## Format: ``[startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]``
   result = newStringOfCap(2 + req.startKey.len + 2 + req.endKey.len + 4 + 2 + req.cursor.len)
   result.writeUint16BE(uint16(req.startKey.len))
   result.add(req.startKey)
@@ -330,7 +330,7 @@ proc decodeRangeRequest*(data: string): RangeRequest =
 
 proc encodePrefixRequest*(req: PrefixRequest): string =
   ## Encode a prefix query request
-  ## Format: [prefixLen:2][prefix:N][limit:4][cursorLen:2][cursor:M]
+  ## Format: ``[prefixLen:2][prefix:N][limit:4][cursorLen:2][cursor:M]``
   result = newStringOfCap(2 + req.prefix.len + 4 + 2 + req.cursor.len)
   result.writeUint16BE(uint16(req.prefix.len))
   result.add(req.prefix)
@@ -355,7 +355,7 @@ proc decodePrefixRequest*(data: string): PrefixRequest =
 
 proc encodeRangeResponse*(resp: RangeResponse): string =
   ## Encode a range query response
-  ## Format: [count:4][items...][hasMore:1][nextCursorLen:2][nextCursor:N]
+  ## Format: ``[count:4][items...][hasMore:1][nextCursorLen:2][nextCursor:N]``
   result = newStringOfCap(4 + resp.nextCursor.len + 20)  # Reasonable capacity
   result.writeUint32BE(uint32(resp.items.len))
 
