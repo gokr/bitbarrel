@@ -56,7 +56,6 @@ proc open*(path: string, fileId: uint32): DataFile =
     file.setFilePos(0, fspEnd)
   else:
     # Validate existing file header
-    let oldPos = file.getFilePos()
     file.setFilePos(0)
 
     var header: FileHeader
@@ -72,7 +71,8 @@ proc open*(path: string, fileId: uint32): DataFile =
     if header.version != VERSION:
       raise newException(IOError, "Unsupported file version: " & $header.version)
 
-    file.setFilePos(oldPos)
+    # Seek to end for appending
+    file.setFilePos(0, fspEnd)
 
   let size = getFileSize(path).uint64
 
@@ -116,7 +116,6 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     file.setFilePos(0, fspEnd)
   else:
     # Validate existing file header
-    let oldPos = file.getFilePos()
     file.setFilePos(0)
 
     var header: FileHeader
@@ -132,7 +131,8 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     if header.version != VERSION:
       raise newException(IOError, "Unsupported file version: " & $header.version)
 
-    file.setFilePos(oldPos)
+    # Seek to end for appending
+    file.setFilePos(0, fspEnd)
 
   let size = getFileSize(path).uint64
 
