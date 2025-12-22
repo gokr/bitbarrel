@@ -16,6 +16,7 @@ BitBarrel is a high-performance key-value storage engine implemented in Nim usin
    - `compact.nim` - Background compaction for space reclamation
    - `recovery.nim` - Crash recovery with hint file support
    - `hintfile.nim` - Fast recovery metadata files
+   - `checkpoint.nim` - KeyDir checkpoint system for fast recovery
    - `readbuffer.nim` - Read-ahead LRU caching
 
 2. **Barrel API** (src/bitbarrel/)
@@ -293,6 +294,18 @@ Potential enhancements (see TODO.md):
 - Advanced monitoring and metrics
 - Additional compression algorithms
 - Secondary indexes
+
+## Feature Documentation
+
+Detailed documentation for individual features:
+
+- [Checkpoint System](../FEATURES/checkpoint.md) - KeyDir persistence for fast recovery
+- [Hint Files](../FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
+- [Read-Ahead LRU Buffering](../FEATURES/read-buffering.md) - Caching with LRU eviction
+- [Reference Model & Cycle Detection](../research/REFERENCES.md) - Graph traversal with cycle prevention
+- [Compression](../FEATURES/compression.md) - LZ4 and Snappy compression support
+- [Data Integrity](../FEATURES/data-integrity.md) - CRC32 validation
+- [Networking](../FEATURES/networking.md) - Network protocol and API
 
 ## References
 

@@ -111,8 +111,8 @@ storage:
 
 performance:
   worker_threads: 4
-  write_buffer_size: 65536   # 64KB
-  cache_size: 256            # MB
+  write_buffer_size: 65536   # 64KB write buffer
+  cache_size: 256            # MB read buffer cache (LRU)
 
 compact:
   enabled: true

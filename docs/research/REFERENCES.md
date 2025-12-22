@@ -269,6 +269,53 @@ let results = client.traversePath("user:1", "friends")
 
 All reference operations are thread-safe and can be used concurrently.
 
+## Cycle Detection
+
+The reference model includes built-in cycle detection to prevent infinite loops during graph traversal. This ensures that traversals complete even when circular references exist in the data.
+
+### How It Works
+
+**Path Tracking**: The traversal algorithm maintains a path of visited keys (sequence of strings).
+
+**Cycle Check**: Before following a reference to a new key, the system checks if that key already exists in the current path:
+
+```nim
+proc detectCycle*(path: seq[string], nextKey: string): bool =
+  ## Returns true if nextKey would create a cycle in the path
+  result = nextKey in path
+```
+
+**Complexity**: Simple O(n) membership check where n is the current path length (typically small).
+
+**Implementation Location**: `src/bitbarrel/refs.nim` (lines 181-184)
+
+### Example Scenario
+
+Consider a social graph where users follow each other:
+- User A follows User B
+- User B follows User C
+- User C follows User A (creates a cycle)
+
+Traversal path: `["user:A", "user:B", "user:C"]`
+Next key: `"user:A"` (already in path) → **cycle detected, traversal stops**
+
+### Behavior When Cycles Are Detected
+
+1. **Traversal stops** at the cycle-creating reference
+2. **Path is recorded** showing the circular reference
+3. **Results include** all nodes visited before the cycle
+4. **No infinite loop** - traversal completes predictably
+
+### Configuration
+
+Cycle detection is always enabled and cannot be disabled (safety feature).
+
+### Performance Impact
+
+- **Minimal overhead**: O(n) check with small n (path length)
+- **Memory efficient**: Path stored as sequence of string references
+- **No additional I/O**: Pure in-memory operation
+
 ## Troubleshooting
 
 ### Common Issues

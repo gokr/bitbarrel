@@ -37,6 +37,9 @@ Detailed documentation for specific BitBarrel features:
   - [Compression](FEATURES/compression.md) - Data compression support
   - [Data Integrity](FEATURES/data-integrity.md) - CRC32 validation
   - [Networking](FEATURES/networking.md) - Network protocol and client
+  - [Checkpoint System](FEATURES/checkpoint.md) - KeyDir persistence for fast recovery
+  - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
+  - [Read-Ahead LRU Buffering](FEATURES/read-buffering.md) - Caching with LRU eviction
 
 ### Historical and Research
 Background information and experimental features:
@@ -45,6 +48,7 @@ Background information and experimental features:
   - [Bitcask Background](research/bitcask-background.md) - History and theory
   - [HugeBarrel Analysis](research/hugebarrel-analysis.md) - Critical review of HugeBarrel
   - [HugeCritBit Design](research/hugecritbit-design.md) - Design analysis
+  - [Reference Model](research/REFERENCES.md) - Graph traversal with cycle detection
   - [References](research/references.md) - External references
 
 ## Choose Your Path
