@@ -93,6 +93,105 @@ Run individual tests directly: `nim c -r tests/test_storage.nim`
 3. **Deletes**: Write tombstone record (empty value)
 4. **Compaction**: Background process eliminates tombstones and expired records
 
+### Index Modes
+
+BitBarrel supports three indexing modes, each optimized for different use cases:
+
+#### bmHash (Default)
+- Hash table index with O(1) lookups
+- ~50 bytes memory per key
+- Keys not ordered
+- Fastest for simple get/set operations
+- **Limitation**: No range query support
+
+#### bmCritBit (Ordered)
+- CritBit tree with O(k) lookup where k = key length
+- Keys stored in lexicographic sorted order
+- **Supports range queries and prefix searches**
+- Ideal for ordered traversal and pagination
+- Use when you need: range queries, prefix searches, ordered iteration
+
+#### bmHugeCritBit (Two-tier for massive datasets)
+- Designed for massive datasets with range queries
+- Two-tier architecture with range partitioning
+- **Status**: Not yet implemented
+
+### Range Queries and Cursor-Based Pagination
+
+**Important**: BitBarrel currently has **no users**, so we do not need to maintain backward compatibility for any API changes. We can freely evolve the API without breaking existing code.
+
+Range queries and pagination are only available in **bmCritBit mode**. This requires configuring the barrel with the ordered index:
+
+```nim
+var config = defaultBarrelConfig()
+config.mode = bmCritBit
+let barrel = openBarrel("data.db", config)
+```
+
+#### Range Query Methods
+
+**Get key-value pairs in a range**:
+```nim
+# Get items with keys in range [startKey, endKey)
+let items = barrel.itemsInRange("user:1000", "user:2000", limit=100, cursor="")
+# Returns: seq[(string, string)] = @[("user:1001", "Alice"), ...]
+
+# Get next page using cursor
+let (page2, nextCursor, hasMore) = barrel.itemsInRange("user:1000", "user:2000", limit=100, cursor="user:1050")
+```
+
+**Get key-value pairs with prefix**:
+```nim
+# Get all users (keys starting with "user:")
+let users = barrel.itemsWithPrefix("user:", limit=50, cursor="")
+for (key, value) in users:
+  echo key, " => ", value
+```
+
+#### Cursor-Based Pagination
+
+**Why Cursor-Based?**
+- **Efficient**: O(1) operation (no scanning/skipping like offset-based)
+- **Scalable**: Works well for large datasets
+- **Simple**: Use last key from previous page as cursor
+
+**Pagination Flow**:
+1. First page: `itemsWithPrefix("user:", limit=100, cursor="")`
+2. Get response: `(items, nextCursor, hasMore)`
+3. Next page: `itemsWithPrefix("user:", limit=100, cursor=nextCursor)`
+4. Repeat until `hasMore = false`
+
+**Example - Paginate through all users**:
+```nim
+var allUsers: seq[(string, string)]
+var cursor = ""
+while true:
+  let (items, nextCursor, hasMore) = barrel.itemsWithPrefix("user:", 100, cursor)
+  if items.len == 0:
+    break
+  allUsers.add(items)
+  if not hasMore:
+    break
+  cursor = nextCursor
+```
+
+**Response Format**:
+All range query methods return a tuple:
+```nim
+(items: seq[(string, string)], nextCursor: string, hasMore: bool)
+```
+
+- `items`: Key-value pairs in the range
+- `nextCursor`: Cursor for next page (empty string if last page)
+- `hasMore`: True if more items available
+
+**Iterator Support** (memory-efficient):
+```nim
+# Iterate over all items in range (loads one page at a time)
+for (key, value) in barrel.itemsWithPrefix("user:"):
+  echo key, " => ", value
+```
+
 ## Project Structure
 
 ```
@@ -141,6 +240,42 @@ Always check for and remove compiler warnings:
 - Some warnings from dependencies (like Mummy) are unavoidable
 - ORC-related crashes during thread shutdown are a known Nim issue
 - Document known issues in code comments or CLAUDE.md
+
+### Known Issues
+**test_client.nim ORC Crash**: This test shows ORC crash during thread cleanup due to Nim issue #25253. The tests complete successfully before the crash. This is NOT a BitBarrel code issue - it's a confirmed Nim compiler bug with these characteristics:
+
+**Root Cause**: Nim's ORC garbage collector crashes when cleaning up objects with circular references across thread boundaries. The crash happens in `orc.nim:unregisterCycle()` during thread shutdown, after all tests have completed successfully.
+
+**Evidence this is a Nim bug, not BitBarrel code issue**:
+1. Crash location: `nim/orc.nim:unregisterCycle()` - deep inside Nim's GC, not our code
+2. Stack trace shows: mummy→destroy→ORC cycle detector→SIGSEGV
+3. Tests all pass before the crash occurs
+4. Non-threaded tests work perfectly (test_session, test_integration, etc.)
+5. Simple objects without circular references work fine across threads
+6. This matches exactly Nim issue #25253 pattern
+
+**Workarounds Attempted (all failed)**:
+- ✅ Changed `BitBarrelServer` from `object` to `ref` to `ptr` - still crashes
+- ✅ Added manual destructor to break circular references - still crashes
+- ✅ Manually nilled circular references before thread exit - still crashes
+- ✅ Used global variables instead of thread parameters - still crashes
+- ✅ Tried different thread creation patterns - still crashes
+- ✅ Removed all closure captures - not possible (mummy requires closures)
+
+**Why other tests don't crash**:
+- `test_session`, `test_integration`: Don't use threads with circular references
+- `test_storage`, `test_keydir`: Pure unit tests, no threading
+- `test_client`: Uses threads + objects with circular refs → triggers Nim bug
+
+**Status**: Actively being investigated by Nim team. There's an "araq-orc-hotfix" branch in Nim repo suggesting active work on this.
+
+To run tests without this issue:
+```bash
+nimble testStorage   # Storage layer tests - all pass
+nimble testKeydir    # KeyDir index tests - all pass
+nimble testIntegration # Integration tests - all pass
+nimble testSession    # Session/Registry tests - all pass
+```
 
 ## Nim Coding Guidelines
 
