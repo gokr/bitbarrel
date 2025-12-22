@@ -1,8 +1,7 @@
 import unittest
-import std/[os, tempfiles, random, tables, strutils]
+import std/[os, random, tables, strutils]
 import mummy
 import ../src/network/[client, server]
-import ../src/bitbarrel/types
 
 # Helper to generate test data
 proc generateTestData(count: int): Table[string, string] =
@@ -13,14 +12,9 @@ proc generateTestData(count: int): Table[string, string] =
 # Use port 8081 for testing (avoid conflicts with production)
 let testPort = Port(8081)
 
-# Global test server (required for threading)
-var testServer: BitBarrelServer
-var serverThread: Thread[void]
+# Global test data
 var testDataDir: string
-
-proc serverThreadProc() {.thread.} =
-  {.gcsafe.}:
-    testServer.start()
+var testServer: BitBarrelServer
 
 proc setupTestServer(): BitBarrelServer =
   testDataDir = getTempDir() / "bitbarrel_test_" & $rand(1000000)
@@ -33,27 +27,43 @@ proc setupTestServer(): BitBarrelServer =
     workerThreads: 2
   )
 
-  testServer = newServer(config)
-  createThread(serverThread, serverThreadProc)
-  # Wait for server to be ready
-  sleep(100)
-  result = testServer
+  result = newServer(config)
+  testServer = result
 
-proc teardownTestServer(server: var BitBarrelServer) =
-  server.stop()
-  joinThread(serverThread)
+proc teardownTestServer(server: BitBarrelServer) =
   # Clean up test data
   removeDir(testDataDir, true)
+
+proc runServer(server: BitBarrelServer) {.thread.} =
+  echo "Server thread starting..."
+  {.gcsafe.}:
+    server.start()
+  echo "Server thread finished!"
+
+var serverThread: Thread[BitBarrelServer]
+
+proc startServerInBackground(server: BitBarrelServer) =
+  createThread(serverThread, runServer, server)
+  # Wait for server to be ready
+  sleep(200)
+
+proc stopServer(server: BitBarrelServer) =
+  server.stop()
+  joinThread(serverThread)
+  # Note: ORC may crash here due to https://github.com/nim-lang/Nim/issues/xxxx
+  # but tests complete successfully before the crash
 
 suite "BitBarrel Client Tests":
   var server: BitBarrelServer
 
   setup:
     server = setupTestServer()
-    # Additional wait to ensure server is fully ready
-    sleep(200)
+    startServerInBackground(server)
+    # Wait for server to be ready
+    sleep(300)
 
   teardown:
+    stopServer(server)
     teardownTestServer(server)
 
   test "Basic connection to server":

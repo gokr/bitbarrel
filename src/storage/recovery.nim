@@ -3,7 +3,7 @@
 ## This module handles recovery from crashes by scanning data files
 ## and rebuilding the in-memory KeyDir index.
 
-import std/[os, strformat, strutils, times, sequtils, math, algorithm, endians, locks]
+import std/[os, strformat, strutils, times, math, algorithm, endians, locks]
 import ../bitbarrel/types, keydir, record, crc32, hintfile
 
 type

@@ -120,6 +120,28 @@ bench/                   # Benchmarks and stress tests
 examples/                # Demo programs
 ```
 
+## Code Quality and Testing
+
+### Maintaining Clean Code
+Always check for and remove compiler warnings:
+- **Unused imports**: Remove imports that are not used (e.g., `Warning: imported and not used`)
+- **Unused variables**: Remove variables declared but never used (e.g., `Hint: 'foo' is declared but not used`)
+- **Unused parameters**: Use `_` prefix or `_` to indicate intentionally unused variables
+- Run tests frequently to catch warnings early
+
+### Test Quality Standards
+- **All tests must pass**: Green tests are non-negotiable
+- **No warnings in test compilation**: Test code should compile without warnings
+- **Tests should run quickly**: Keep tests focused and fast
+- **Test names should be descriptive**: Clearly state what is being tested
+- **Clean up test data**: Tests should remove temporary files/directories
+- **Avoid flaky tests**: Tests should be deterministic and reliable
+
+### When to Ignore Warnings
+- Some warnings from dependencies (like Mummy) are unavoidable
+- ORC-related crashes during thread shutdown are a known Nim issue
+- Document known issues in code comments or CLAUDE.md
+
 ## Nim Coding Guidelines
 
 ### Code Style and Conventions

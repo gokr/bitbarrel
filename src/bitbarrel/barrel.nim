@@ -12,7 +12,6 @@ import ../storage/critbitindex
 import ../storage/record
 import ../storage/compact
 import ../storage/crc32
-import ../storage/recovery
 import ../storage/hintfile
 
 export types, datafile
@@ -30,19 +29,13 @@ type
     critBit: CritBitIndex       # Used for bmCritBit
     # TODO: hugeBarrel for bmHugeCritBit (Phase 3)
     # Compaction
-    compactController: CompactController  # Background compaction worker
+    compactController*: CompactController  # Background compaction worker
 
   Barrel* = ref BarrelObj
 
 proc `=destroy`*(barrel: var BarrelObj) =
-  ## Destructor for Barrel
-  ## Explicitly break circular reference with CompactController to avoid ORC issues
+  ## Destructor for Barrel - break circular reference to help ORC
   if barrel.compactController != nil:
-    # If still running, signal shutdown
-    if not barrel.closed:
-      barrel.compactController.shutdown()
-    # Break the circular reference by nilling the controller
-    # This must be done to break: Barrel -> CompactController -> Thread[ptr] -> CompactController
     barrel.compactController = nil
 
 proc defaultBarrelConfig*(): BarrelConfig =

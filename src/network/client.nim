@@ -2,7 +2,7 @@
 ##
 ## WebSocket client library for BitBarrel network operations
 
-import std/[net, strformat, locks, options, tables, times, random, base64, strutils, os]
+import std/[net, strformat, locks, tables, times, random, base64, strutils, os]
 import protocol
 
 # Simple WebSocket client implementation
@@ -116,7 +116,6 @@ proc recvFrame(ws: WebSocket): string =
   if ws.socket.recv(addr header[0], 2) != 2:
     raise newException(WebSocketException, "Failed to read frame header")
 
-  let opcode = header[0] and 0x0F
   let hasMask = (header[1] and 0x80) != 0
 
   var length = int(header[1] and 0x7F)
@@ -426,7 +425,7 @@ proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
     raise newException(ClientError, fmt"Traversal failed: {resp.status}")
 
   # Decode results
-  let (status, seq, results) = decodeTraverseResults(resp.value)
+  let (status, _, results) = decodeTraverseResults(resp.value)
   if status != statusOk:
     raise newException(ClientError, "Invalid traversal response")
 

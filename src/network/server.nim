@@ -2,7 +2,7 @@
 ##
 ## WebSocket/HTTP server built on MummyX for remote BitBarrel access
 
-import std/[net, locks, tables, strutils, os, cpuinfo, json, sequtils, strformat, cgi]
+import std/[net, locks, tables, strutils, os, sequtils, strformat]
 import mummy
 import mummy/routers
 import session
@@ -15,7 +15,7 @@ import protocol
 type ProtoRequest = protocol.Request
 
 type
-  BitBarrelServer* = object
+  BitBarrelServerObj* = object
     registry*: BarrelRegistry         ## All open barrels
     sessions*: Table[uint64, Session] ## WebSocket client -> session
     mummyServer: Server
@@ -24,18 +24,17 @@ type
     seqCounter: uint64                ## Global seq counter for requests
     startTime: float                  ## Server start time (epochTime)
 
+  BitBarrelServer* = ref BitBarrelServerObj  # Use ref to avoid ORC cleanup issues
+
   ServerConfig* = object
     address*: string       ## Default: "0.0.0.0"
     port*: Port           ## Default: 9876
     dataDir*: string      ## Base directory for barrels
     workerThreads*: int   ## Default: CPU * 10
 
-# Global variable to work around Nim's closure capture restrictions
-# Using a single server for simplicity - can be extended to multiple servers
-var currentServer {.threadvar.}: ref BitBarrelServer
-
-# Initialize to empty
-currentServer = new(BitBarrelServer)
+# Note: Avoid thread-local variables for server storage as closures capture them
+# across thread boundaries, causing ORC cleanup issues.
+# The server reference is now passed directly to handlers.
 
 
 # Helper: URL decoding
@@ -64,7 +63,7 @@ proc decodeUrl(url: string): string =
 
 
 proc handleWebSocketMessage*(
-  server: var BitBarrelServer,
+  server: BitBarrelServer,
   ws: WebSocket,
   data: string
 ) =
@@ -288,7 +287,7 @@ proc handleWebSocketMessage*(
   # Send response
   ws.send(encodeResponse(resp), BinaryMessage)
 
-proc websocketUpgradeHandler*(server: var BitBarrelServer, request: mummy.Request) =
+proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
   ## Handle WebSocket upgrade request
   try:
     let ws = request.upgradeToWebSocket()
@@ -298,7 +297,7 @@ proc websocketUpgradeHandler*(server: var BitBarrelServer, request: mummy.Reques
     request.respond(400, body = "WebSocket upgrade failed")
 
 proc websocketHandler*(
-  server: var BitBarrelServer,
+  server: BitBarrelServer,
   ws: WebSocket,
   event: WebSocketEvent,
   message: Message
@@ -326,7 +325,7 @@ proc websocketHandler*(
       withLock server.sessionsLock:
         server.sessions.del(ws.clientId)
 
-proc handleRestBarrels*(server: var BitBarrelServer, request: mummy.Request) =
+proc handleRestBarrels*(server: BitBarrelServer, request: mummy.Request) =
   ## Handle REST API for barrel management
   case request.httpMethod:
   of "GET":
@@ -363,7 +362,7 @@ proc handleRestBarrels*(server: var BitBarrelServer, request: mummy.Request) =
     hdrs["Allow"] = "GET,POST"
     request.respond(405, hdrs)
 
-proc handleRestBarrel*(server: var BitBarrelServer, request: mummy.Request, barrelName: string) =
+proc handleRestBarrel*(server: BitBarrelServer, request: mummy.Request, barrelName: string) =
   ## Handle REST API for specific barrel
   case request.httpMethod:
   of "GET":
@@ -386,7 +385,7 @@ proc handleRestBarrel*(server: var BitBarrelServer, request: mummy.Request, barr
     hdrs["Allow"] = "GET,DELETE"
     request.respond(405, hdrs)
 
-proc handleRestKV*(server: var BitBarrelServer, request: mummy.Request, barrelName: string, key: string) =
+proc handleRestKV*(server: BitBarrelServer, request: mummy.Request, barrelName: string, key: string) =
   ## Handle REST API for key-value operations
   let barrel = server.registry.getBarrel(barrelName)
   if barrel.isNone():
@@ -430,10 +429,10 @@ proc handleRestKV*(server: var BitBarrelServer, request: mummy.Request, barrelNa
     request.respond(405, hdrs)
 
 # Forward declarations
-proc handleRestTraverse(server: var BitBarrelServer, request: mummy.Request,
+proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
                        barrelName: string, key: string)
 
-proc handleRestStatus*(server: var BitBarrelServer, request: mummy.Request) =
+proc handleRestStatus*(server: BitBarrelServer, request: mummy.Request) =
   ## Server health check and stats
   var sessionCount: int
   withLock server.sessionsLock:
@@ -453,7 +452,7 @@ proc handleRestStatus*(server: var BitBarrelServer, request: mummy.Request) =
   headers["Content-Type"] = "application/json"
   request.respond(200, headers, statsJson)
 
-proc restHandler*(server: var BitBarrelServer, request: mummy.Request) =
+proc restHandler*(server: BitBarrelServer, request: mummy.Request) =
   ## Dispatch REST API requests
   {.gcsafe.}:
     if request.path == "/status":
@@ -507,7 +506,7 @@ proc parseQuery*(query: string): Table[string, string] =
       let val = param[eqPos+1..^1].decodeUrl()
       result[key] = val
 
-proc handleRestTraverse(server: var BitBarrelServer, request: mummy.Request,
+proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
                        barrelName: string, key: string) =
   ## Handle REST API traversal requests
   ## GET /barrels/{name}/traverse/{key}?path=friends->team&includeData=true
@@ -625,47 +624,41 @@ proc handleRestTraverse(server: var BitBarrelServer, request: mummy.Request,
     except CatchableError as e:
       request.respond(500, body = fmt("{{\"error\":\"{e.msg}\"}}"))
 
-proc registerRoutes(router: var Router) =
-  ## Register all routes
-  router.get("/status", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.get("/ws", proc(req: mummy.Request) = websocketUpgradeHandler(currentServer[], req))
-  router.post("/barrels", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.get("/barrels", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.delete("/barrels/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.get("/barrels/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.put("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.get("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.delete("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.head("/barrels/*/kv/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
-  router.get("/barrels/*/traverse/*", proc(req: mummy.Request) = restHandler(currentServer[], req))
+# Routes are registered directly in newServer() to properly capture the server reference
 
 proc newServer*(config: ServerConfig): BitBarrelServer =
   ## Create a new BitBarrel server instance
-  result = BitBarrelServer(
-    registry: newBarrelRegistry(config.dataDir),
-    sessions: initTable[uint64, Session](),
-    config: config,
-    sessionsLock: Lock(),
-    seqCounter: 0,
-    startTime: epochTime()
-  )
+  new(result)
+  result.registry = newBarrelRegistry(config.dataDir)
+  result.sessions = initTable[uint64, Session]()
+  result.config = config
+  result.sessionsLock = Lock()
+  result.seqCounter = 0
+  result.startTime = epochTime()
   initLock(result.sessionsLock)
 
-  # Store server in global for closures to access
-  currentServer = new(BitBarrelServer)
-  currentServer[] = result
-
-  # Create MummyX router
+  # Create MummyX router with server reference captured
   var router: Router
-  router.registerRoutes()
+  let serverRef = result  # Capture for closures
+  router.get("/status", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.get("/ws", proc(req: mummy.Request) {.gcsafe.} = websocketUpgradeHandler(serverRef, req))
+  router.post("/barrels", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.get("/barrels", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.delete("/barrels/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.get("/barrels/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.put("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.get("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.delete("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.head("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.get("/barrels/*/traverse/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
 
   result.mummyServer = newServer(
     router.toHandler(),
-    websocketHandler = proc(ws: WebSocket, event: WebSocketEvent, msg: Message) =
-      websocketHandler(currentServer[], ws, event, msg)
+    websocketHandler = proc(ws: WebSocket, event: WebSocketEvent, msg: Message) {.gcsafe.} =
+      websocketHandler(serverRef, ws, event, msg)
   )
 
-proc start*(server: var BitBarrelServer) =
+proc start*(server: BitBarrelServer) =
   ## Start the server
   echo "BitBarrel server starting on ", server.config.address, ":", server.config.port
   echo "Data directory: ", server.config.dataDir
@@ -675,14 +668,18 @@ proc start*(server: var BitBarrelServer) =
 
   server.mummyServer.serve(Port(server.config.port), server.config.address)
 
-proc stop*(server: var BitBarrelServer) =
+proc stop*(server: BitBarrelServer) =
   ## Gracefully stop the server
   echo "Shutting down BitBarrel server..."
 
-  # Close all barrels
+  # Close all barrels (this breaks the circular reference by closing barrels)
+  echo "Closing all barrels..."
   server.registry.closeAll()
+  echo "Barrels closed"
 
   # Close MummyX server
+  echo "Closing Mummy server..."
   server.mummyServer.close()
+  echo "Mummy server closed"
 
   echo "Server stopped"
