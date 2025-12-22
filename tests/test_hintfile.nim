@@ -88,8 +88,8 @@ suite "Hint File Tests":
     check getHintPath("/path/to/file.data") == "/path/to/file.hint"
 
   test "hintFileExists":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    let testDir = setupTestDir("hintfile")
+    defer: cleanupTestDir(testDir)
 
     let dataPath = testDir / "000001.data"
     let hintPath = testDir / "000001.hint"
@@ -101,8 +101,8 @@ suite "Hint File Tests":
     check hintFileExists(dataPath) == true
 
   test "loadKeyDirFromHint":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    let testDir = setupTestDir("hintfile")
+    defer: cleanupTestDir(testDir)
 
     let path = testDir / "test.hint"
     let entries = @[
@@ -127,8 +127,8 @@ suite "Hint File Tests":
     check entry1.get().timestamp == 1000
 
   test "loadKeyDirFromHint - newer entries win":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    let testDir = setupTestDir("hintfile")
+    defer: cleanupTestDir(testDir)
 
     let path = testDir / "test.hint"
     let entries = @[
@@ -157,8 +157,8 @@ suite "Hint File Tests":
     check entry.get().timestamp == 2000  # Newer timestamp
 
   test "loadKeyDirFromHint - older entries ignored":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    let testDir = setupTestDir("hintfile")
+    defer: cleanupTestDir(testDir)
 
     let path = testDir / "test.hint"
     let entries = @[
@@ -187,8 +187,8 @@ suite "Hint File Tests":
     check entry.get().timestamp == 2000  # Original timestamp preserved
 
   test "Large hint file":
-    let testDir = setupTest()
-    defer: cleanupTest(testDir)
+    let testDir = setupTestDir("hintfile")
+    defer: cleanupTestDir(testDir)
 
     let path = testDir / "large.hint"
     var entries: seq[HintEntry] = @[]
