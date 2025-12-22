@@ -1,17 +1,17 @@
 # Binary executables
-bench/*
-!bench/*.nim
-!bench/*.cfg
-!bench/*.nims
-examples/*
-!examples/*.nim
-!examples/*.cfg
-!examples/*.nims
-tests/*
-!tests/*.nim
-!tests/*.cfg
-!tests/*.nims
-!tests/*.md
+bench/**/*
+!bench/**/*.nim
+!bench/**/*.cfg
+!bench/**/*.nims
+examples/**/*
+!examples/**/*.nim
+!examples/**/*.cfg
+!examples/**/*.nims
+tests/**/*
+!tests/**/*.nim
+!tests/**/*.cfg
+!tests/**/*.nims
+!tests/**/*.md
 # Root binaries
 /bitbarrel
 /unified_benchmark
