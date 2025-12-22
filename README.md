@@ -1,67 +1,34 @@
 # BitBarrel - High-Performance Bitcask-style Key/Value Store
 
-A key/value store implemented in Nim using the enhanced Bitcask storage model.
+BitBarrel is a high-performance key/value storage engine built in Nim, using the Bitcask storage model. It offers fast writes, efficient reads, and robust crash recovery—perfect for caching, session storage, time‑series data, and large‑scale analytics.
 
-## ✅ Status & Features
-
-**Features:**
-- ✅ Append-only storage for efficient write performance
-- ✅ Three index modes: Hash table (O(1)), CritBit tree (ordered), and Ranged (lazy-loaded partitions)
-- ✅ Range queries and prefix searches (CritBit mode)
-- ✅ Optional CRC32 checksums for data integrity
-- ✅ Binary record encoding/decoding with validation
-- ✅ Basic CRUD operations (GET/SET/DELETE)
-- ✅ Thread-safe operations
-- ✅ Compression support for large values (LZ4 & Snappy)
-
-**Reliability Features:**
-- ✅ Crash recovery with checkpoint system
-- ✅ Fast recovery at 40,000+ keys/sec with hint files
-- ✅ Binary checkpoint format for persistence
-- ✅ Configurable recovery options
-
-**Performance Features:**
-- ✅ Automatic compaction with background threading
-- ✅ Hint file generation for fast recovery
-- ✅ Space reclamation and fragmentation management
-- ✅ Read-ahead LRU buffering for read performance
-- ✅ Write buffering with configurable sync modes (none/sync/fsync)
-- ✅ Time-to-live (TTL) support for automatic expiration
-
-**Network Features:**
-- ✅ WebSocket server/client with binary protocol
-- ✅ Additional HTTP REST API
-- ✅ Session management and barrel selection
-- ✅ Binary protocol with 15 commands
-- ✅ Request/response correlation with sequence numbers
-- ✅ Thread-safe concurrent operations
-
-**Reference Model allowing Graph Traversal**
-- ✅ Reference storage in JSON with `_refs` field
-- ✅ Path expression traversal (friends->team->matches)
-- ✅ Wildcard support (*)
-- ✅ Array slicing ([0], [-1], [0:5])
-- ✅ Server-side traversal (single round-trip)
-- ✅ ~30-50μs for 3-level traversals
-- ✅ Cycle detection and prevention
-- ✅ Client library and REST API support
-
-
-**Current Status:**
-- **Test Suite**: 27 test files with 350+ test cases, all passing
-  - ✅ 35+ new edge case tests for production readiness
-  - ✅ Filesystem stress testing (permissions, disk full, corruption)
-  - ✅ Concurrent access testing (multi-threaded operations)
-  - ✅ Crash recovery testing (process killed mid-write, power loss)
-  - ✅ Memory pressure testing (OOM, leaks, fragmentation)
-  - ✅ Network resilience testing (WebSocket fragmentation, timeouts)
-- **Performance**: ~250K writes/sec (none sync), ~180K reads/sec (release build)
-- **Compression**: LZ4 (~2.1x ratio) and Snappy (~1.7x ratio) support
-- **Stability**: Stress-tested with 25K+ keys
+### Why BitBarrel?
+- **Three index modes** tailor performance to your use case: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑level huge datasets.
+- **Network‑ready** with WebSocket and REST APIs.
+- **Production‑ready** with compression, TTL, background compaction, and fast recovery.
 
 ## Quick Start
 
-### Run Demos
+### Get started in 30 seconds
+
+```nim
+import bitbarrel
+
+# Open a database with default settings (fast, durable enough for most apps)
+var db = openBarrel("myapp.db")
+
+# Store some data
+discard db.set("user:42:name", "Alice")
+discard db.set("user:42:email", "alice@example.com")
+
+# Retrieve it
+echo "User name: ", db.get("user:42:name")
+
+# Clean up
+db.close()
+```
+
+### Run the demos
 
 ```bash
 # Install dependencies first
@@ -76,7 +43,7 @@ nim c -r examples/simple_kv_demo.nim
 # Run recovery tests
 nimble test-recovery
 
-# Run all tests (including recovery)
+# Run all tests
 nimble test
 
 # Run benchmark (default implementation)
@@ -89,7 +56,7 @@ nimble benchCrunchy
 nimble stress
 ```
 
-### Build with Compression
+### Build with compression
 
 ```bash
 # Build with LZ4 compression (recommended)
@@ -102,9 +69,9 @@ nimble buildSnappy
 nimble buildDefault
 ```
 
-### Use as Library
+### Using as a Library
 
-The BitBarrel can be installed via nimble and used as a library in your projects:
+BitBarrel can be installed via nimble and used as a library in your projects:
 
 ```nim
 # Install the package
@@ -113,213 +80,166 @@ The BitBarrel can be installed via nimble and used as a library in your projects
 # Simple high-level API
 import bitbarrel
 
-var db = openDatabase("mydb")
+var db = openBarrel("mydb")
 discard db.set("key", "value")
 echo db.get("key")  # "value"
 db.close()
 ```
 
-#### With Configuration
+For advanced use cases, you can access the low‑level storage API:
 
 ```nim
-import bitbarrel
-from bitbarrel/config import UserSyncMode
+import bitbarrel/[barrel, lowlevelapi]
 
-var cfg = defaultBarrelConfig()
-cfg.syncMode = UserSyncMode.Fsync
-cfg.writeBufferSize = 1024 * 1024  # 1MB buffer
-
-var db = openDatabase("mydb", cfg)
-# ... use db
-```
-
-#### Low-Level API
-
-For advanced use cases, you can use the low-level storage API:
-
-```nim
-# For fine-grained control over data files
-import bitbarrel/[lowlevelapi, barrel]
-
-var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
+# Direct data file operations
+var df = lowlevelapi.openDataFile("custom.data", 1'u32)
 # Work directly with data files
+df.close()
 ```
 
-See [docs/TUTORIAL.md](docs/TUTORIAL.md) for comprehensive examples.
+See the [tutorial](docs/TUTORIAL.md) for comprehensive examples.
 
-### Barrel Modes
+## Features at a Glance
 
-BitBarrel supports three different index modes to optimize for different use cases:
+BitBarrel packs a comprehensive set of features into a lightweight package:
 
-#### bmHash Mode (Default)
-Hash table-based index for O(1) lookups. Best for simple key-value operations where ordering is not needed.
+| Category | Highlights |
+|----------|------------|
+| Storage | Append‑only log, three index modes, compression (LZ4/Snappy), binary record encoding |
+| Reliability | Crash recovery, hint files (40K+ keys/sec), checkpoint system, CRC32 checksums |
+| Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
+| Network | WebSocket binary protocol (15 commands), REST API, session management, thread‑safe operations |
+| Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
 
+**Comprehensive test suite**: 27 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, and network resilience.
+
+## Performance Highlights
+
+Here are the key performance metrics from release builds on Linux x86_64:
+
+| Metric | Value | Context |
+|--------|-------|---------|
+| Write throughput (none sync) | ~250K ops/sec | Buffered, sequential writes |
+| Write throughput (sync) | ~245K ops/sec | OS‑level durability |
+| Write throughput (fsync) | ~11.5K ops/sec | Disk‑level durability |
+| Read throughput | ~180K ops/sec | Random access via in‑memory index |
+| Mixed workload (80% read) | ~278K ops/sec | Combined operations |
+| Recovery speed | 40K+ keys/sec | With hint files |
+| Write latency (none/sync) | ~0.004 ms | Sub‑millisecond |
+| Read latency | ~0.006 ms | O(1) hash lookup |
+
+*See the [benchmark guide](docs/BENCHMARK_GUIDE.md) for detailed measurements and methodology.*
+
+**CRC32 implementations**: BitBarrel includes two optional CRC32 implementations—a pure Nim lookup table (default, faster) and a SIMD‑optimized crunchy version (available via `-d:useCrunchy`). See [CRC documentation](docs/CRC.md) for performance comparison.
+
+### Performance Tips
+- Use `none` sync for fastest writes (data at risk on crash)
+- Use `sync` for balanced performance/durability
+- Use `fsync` for critical data (slower but safer)
+- Buffer size 64KB‑256KB provides good performance
+- Mixed workloads benefit from read‑ahead caching
+
+## Barrel Modes Deep Dive
+
+BitBarrel supports three index modes optimized for different use cases:
+
+| Mode | Best For | Lookup | Memory | Special Features |
+|------|----------|--------|--------|------------------|
+| `bmHash` | General KV, caching, sessions | O(1) | ~50 bytes/key | Fastest lookups |
+| `bmCritBit` | Time‑series, leaderboards, prefix searches | O(k) | ~60 bytes/key | Range queries, ordered iteration |
+| `bmHugeCritBit` | Billions of keys, limited RAM | O(1) per range | Lazy‑loaded partitions | Massive datasets, range‑based caching |
+
+### bmHash Mode – Session Store
 ```nim
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmHash  # Default mode
+cfg.mode = BarrelMode.bmHash  # Fast O(1) lookups (default)
 
-var db = openBarrel("mydb", cfg)
-discard db.set("key", "value")
-echo db.get("key")  # "value"
+var sessionStore = openBarrel("sessions.db", cfg)
+
+# Store and retrieve sessions quickly
+discard sessionStore.set("sess_7a3b1c", """{"user_id": 123, "expires": 1734800000}""")
+let session = sessionStore.get("sess_7a3b1c")
+
+echo "Session store ready for high-throughput web applications"
 ```
 
-**Performance**: O(1) lookup, ~50 bytes per key overhead
-**Use case**: General-purpose key-value storage, caching, session storage
-
-#### bmCritBit Mode
-CritBit tree-based index that keeps keys sorted. Supports range queries and prefix searches with all keys in memory.
-
+### bmCritBit Mode – Time-Series Data
 ```nim
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmCritBit
+cfg.mode = BarrelMode.bmCritBit  # Sorted keys for range queries
 
-var db = openBarrel("mydb", cfg)
+var metricsDb = openBarrel("metrics.db", cfg)
 
-# Store some keys
-discard db.set("user:1", "Alice")
-discard db.set("user:2", "Bob")
-discard db.set("user:3", "Charlie")
+# Store timestamped metrics (keys are naturally sorted)
+discard metricsDb.set("metrics:temp:1734800000", "22.5")
+discard metricsDb.set("metrics:temp:1734800100", "23.1")
+discard metricsDb.set("metrics:humidity:1734800000", "65.2")
 
-# Range query - get all keys between "user:1" and "user:3"
-let users = db.keysInRange("user:1", "user:3")
-# Returns: @["user:1", "user:2", "user:3"]
+# Range query: get all temperature metrics for a time period
+let temps = metricsDb.keysInRange("metrics:temp:1734800000", "metrics:temp:1734800200")
+echo "Found ", temps.len, " temperature readings"
 
-# Prefix search - get all keys starting with "user:"
-let allUsers = db.keysWithPrefix("user:")
-# Returns: @["user:1", "user:2", "user:3"]
+# Prefix search: get all humidity metrics
+let humidityKeys = metricsDb.keysWithPrefix("metrics:humidity:")
+echo "Humidity sensors: ", humidityKeys.len
 ```
 
-**Performance**: O(k) where k is key length, supports ordered iteration
-**Use case**: Leaderboards, time-series data, prefix searches, ordered traversal
-
-#### bmHugeCritBit Mode
-Two-tier design for massive datasets that don't fit in memory. Supports range queries with lazy-loaded partitions.
-
+### bmHugeCritBit Mode – Large Analytics Dataset
 ```nim
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
 cfg.mode = BarrelMode.bmHugeCritBit
-cfg.hugeConfig.maxEntriesPerRange = 500_000
-cfg.hugeConfig.rangeCacheSize = 10
+cfg.hugeConfig.maxEntriesPerRange = 1_000_000  # Split into 1M-key ranges
+cfg.hugeConfig.rangeCacheSize = 5              # Keep 5 ranges in memory
 
-var db = openBarrel("bigdb", cfg)
+var analyticsDb = openBarrel("analytics.db", cfg)
 
-# Store billions of keys - only active ranges stay in memory
-discard db.set("key:1", "value1")
-discard db.set("key:999999999", "value2")
+# Store user events (potentially billions)
+discard analyticsDb.set("events:user:123:click:1734800000", """{"page": "/home"}""")
+discard analyticsDb.set("events:user:456:purchase:1734800100", """{"amount": 99.99}""")
 
-# Check range statistics
-let stats = db.rangeStats()
-echo "Total ranges: ", stats.total
-echo "Loaded ranges: ", stats.loaded
+# Query specific user's events (loads only their range into memory)
+let userEvents = analyticsDb.keysWithPrefix("events:user:123:")
+echo "User 123 has ", userEvents.len, " events"
 ```
 
-**Performance**: O(1) lookup with range management overhead
-**Use case**: Datasets with billions of keys, limited RAM, bursty access patterns, ordered data
+## Configuration Examples
 
-## Performance
+Choose the right durability for your use case:
 
-### Current Performance (Release Build, Linux x86_64)
+```nim
+import bitbarrel
+from bitbarrel/config import UserSyncMode
 
-**Write Performance:**
-- None sync: ~250K ops/sec (minimum durability, fast writes)
-  * With write buffering enabled, data is accumulated and written sequentially
-  * Ideal for batch operations, logging, and non-critical data
-- Sync mode: ~245K ops/sec (OS-level durability)
-  * Data is safe from application crashes
-  * Good balance of performance and safety
-- Fsync mode: ~11.5K ops/sec (disk-level durability)
-  * Data is safe from power loss
-  * Each write waits for disk confirmation
+# Fast caching (risk data loss on crash)
+var cacheCfg = defaultBarrelConfig()
+cacheCfg.syncMode = UserSyncMode.None
+cacheCfg.writeBufferSize = 256 * 1024  # 256KB buffer
 
-**Read Performance:**
-- Sequential reads: ~180K ops/sec
-- Random access: ~178K ops/sec
-  * Reads require disk I/O via the in-memory index
-  * Performance depends on disk speed and caching
-  * Typically ~25% slower than buffered writes (None sync mode)
+# General-purpose storage (safe from app crashes)
+var generalCfg = defaultBarrelConfig()
+generalCfg.syncMode = UserSyncMode.Sync
 
-**Mixed Workload (80% Read / 20% Write):**
-- Overall throughput: ~278K ops/sec (combined operations)
-  * This averages the faster writes with slower reads
-  * Actual read performance in mixed workloads: ~140K ops/sec
-  * Write buffering and batching improve overall throughput
+# Critical data (safe from power loss)
+var criticalCfg = defaultBarrelConfig()
+criticalCfg.syncMode = UserSyncMode.Fsync
+criticalCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
 
-**Latency:**
-- None/Sync writes: ~0.004ms (buffered, asynchronous)
-- Fsync writes: 0.086ms (synchronous, confirmed)
-- Reads: ~0.006ms (random disk access via index)
-
-**Buffer Size Impact:**
-- 4KB buffer: ~119K ops/sec
-- 64KB-256KB buffer: ~230K ops/sec (recommended range)
-- 1MB buffer: ~188K ops/sec
-
-**Key Performance Notes:**
-- **Writes can be faster than reads**: With buffering enabled and None sync mode, writes are buffered and written sequentially, while reads always require disk access
-- **Pure read performance**: Without write contention, reads achieve ~180K ops/sec
-- **High-level API performance**: The Barrel API with write buffering provides good performance for typical workloads
-- **Sync mode trade-offs**: Choose None for speed, Sync for application safety, Fsync for data integrity
-
-### CRC32 Implementation Performance
-
-Two optional CRC32 implementations are available, controlled at compile time:
-
-**Original (Default)**: Lookup table-based CRC32 in pure Nim
-- **Faster** for this workload: ~600 ops/sec writes, ~100K ops/sec reads
-- No external dependencies
-- Pure Nim implementation
-- Recommended for production use
-
-**Crunchy**: SIMD-optimized CRC32 from crunchy library
-- Available via `-d:useCrunchy` compile flag
-- Currently **slower** for this workload: ~559 ops/sec writes, ~49K ops/sec reads (-7% to -53% depending on operation)
-- External dependency
-- May benefit different workloads or larger data sizes in the future
-- Kept for testing and architectural flexibility
-
-```bash
-# Use original implementation (default, recommended)
-nimble bench
-
-# Use crunchy implementation (for testing/comparison only)
-nimble benchCrunchy
+# Open databases with appropriate durability
+var cacheDb = openBarrel("cache.db", cacheCfg)
+var generalDb = openBarrel("data.db", generalCfg)
+var criticalDb = openBarrel("critical.db", criticalCfg)
 ```
 
-**Note**: Our benchmarks show the original lookup table implementation outperforms crunchy for the current workload. The crunchy option is maintained for potential future benefits with different access patterns or larger data sizes. See `bench/crc32_performance_summary.md` for detailed comparison.
-
-### Performance Characteristics
-
-| Metric | Current | Notes |
-|--------|---------|-------|
-| Write throughput (none sync) | 250K ops/sec | Fastest writes, buffered |
-| Write throughput (sync) | 245K ops/sec | OS-level durability |
-| Write throughput (fsync) | 11.5K ops/sec | Disk-level durability |
-| Read throughput | 180K ops/sec | Both sequential and random |
-| Mixed workload (80R/20W) | 278K ops/sec | Combined operations (overall ops/sec) |
-| Write latency (none/sync) | 0.004ms | Sub-millisecond |
-| Write latency (fsync) | 0.086ms | Disk sync overhead |
-| Read latency | 0.006ms | O(1) hash lookup |
-| Memory per key | ~50 bytes | KeyDir index overhead |
-| Recovery throughput | 40K keys/sec | With hint files |
-
-**Performance Tips:**
-- Use `none` sync for fastest writes (data at risk on crash)
-- Use `sync` for balanced performance/durability
-- Use `fsync` for critical data (slower but safer)
-- Buffer size 64KB-256KB provides good performance
-- Mixed workloads benefit from read-ahead caching
-
-
-## Documentation
+## Documentation & Next Steps
 
 ### Getting Started
 - **[docs/TUTORIAL.md](docs/TUTORIAL.md)**: Comprehensive tutorial with examples
@@ -327,13 +247,8 @@ nimble benchCrunchy
 
 ### Test Suite
 - **[tests/README.md](tests/README.md)**: Complete test suite guide
-  - Running tests (all, by category, individual files)
-  - Test organization and coverage
-  - Writing new tests
-  - Test utilities documentation
 
 ### Performance & Benchmarks
-- **[TEST_RESULTS.md](TEST_RESULTS.md)**: Test suite results
 - **[docs/BENCHMARK_GUIDE.md](docs/BENCHMARK_GUIDE.md)**: Benchmarking guide
 - **[bench/](bench/)**: Benchmark suites
 
@@ -347,7 +262,6 @@ nimble benchCrunchy
 ### Advanced Features
 - **[docs/REFERENCES.md](docs/REFERENCES.md)**: Reference model (graph traversal) guide
 - **[docs/CRC.md](docs/CRC.md)**: CRC32 implementation details
-
 
 ## Future Enhancements
 
