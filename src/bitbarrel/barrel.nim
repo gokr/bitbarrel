@@ -34,6 +34,17 @@ type
 
   Barrel* = ref BarrelObj
 
+proc `=destroy`*(barrel: var BarrelObj) =
+  ## Destructor for Barrel
+  ## Explicitly break circular reference with CompactController to avoid ORC issues
+  if barrel.compactController != nil:
+    # If still running, signal shutdown
+    if not barrel.closed:
+      barrel.compactController.shutdown()
+    # Break the circular reference by nilling the controller
+    # This must be done to break: Barrel -> CompactController -> Thread[ptr] -> CompactController
+    barrel.compactController = nil
+
 proc defaultBarrelConfig*(): BarrelConfig =
   ## Returns default configuration for Barrel
   result = BarrelConfig(
