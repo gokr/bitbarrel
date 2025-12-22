@@ -4,6 +4,34 @@
 
 The BitBarrel project now has two ways to run benchmarks:
 
+## Current Benchmark Results (ThinkPad Carbon X1 with SSD)
+
+Recent benchmark results from release builds:
+
+### Write Performance
+- **None sync**: ~188K ops/sec (buffered, fastest)
+- **Sync**: ~186K ops/sec (OS-level durability)
+- **Fsync**: ~9.1K ops/sec (disk-level durability)
+
+### Read Performance
+- **Sequential reads**: ~172K ops/sec
+- **Random reads**: Similar via in-memory index
+
+### Mixed Workload (80% read / 20% write)
+- **Overall throughput**: ~137K ops/sec
+- **Average latency**: ~0.007 ms
+
+### Recovery Performance
+- **With hint files**: 68,694 keys/sec (14.6ms for 1,000 keys)
+- **Without hint files**: Full data file scan required
+
+### Buffer Size Impact
+- **4KB buffer**: Best performance (~197K ops/sec)
+- **64KB-256KB**: Good performance range
+- **1MB buffer**: Diminishing returns
+
+*Note: Performance varies based on hardware, sync mode, and workload.*
+
 ## Quick Reference
 
 ### Running Benchmarks
@@ -82,14 +110,15 @@ The `examples/performance_tuning_demo.nim` demonstrates how to:
 ## Recommendations
 
 1. **For production**: Use `Fsync` for durability
-2. **For speed**: Use `None` with large buffers
-3. **For balance**: Use `Sync` with moderate buffers (64KB-256KB)
+2. **For speed**: Use `None` with 4KB buffer (gave best results in benchmarks)
+3. **For balance**: Use `Sync` with moderate buffers (4KB-256KB)
 4. **For stress**: Test with `nimble stress`
 
 ## See Also
 - `nimble bench --help` - Shows all available commands
 - `examples/performance_tuning_demo.nim` - Performance tuning examples
 - `bench/results_baseline.txt` - Baseline performance results
+- **Current benchmarks**: See "Current Benchmark Results" section above for latest numbers
 
 ## File Structure
 

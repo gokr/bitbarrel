@@ -4,7 +4,7 @@ The read-ahead LRU (Least Recently Used) buffering system caches frequently acce
 
 ## Overview
 
-- **Performance boost**: Improves read throughput to ~180K ops/sec (random access)
+- **Performance boost**: Improves read throughput to ~172K ops/sec (random access)
 - **LRU eviction**: Automatically evicts least recently used entries when cache limits reached
 - **Multiple implementations**: Main read buffer, range cache, HugeBarrel cache
 - **Configurable**: Memory limits, cache size tuning based on workload
@@ -82,10 +82,10 @@ Two-tier storage for massive datasets:
 
 ## Performance Characteristics
 
-### Benchmark Results (from README.md)
-- **Read throughput**: ~180K ops/sec (random access via in-memory index)
-- **Mixed workload** (80% read / 20% write): ~278K ops/sec (combined operations)
-- **Write latency** (with buffering): ~0.004 ms (sub-millisecond)
+### Benchmark Results (recent benchmarks, ThinkPad Carbon X1 with SSD)
+- **Read throughput**: ~172K ops/sec (random access via in-memory index)
+- **Mixed workload** (80% read / 20% write): ~137K ops/sec (combined operations)
+- **Write latency** (with buffering): ~0.005 ms (sub-millisecond)
 - **Read latency**: ~0.006 ms (O(1) hash lookup + cache check)
 
 ### Cache Hit Rates

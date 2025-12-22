@@ -20,7 +20,7 @@ The name comes from Bitcask terminology—they provide "hints" about where keys 
 | Content | Key metadata only | Full records (keys + values) |
 | Size | ~50 bytes per key | Full record size (key + value + overhead) |
 | Purpose | Fast index重建 | Actual data storage |
-| Recovery speed | 40K+ keys/sec | 4K-8K keys/sec (full scan) |
+| Recovery speed | 68K+ keys/sec | 4K-8K keys/sec (full scan) |
 | Generated | Automatically during write/merge | All writes go here |
 
 ## Relationship with Checkpoint System
@@ -44,14 +44,14 @@ BitBarrel has **two complementary systems** for fast recovery:
 ### How They Work Together
 1. **Recovery priority**: Checkpoints → Hint files → Full data file scan
 2. **Checkpoint available**: Load entire `KeyDir` from checkpoint (fastest)
-3. **No checkpoint**: Use hint files to rebuild `KeyDir` (still fast: 40K+ keys/sec)
+3. **No checkpoint**: Use hint files to rebuild `KeyDir` (still fast: 68K+ keys/sec)
 4. **No hint files**: Fall back to full data file scan (slowest)
 
 ### Combined Benefits
 - **Maximum recovery speed**: Checkpoints provide instant index loading
 - **Redundancy**: Hint files provide backup recovery method
 - **Flexibility**: Can use either system independently
-- **Performance**: Both contribute to the 40K+ keys/sec recovery speeds in README
+- **Performance**: Both contribute to the 68K+ keys/sec recovery speeds in README
 
 ## File Format
 

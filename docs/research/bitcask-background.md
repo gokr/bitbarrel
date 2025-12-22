@@ -136,7 +136,7 @@ cfg.writeBufferSize = 64 * 1024  # 64KB buffer
 
 ### Fast Recovery with Hint Files
 
-BitBarrel dramatically improves recovery speed with hint files—metadata files that store only key positions, not values. This enables recovery at ~40,000 keys per second, 4-6x faster than scanning full data files.
+BitBarrel dramatically improves recovery speed with hint files—metadata files that store only key positions, not values. This enables recovery at ~68,000 keys per second, 4-6x faster than scanning full data files.
 
 ```
 Data file format: [timestamp][keyLen][key][valLen][value]
@@ -388,7 +388,7 @@ graph LR
 - Disk-based by default with memory index
 - Automatic persistence and crash recovery
 - Simple KV operations only
-- Hint files for fast recovery (40K keys/sec)
+- Hint files for fast recovery (68K+ keys/sec)
 - Background merge/compaction
 - True multi-threaded access
 
@@ -514,7 +514,7 @@ BitBarrel represents a modern evolution of the Bitcask storage model, preserving
 
 - **Multiple index modes** for different workload patterns
 - **Configurable durability** to balance speed and safety
-- **Fast recovery** with hint files (40K keys/sec)
+- **Fast recovery** with hint files (68K+ keys/sec)
 - **Background compaction** without downtime
 - **Thread safety** for concurrent workloads
 - **Compression** support for space efficiency

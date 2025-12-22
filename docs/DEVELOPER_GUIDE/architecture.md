@@ -109,16 +109,16 @@ This enables recovery at ~40,000 keys/sec (5-10× faster than full scan).
 BitBarrel provides four sync modes to balance performance and durability:
 
 1. **None**: Maximum speed, data cached by OS (not synced to disk)
-   - ~250K ops/sec
+   - ~188K ops/sec
    - Data loss on crash acceptable (caching)
 
 2. **Sync**: OS-level durability
-   - ~245K ops/sec
+   - ~186K ops/sec
    - Data synced to OS buffers
    - Safe from app crashes, not power loss
 
 3. **Fsync**: Full disk-level durability
-   - ~11.5K ops/sec
+   - ~9.1K ops/sec
    - Each write waits for disk confirmation
    - Safe from power loss
 
@@ -145,24 +145,24 @@ Background process reclaims space from deleted/overwritten records:
 
 ## Performance Characteristics
 
-**Measured on:** Linux x86_64, SSD, Nim 2.2.6 (Release Build)
+**Measured on:** Linux x86_64, SSD, Nim 2.2.6 (Release Build), ThinkPad Carbon X1
 
-### Throughput (Baseline Results)
-- **Write**: ~553 ops/sec (10K records)
-- **Read (random)**: ~98,020 ops/sec
-- **Read (sequential)**: ~92,962 ops/sec
-- **Mixed (80% read)**: ~2,531 ops/sec
+### Throughput (Current Results, None sync mode)
+- **Write**: ~188K ops/sec (10K records)
+- **Read (random)**: ~172K ops/sec
+- **Read (sequential)**: ~172K ops/sec
+- **Mixed (80% read)**: ~137K ops/sec
 
-*Performance varies significantly by sync mode and configuration. See `bench/results_baseline.txt` for detailed benchmarks.*
+*Performance varies significantly by sync mode and configuration. See `nimble bench` for current benchmarks.*
 
-### Latency (Baseline Results)
-- **Write**: ~1.808 ms per operation
-- **Read (random)**: ~0.010 ms per operation
+### Latency (Current Results)
+- **Write**: ~0.005 ms per operation (None sync)
+- **Read (random)**: ~0.006 ms per operation
 - *Latency depends on sync mode, buffer size, and workload*
 
 ### Resource Usage
 - **Memory per key**: ~50 bytes (KeyDir overhead)
-- **Recovery speed**: 40K keys/sec (with hint files)
+- **Recovery speed**: 68K+ keys/sec (with hint files)
 - **Dataset size**: Limited by available RAM for active keys (all keys must be in KeyDir)
 
 ### CRC32 Options
@@ -209,7 +209,7 @@ parallel:
 - ✅ Three barrel modes (Normal, CritBit, Ranged)
 - ✅ Range queries and prefix searches
 - ✅ CRC32 data integrity verification
-- ✅ Crash recovery with hint files (40K keys/sec)
+- ✅ Crash recovery with hint files (68K+ keys/sec)
 - ✅ Background merge and compaction
 - ✅ Configurable durability (None/Sync/Fsync)
 - ✅ Write buffering and read-ahead caching
@@ -265,7 +265,7 @@ BitBarrel enhances the classic Bitcask model:
 | Query Types | Simple GET/SET | + Range, Prefix, Ordered queries (CritBit) |
 | Memory Limit | All keys in RAM | All keys in RAM (see research/HUGECRITBIT.md for >RAM design) |
 | Durability | Basic sync | Three sync modes + write buffering |
-| Recovery | Slow scan | Fast with hint files (40K/sec) |
+| Recovery | Slow scan | Fast with hint files (68K+/sec) |
 | Compression | None | LZ4 & Snappy support |
 | TTL | No | Yes, with passive expiration |
 
@@ -300,7 +300,7 @@ Potential enhancements (see TODO.md):
 Detailed documentation for individual features:
 
 - [Checkpoint System](../FEATURES/checkpoint.md) - KeyDir persistence for fast recovery
-- [Hint Files](../FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
+- [Hint Files](../FEATURES/hint-files.md) - Metadata files for fast recovery (68K+ keys/sec)
 - [Read-Ahead LRU Buffering](../FEATURES/read-buffering.md) - Caching with LRU eviction
 - [Reference Model & Cycle Detection](../research/REFERENCES.md) - Graph traversal with cycle prevention
 - [Compression](../FEATURES/compression.md) - LZ4 and Snappy compression support

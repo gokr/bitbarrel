@@ -38,7 +38,7 @@ Detailed documentation for specific BitBarrel features:
   - [Data Integrity](FEATURES/data-integrity.md) - CRC32 validation
   - [Networking](FEATURES/networking.md) - Network protocol and client
   - [Checkpoint System](FEATURES/checkpoint.md) - KeyDir persistence for fast recovery
-  - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
+  - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (68K+ keys/sec)
   - [Read-Ahead LRU Buffering](FEATURES/read-buffering.md) - Caching with LRU eviction
 
 ### Historical and Research
@@ -94,14 +94,15 @@ BitBarrel implements the **Bitcask** storage model with these key concepts:
 
 ## Performance Characteristics
 
-Typical performance on commodity hardware:
+Typical performance on ThinkPad Carbon X1 with SSD (release builds):
 
-- **Writes**: ~553-10,000 ops/sec (depends on sync mode)
-- **Reads**: ~98,000 ops/sec (cache-friendly)
-- **Recovery**: <10ms for small datasets with hint files
+- **Writes**: ~9K-188K ops/sec (depends on sync mode: fsync to none)
+- **Reads**: ~172K ops/sec (cache-friendly, in-memory index)
+- **Recovery**: 68K+ keys/sec with hint files (14.6ms for 1,000 keys)
+- **Mixed workload** (80% read): ~137K ops/sec combined
 - **Storage**: Append-only, compacted in background
 
-*Performance varies significantly based on sync mode, buffer configuration, and workload characteristics.*
+*Performance varies significantly based on sync mode, buffer configuration, and workload characteristics. See [benchmark guide](DEVELOPER_GUIDE/performance.md) for detailed results.*
 
 ## Contributing to Documentation
 

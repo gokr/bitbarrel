@@ -106,7 +106,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Category | Highlights |
 |----------|------------|
 | Storage | Append‑only log, three index modes, compression (LZ4/Snappy), binary record encoding |
-| Reliability | Crash recovery, hint files (40K+ keys/sec), checkpoint system, CRC32 checksums |
+| Reliability | Crash recovery, hint files (68K+ keys/sec), checkpoint system, CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (15 commands), REST API, session management, thread‑safe operations |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
@@ -115,17 +115,17 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 
 ## Performance Highlights
 
-Here are the key performance metrics from release builds on Linux x86_64:
+Here are the key performance metrics from release builds on Linux x86_64 (ThinkPad Carbon X1 with SSD):
 
 | Metric | Value | Context |
 |--------|-------|---------|
-| Write throughput (none sync) | ~250K ops/sec | Buffered, sequential writes |
-| Write throughput (sync) | ~245K ops/sec | OS‑level durability |
-| Write throughput (fsync) | ~11.5K ops/sec | Disk‑level durability |
-| Read throughput | ~180K ops/sec | Random access via in‑memory index |
-| Mixed workload (80% read) | ~278K ops/sec | Combined operations |
-| Recovery speed | 40K+ keys/sec | With hint files |
-| Write latency (none/sync) | ~0.004 ms | Sub‑millisecond |
+| Write throughput (none sync) | ~188K ops/sec | Buffered, sequential writes |
+| Write throughput (sync) | ~186K ops/sec | OS‑level durability |
+| Write throughput (fsync) | ~9.1K ops/sec | Disk‑level durability |
+| Read throughput | ~172K ops/sec | Random access via in‑memory index |
+| Mixed workload (80% read) | ~137K ops/sec | Combined operations |
+| Recovery speed | 68K+ keys/sec | With hint files (actual benchmark: 68,694 keys/sec) |
+| Write latency (none/sync) | ~0.005 ms | Sub‑millisecond |
 | Read latency | ~0.006 ms | O(1) hash lookup |
 
 *See the [benchmark guide](docs/BENCHMARK_GUIDE.md) for detailed measurements and methodology.*
@@ -136,7 +136,7 @@ Here are the key performance metrics from release builds on Linux x86_64:
 - Use `none` sync for fastest writes (data at risk on crash)
 - Use `sync` for balanced performance/durability
 - Use `fsync` for critical data (slower but safer)
-- Buffer size 64KB‑256KB provides good performance
+- Buffer size 4KB‑256KB provides good performance (4KB gave best results in benchmarks)
 - Mixed workloads benefit from read‑ahead caching
 
 ## Barrel Modes Deep Dive
