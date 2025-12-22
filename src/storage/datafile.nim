@@ -356,6 +356,12 @@ proc readRecordAt*(df: var DataFile, offset: uint64): tuple[key: string, value: 
   if valueLenRead != 4:
     raise newException(IOError, "Failed to read value length")
 
+  # Skip flags (1 byte) and algorithm (1 byte)
+  var flags: uint8
+  var algorithm: uint8
+  discard readFile.readBuffer(addr flags, 1)
+  discard readFile.readBuffer(addr algorithm, 1)
+
   # Read value
   var value = newString(valueLen.int)
   if valueLen > 0:
