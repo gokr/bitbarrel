@@ -685,6 +685,169 @@ proc countWithPrefix*(barrel: Barrel, prefix: string): int =
     # TODO: HugeBarrel countWithPrefix (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
+# Range query methods with values and cursor-based pagination
+# Only available in bmCritBit mode
+
+proc itemsInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  ## Get key-value pairs in range [startKey, endKey) with cursor-based pagination
+  ## Only available in bmCritBit mode
+  ## limit: Maximum number of items to return (default: 1000)
+  ## cursor: Last key from previous page (empty string for first page)
+  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  if barrel.closed:
+    return (@[], "", false)
+
+  if barrel.mode != bmCritBit:
+    raise newException(ValueError, "Range queries with values require bmCritBit mode")
+
+  var items: seq[(string, string)] = @[]
+  var lastKey = ""
+
+  # Get entries from CritBitIndex
+  let entries = barrel.critBit.itemsInRange(startKey, endKey, limit, cursor)
+
+  for entry in entries:
+    let (key, dirEntry) = entry
+    # Skip deleted entries
+    if dirEntry.deleted:
+      continue
+
+    # Read value from DataFile
+    let recordInfo = RecordInfo(
+      recordPos: dirEntry.recordPos,
+      valuePos: dirEntry.valuePos,
+      valueSize: dirEntry.valueSize,
+      recordSize: dirEntry.recordSize
+    )
+
+    try:
+      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+
+      # Check expiration if enabled
+      if barrel.config.checkExpirationOnRead and isExpired(dirEntry.timestamp):
+        continue
+
+      items.add((key, value))
+      lastKey = key
+    except:
+      # Skip entries that can't be read
+      continue
+
+  # Determine if there are more items
+  # If we got exactly 'limit' items, there might be more
+  let hasMore = items.len == limit
+
+  result = (items, lastKey, hasMore)
+
+proc itemsWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  ## Get key-value pairs with given prefix with cursor-based pagination
+  ## Only available in bmCritBit mode
+  ## limit: Maximum number of items to return (default: 1000)
+  ## cursor: Last key from previous page (empty string for first page)
+  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  if barrel.closed:
+    return (@[], "", false)
+
+  if barrel.mode != bmCritBit:
+    raise newException(ValueError, "Range queries with values require bmCritBit mode")
+
+  var items: seq[(string, string)] = @[]
+  var lastKey = ""
+
+  # Get entries from CritBitIndex
+  let entries = barrel.critBit.itemsWithPrefix(prefix, limit, cursor)
+
+  for entry in entries:
+    let (key, dirEntry) = entry
+    # Skip deleted entries
+    if dirEntry.deleted:
+      continue
+
+    # Read value from DataFile
+    let recordInfo = RecordInfo(
+      recordPos: dirEntry.recordPos,
+      valuePos: dirEntry.valuePos,
+      valueSize: dirEntry.valueSize,
+      recordSize: dirEntry.recordSize
+    )
+
+    try:
+      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+
+      # Check expiration if enabled
+      if barrel.config.checkExpirationOnRead and isExpired(dirEntry.timestamp):
+        continue
+
+      items.add((key, value))
+      lastKey = key
+    except:
+      # Skip entries that can't be read
+      continue
+
+  # Determine if there are more items
+  # If we got exactly 'limit' items, there might be more
+  let hasMore = items.len == limit
+
+  result = (items, lastKey, hasMore)
+
+iterator itemsInRange*(barrel: Barrel, startKey: string, endKey: string): (string, string) =
+  ## Iterate over key-value pairs in range [startKey, endKey)
+  ## Only available in bmCritBit mode
+  if not barrel.closed and barrel.mode == bmCritBit:
+    for key, entry in barrel.critBit.itemsInRange(startKey, endKey):
+      # Skip deleted entries
+      if entry.deleted:
+        continue
+
+      # Read value from DataFile
+      let recordInfo = RecordInfo(
+        recordPos: entry.recordPos,
+        valuePos: entry.valuePos,
+        valueSize: entry.valueSize,
+        recordSize: entry.recordSize
+      )
+
+      try:
+        let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+
+        # Check expiration if enabled
+        if barrel.config.checkExpirationOnRead and isExpired(entry.timestamp):
+          continue
+
+        yield (key, value)
+      except:
+        # Skip entries that can't be read
+        continue
+
+iterator itemsWithPrefix*(barrel: Barrel, prefix: string): (string, string) =
+  ## Iterate over key-value pairs with given prefix
+  ## Only available in bmCritBit mode
+  if not barrel.closed and barrel.mode == bmCritBit:
+    for key, entry in barrel.critBit.itemsWithPrefix(prefix):
+      # Skip deleted entries
+      if entry.deleted:
+        continue
+
+      # Read value from DataFile
+      let recordInfo = RecordInfo(
+        recordPos: entry.recordPos,
+        valuePos: entry.valuePos,
+        valueSize: entry.valueSize,
+        recordSize: entry.recordSize
+      )
+
+      try:
+        let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+
+        # Check expiration if enabled
+        if barrel.config.checkExpirationOnRead and isExpired(entry.timestamp):
+          continue
+
+        yield (key, value)
+      except:
+        # Skip entries that can't be read
+        continue
+
 # Utility functions
 
 proc getMode*(barrel: Barrel): BarrelMode =
