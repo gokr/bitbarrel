@@ -75,6 +75,7 @@ proc handshakeWebSocket(ws: var WebSocket, host: string, port: int) =
     if line.len == 0: break
 
   if not response.startsWith("101 Switching Protocols"):
+    echo "DEBUG: Received response:", response
     raise newException(WebSocketException, "WebSocket handshake failed")
 
   ws.connected = true
@@ -389,7 +390,7 @@ proc rangeQuery*(client: var BitBarrelClient, startKey: string, endKey: string,
                  limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
   ## Query key-value pairs in range [startKey, endKey) with cursor-based pagination
   ## Requires barrel opened in bmCritBit mode
-  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -418,7 +419,7 @@ proc prefixQuery*(client: var BitBarrelClient, prefix: string,
                   limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
   ## Query key-value pairs with prefix with cursor-based pagination
   ## Requires barrel opened in bmCritBit mode
-  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
