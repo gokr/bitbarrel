@@ -1080,17 +1080,3 @@ proc getCompactStats*(barrel: Barrel): CompactStats =
       timeCompleted: getTime()
     )
   barrel.compactController.getCompactStats()
-
-# Backward compatibility aliases (deprecated, will be removed)
-type
-  SimpleBB* {.deprecated: "Use Barrel instead".} = Barrel
-  SimpleConfig* {.deprecated: "Use BarrelConfig instead".} = BarrelConfig
-
-proc defaultConfig*(): BarrelConfig {.deprecated: "Use defaultBarrelConfig instead".} =
-  defaultBarrelConfig()
-
-proc open*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel {.deprecated: "Use openBarrel instead".} =
-  openBarrel(path, fileId, config)
-
-proc open*(path: string, config: BarrelConfig): Barrel {.deprecated: "Use openBarrel instead".} =
-  openBarrel(path, config)

@@ -100,19 +100,16 @@ proc handshakeWebSocket(ws: var WebSocket, host: string, port: int) =
 
   ws.socket.send(handshake)
 
-  # Small delay to ensure server processes the request
-  os.sleep(100)
-
-  # Read response - use recv() instead of recvLine() to avoid blocking issues
-  var buffer = newString(4096)
-  let bytesReceived = ws.socket.recv(buffer, 4096)
-  if bytesReceived <= 0:
-    raise newException(WebSocketException, "No response from server")
-
-  var response = buffer[0..<bytesReceived]
+  # Read response using recvLine() (proper HTTP response reading)
+  var response = ""
+  while true:
+    let line = ws.socket.recvLine()
+    response.add(line & "\r\n")
+    if line.len == 0: break  # Empty line marks end of headers
 
   if not response.startsWith("101 Switching Protocols"):
-    echo "DEBUG: Received response (", bytesReceived, " bytes):", repr(response)
+    echo "DEBUG: Received response length:", response.len
+    echo "DEBUG: Response content:", repr(response[0..min(500, response.len-1)])
     raise newException(WebSocketException, "WebSocket handshake failed")
 
   ws.connected = true
