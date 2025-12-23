@@ -1,7 +1,7 @@
 ## Compression Demo
 ## Demonstrates BitBarrel's compression capabilities
 
-import std/[strformat, times, strutils, sequtils, os]
+import std/[strformat, times, strutils, sequtils]
 import ../src/bitbarrel/barrel
 
 proc showCompressionInfo() =

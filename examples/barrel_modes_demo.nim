@@ -9,8 +9,6 @@ import os
 import strformat
 import strutils
 import times
-import sequtils
-import options
 import random
 import bitbarrel
 from bitbarrel/types import BarrelMode, BarrelConfig

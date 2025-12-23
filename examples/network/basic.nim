@@ -9,8 +9,8 @@
 # Usage:
 #   nim c -r --path:src examples/network/basic.nim
 
-import std/[tables, json, times, strformat]
-import bitbarrel/client
+import std/[json, times, strformat, net]
+import network/client
 
 proc main() =
   echo "=== BitBarrel Network Client - Basic Operations ==="
@@ -100,13 +100,17 @@ proc main() =
     let aliceJson = client.get("user:alice")
     let aliceData = parseJson(aliceJson)
     echo fmt"✓ Retrieved and parsed: user:alice"
-    echo fmt"  Name: {aliceData["name"].getStr()}"
-    echo fmt"  Email: {aliceData["email"].getStr()}"
-    echo fmt"  Age: {aliceData["age"].getNum()}"
-    echo fmt"  Active: {aliceData["active"].getBool()}"
+    let name = aliceData["name"].getStr()
+    echo fmt"  Name: {name}"
+    let email = aliceData["email"].getStr()
+    echo fmt"  Email: {email}"
+    let age = aliceData["age"].getInt()
+    echo fmt"  Age: {age}"
+    let active = aliceData["active"].getBool()
+    echo fmt"  Active: {active}"
   except ClientError as e:
     echo fmt"✗ Failed to retrieve JSON data: {e.msg}"
-  except JsonError as e:
+  except JsonParsingError as e:
     echo fmt"✗ Failed to parse JSON: {e.msg}"
 
   # Check existence
@@ -136,29 +140,8 @@ proc main() =
   try:
     let _ = client.get("status")
     echo "✗ ERROR: Key 'status' should not exist after deletion"
-  except ClientError as e:
-    if e.msg.contains("not found"):
-      echo "✓ Confirmed: key 'status' was deleted"
-    else:
-      echo fmt"✗ Unexpected error: {e.msg}"
-
-  # Count keys
-  echo "\n--- Counting Keys ---"
-  try:
-    let count = client.count()
-    echo fmt"✓ Total keys in barrel: {count}"
-  except ClientError as e:
-    echo fmt"✗ Failed to count keys: {e.msg}"
-
-  # List all keys
-  echo "\n--- Listing All Keys ---"
-  try:
-    let keys = client.listKeys()
-    echo fmt"✓ Found {keys.len} keys:"
-    for key in keys:
-      echo fmt"  - {key}"
-  except ClientError as e:
-    echo fmt"✗ Failed to list keys: {e.msg}"
+  except ClientError:
+    echo "✓ Confirmed: key 'status' was deleted"
 
   # Health check (ping)
   echo "\n--- Server Health Check ---"

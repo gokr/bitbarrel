@@ -15,10 +15,31 @@ requires "yaml >= 2.1.0"
 requires "supersnappy"      # For optional Snappy support
 requires "https://github.com/gokr/lz4wrapper" # For optional LZ4 support
 requires "https://github.com/gokr/mummy"      # WebSocket/HTTP server
-
+requires "https://github.com/gokr/whisky"
+ 
 # Task for testing
 
+task checkDocExamples, "Verify all .compilable code blocks in docs compile":
+  exec "nim c -r tools/check_doc_examples.nim"
+
+task checkDemos, "Compile all examples (verification check) - exits on first error":
+  exec "nim c --verbosity:0 --path:src examples/basic_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/performance_tuning_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/compression_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/barrel_modes_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/buffer_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/configuration_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/content_graph_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/org_chart_demo.nim"
+  exec "nim c --verbosity:0 --path:src examples/performance_tuning_simple.nim"
+  exec "nim c --verbosity:0 --path:src examples/social_graph_demo.nim"
+  exec "nim c --verbosity:0 --path:src --mm:orc --threads:on examples/network/basic.nim"
+  exec "nim c --verbosity:0 --path:src --mm:orc --threads:on examples/network/barrels.nim"
+  echo "✓ All examples compiled successfully!"
+
 task test, "Run all tests":
+  exec "nim c -r tests/test_doc_examples.nim"
   exec "nim c -r tests/test_storage.nim"
   exec "nim c -r tests/test_keydir.nim"
   exec "nim c -r tests/test_integration.nim"
@@ -53,6 +74,7 @@ task test, "Run all tests":
   echo "✓ All tests completed successfully!"
 
 task testAll, "Run complete test suite (all test files)":
+  exec "nim c -r tests/test_doc_examples.nim"
   exec "nim c -r tests/test_storage.nim"
   exec "nim c -r tests/test_keydir.nim"
   exec "nim c -r tests/test_integration.nim"
@@ -132,9 +154,6 @@ task testHugeBarrel, "Run HugeBarrel feature tests":
 task demoBasic, "Run basic CRUD demo":
   exec "nim c -r --path:src examples/basic_demo.nim"
 
-task demoSample, "Run detailed demo":
-  exec "nim c -r --path:src examples/simple_kv_demo.nim"
-
 task demoTuning, "Run performance tuning demo":
   exec "nim c -r --path:src examples/performance_tuning_demo.nim"
 
@@ -164,21 +183,6 @@ task demoPerfSimple, "Run simple performance demo":
 
 task demoSocialGraph, "Run social graph traversal demo":
   exec "nim c -r --path:src examples/social_graph_demo.nim"
-
-task checkDemos, "Compile all examples (verification check) - exits on first error":
-  exec "nim c --verbosity:0 --path:src examples/basic_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/simple_kv_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/performance_tuning_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/compression_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/barrel_modes_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/buffer_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/configuration_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/content_graph_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/org_chart_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/performance_tuning_simple.nim"
-  exec "nim c --verbosity:0 --path:src examples/social_graph_demo.nim"
-  echo "✓ All examples compiled successfully!"
 
 # Task for benchmarking
 
@@ -255,7 +259,7 @@ task clean, "Clean up generated data files":
   # Remove compiled test binaries
   exec "rm -f tests/test_storage tests/test_keydir tests/test_integration tests/test_recovery"
   exec "rm -f bench/simple_bench bench/stress_test"
-  exec "rm -f examples/basic_demo examples/simple_kv_demo"
+  exec "rm -f examples/basic_demo"
   echo "Cleaned up generated data files and binaries"
 
 # Build with compression support
