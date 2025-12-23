@@ -3,8 +3,7 @@
 ## This example shows how to use reference traversal for content
 ## management systems: articles, tags, comments, and related content.
 
-import std/[json, strformat, os, tables, sequtils, algorithm, strutils]
-import bitbarrel
+import std/[json, strformat, tables, algorithm, strutils]
 import network/client
 from std/net import Port
 import bitbarrel/refs

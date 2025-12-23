@@ -3,8 +3,7 @@
 ## This example demonstrates hierarchical data navigation using
 ## the reference model for org charts and reporting structures.
 
-import std/[json, strformat, os, strutils]
-import bitbarrel
+import std/[json, strformat, strutils]
 import network/client
 from std/net import Port
 import bitbarrel/refs

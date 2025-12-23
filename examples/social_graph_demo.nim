@@ -3,8 +3,7 @@
 ## This example demonstrates how to use the reference model for
 ## social network features like friends, posts, and interactions.
 
-import std/[json, strformat, os, strutils]
-import bitbarrel
+import std/[json, strformat, strutils]
 import network/client
 from std/net import Port
 
@@ -122,7 +121,7 @@ proc main() =
   let fof = client.traversePath("user:alice", "friends->friends")
   for f in fof:
     # Skip direct friends
-    if f.key notin ["user:alice"] and not f.path.contains("->friends->friends->"):
+    if f.key notin ["user:alice"] and f.path.find("->friends->friends->") == -1:
       let personData = parseJson(f.value)
       echo fmt("  - {personData[\"name\"].getStr()} ({f.key})")
       echo fmt("    via path: {f.path}")

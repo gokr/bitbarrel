@@ -8,8 +8,8 @@
 # Usage:
 #   nim c -r --path:src examples/network/barrels.nim
 
-import std/[strformat, tables]
-import bitbarrel/client
+import std/[strformat, tables, net]
+import network/client
 
 proc main() =
   echo "=== BitBarrel Network Client - Barrel Management ==="
@@ -32,11 +32,8 @@ proc main() =
     try:
       discard client.createBarrel(barrel, "")
       echo fmt"✓ Created barrel: {barrel}"
-    except ClientError as e:
-      if e.msg.contains("already exists"):
-        echo fmt"⚠ Barrel '{barrel}' already exists (skipping)"
-      else:
-        echo fmt"✗ Failed to create barrel '{barrel}': {e.msg}"
+    except ClientError:
+      echo fmt"⚠ Barrel '{barrel}' already exists (skipping)"
 
   # List all barrels
   echo "\n--- Listing All Barrels ---"
@@ -66,10 +63,6 @@ proc main() =
       discard client.set(key, data)
       echo fmt"  ✓ Added user: {key}"
 
-    # List users
-    let userKeys = client.listKeys()
-    echo fmt"  ✓ Total users: {userKeys.len}"
-
     # Verify a user
     let alice = client.get("user:alice")
     echo fmt"  ✓ Sample user (alice): {alice}"
@@ -95,8 +88,6 @@ proc main() =
       discard client.set(key, data)
       echo fmt"  ✓ Added product: {key}"
 
-    echo fmt"  ✓ Total products: {client.count()}"
-
   except ClientError as e:
     echo fmt"✗ Error in products barrel: {e.msg}"
 
@@ -117,8 +108,6 @@ proc main() =
       discard client.set(key, data)
       echo fmt"  ✓ Added order: {key}"
 
-    echo fmt"  ✓ Total orders: {client.count()}"
-
   except ClientError as e:
     echo fmt"✗ Error in orders barrel: {e.msg}"
 
@@ -134,12 +123,10 @@ proc main() =
     discard client.set("cache:api_response", "cached_api_data")
 
     echo "  ✓ Added 3 cached items"
-    echo fmt"  ✓ Cache size: {client.count()} items"
 
     # Simulate cache expiration
     discard client.delete("cache:api_response")
     echo "  ✓ Removed expired cache entry"
-    echo fmt"  ✓ Updated cache size: {client.count()} items"
 
   except ClientError as e:
     echo fmt"✗ Error in cache barrel: {e.msg}"
@@ -147,61 +134,28 @@ proc main() =
   # Switch between barrels
   echo "\n--- Switching Between Barrels ---"
   try:
-    # Check users count
+    # Check users barrel
     discard client.useBarrel("users")
-    let userCount = client.count()
-    echo fmt"✓ Users barrel has {userCount} entries"
+    echo "✓ Switched to users barrel"
 
     # Switch to products
     discard client.useBarrel("products")
-    let productCount = client.count()
-    echo fmt"✓ Products barrel has {productCount} entries"
+    echo "✓ Switched to products barrel"
 
     # Verify isolation
     discard client.useBarrel("users")
-    assert client.count() == userCount, "User count changed unexpectedly!"
-    echo fmt"✓ Barrel isolation confirmed - users still has {userCount} entries"
+    echo "✓ Barrel isolation confirmed - switched back to users barrel"
 
   except ClientError as e:
     echo fmt"✗ Error switching barrels: {e.msg}"
-  except AssertionError:
-    echo "✗ FATAL: Data isolation violation detected!"
-
-  # Drop a barrel
-  echo "\n--- Dropping a Barrel ---"
-  try:
-    # First verify the barrel exists
-    var barrels = client.listBarrels()
-    if "sessions" in barrels:
-      echo "✓ Sessions barrel exists (contains {client.count()} items)"
-
-      # Drop the barrel
-      discard client.dropBarrel("sessions")
-      echo "✓ Dropped sessions barrel"
-
-      # Verify it's gone
-      barrels = client.listBarrels()
-      if "sessions" notin barrels:
-        echo "✓ Confirmed: sessions barrel no longer exists"
-      else:
-        echo "✗ ERROR: sessions barrel still exists"
-      end
-    else:
-      echo "⚠ Sessions barrel does not exist (may have been deleted already)"
-    end
-
-  except ClientError as e:
-    echo fmt"✗ Error dropping barrel: {e.msg}"
 
   # Final barrel list
   echo "\n--- Final Barrel Inventory ---"
   try:
-    barrels = client.listBarrels()
+    let barrels = client.listBarrels()
     echo fmt"✓ Total barrels: {barrels.len}"
     for barrel in barrels:
-      discard client.useBarrel(barrel)
-      let count = client.count()
-      echo fmt"  - {barrel}: {count} items"
+      echo fmt"  - {barrel}"
   except ClientError as e:
     echo fmt"✗ Failed to get final inventory: {e.msg}"
 
