@@ -418,6 +418,154 @@ The compaction system uses atomic flags for shutdown signaling. See `src/storage
 - Describe features without marketing language
 - Focus on implementation details and behavior
 
+### Nim Doc Comment Guidelines
+
+#### Basic Syntax
+
+**Documentation comments** use double hash (`##`):
+```nim
+## This is a documentation comment - will appear in generated docs
+```
+
+**Regular comments** use single hash (`#`):
+```nim
+# This is a regular comment - will NOT appear in generated docs
+```
+
+#### Placement
+
+- **Module docs**: At the top of the file, before imports
+- **Type docs**: After the type definition
+- **Proc docs**: After the proc signature
+- **Field docs**: Using `##` after each field in type definitions
+
+#### Important Rule: Exports
+
+**Documentation will only be generated for exported types/procedures/etc.**
+
+Use `*` following the name to export:
+```nim
+type Record* = object    ## Will generate docs for Record (exported)
+type Person = object     ## Will NOT generate docs for Person (not exported)
+
+proc open*(path: string): DataFile =  ## Will generate docs (exported)
+proc close(path: string) =            ## Will NOT generate docs (not exported)
+```
+
+#### Standard Sections
+
+**Description**: First line or first paragraph
+```nim
+proc len*(keyDir: var KeyDir): int =
+  ## Get the number of entries in the KeyDir
+```
+
+**Parameters**: Inline format (Nim stdlib style)
+```nim
+## limit: Maximum number of items to return (default: 1000)
+## cursor: Last key from previous page (empty string for first page)
+```
+
+**Returns**: Inline description
+```nim
+## Returns the number of records recovered
+```
+
+**Or explicit Returns section**:
+```nim
+## Returns: (live_records, total_records, fragmentation_ratio)
+```
+
+**Code Examples**: Using `**Example:**` with code blocks
+```nim
+## **Example:**
+## ```nim
+## var t = {"name": "John", "city": "Monaco"}.newStringTable
+## doAssert t.len == 2
+## ```
+```
+
+**Raises**: Can be inline or in pragmas
+```nim
+## If key is not in t, the KeyError exception is raised
+```
+
+**See also**: For related documentation
+```nim
+## See also:
+## *   `hasKey proc`
+## *   `items proc`
+```
+
+**Deprecated**: Using pragma
+```nim
+proc oldApi*() {.deprecated: "Use newApi instead".} = ...
+```
+
+#### Formatting
+
+**Backticks for code identifiers**:
+```nim
+## Use `open` to create a new data file
+```
+
+**Double backticks for format specs**:
+```nim
+## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+## Format: ``[timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:1][value]``
+```
+
+#### Best Practices
+
+1. **Add exactly one space after `##`**:
+```nim
+## Good: One space after hash marks
+##Bad: No space after hash marks
+```
+
+2. **Always include code examples for key public APIs**:
+```nim
+proc set*(barrel: Barrel, key, value: string): bool =
+  ## Store a key-value pair
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("data.db")
+  ## barrel.set("user:1", "Alice")
+  ## barrel.close()
+  ## ```
+```
+
+3. **Document all export parameters**:
+```nim
+proc itemsInRange*(barrel: Barrel, startKey: string, endKey: string,
+                   limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  ## Get key-value pairs in range [startKey, endKey)
+  ## limit: Maximum number of items to return (default: 1000)
+  ## cursor: Last key from previous page (empty string for first page)
+```
+
+4. **Document return types**:
+```nim
+## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+```
+
+5. **Use enum inline comments for clarity**:
+```nim
+type
+  SyncMode* = enum
+    None = "none"       # No sync (fastest, risk of data loss)
+    Sync = "sync"       # Sync to OS buffer
+    Fsync = "fsync"     # Sync to disk (safest)
+```
+
+#### What NOT to Do
+
+- **Don't use `#` for documentation** - it won't appear in generated docs
+- **Don't omit exports** - non-exported items won't generate documentation
+- **Don't skip parameter docs** - users need to know what each parameter does
+- **Don't forget code examples** - they're the most helpful part of documentation
+
 ### Do's and Don'ts
 - Do: "Fast recovery"
 - Don't: "Ultra-fast recovery"
