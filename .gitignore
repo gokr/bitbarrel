@@ -1,25 +1,7 @@
 # Binary executables
-bench/**/*
-!bench/**/*.nim
-!bench/**/*.cfg
-!bench/**/*.nims
-examples/**/*
-!examples/network
-!examples/**/*.nim
-!examples/**/*.cfg
-!examples/**/*.nims
-examples/network/*
-!examples/network/*.nim
-tests/**/*
-!tests/**/*.nim
-!tests/**/*.cfg
-!tests/**/*.nims
-!tests/**/*.md
-# Root binaries
-/bitbarrel
-/unified_benchmark
-/simple_bench
-/stress_test
+*
+!/**/
+!*.*
 
 # Nim build artifacts
 nimcache/
