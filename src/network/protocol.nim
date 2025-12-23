@@ -1,7 +1,7 @@
 ## Binary protocol for BitBarrel network communication
 ##
-## Request Format: [type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
-## Response Format: [status:1][seq:4][valLen:4][value:M]
+## Request Format: ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
+## Response Format: ``[status:1][seq:4][valLen:4][value:M]``
 ##
 ## All multi-byte integers use big-endian encoding.
 

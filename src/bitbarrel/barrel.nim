@@ -693,7 +693,7 @@ proc itemsInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int 
   ## Only available in bmCritBit mode
   ## limit: Maximum number of items to return (default: 1000)
   ## cursor: Last key from previous page (empty string for first page)
-  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
   if barrel.closed:
     return (@[], "", false)
 
@@ -744,7 +744,7 @@ proc itemsWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, cursor:
   ## Only available in bmCritBit mode
   ## limit: Maximum number of items to return (default: 1000)
   ## cursor: Last key from previous page (empty string for first page)
-  ## Returns: (items: seq[(string, string)], nextCursor: string, hasMore: bool)
+  ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
   if barrel.closed:
     return (@[], "", false)
 
