@@ -1,0 +1,47 @@
+# Baseline Benchmark Results (Original CRC32 Implementation)
+# Date: $(date)
+
+## System Information
+- Nim version: 2.2.6
+- Build: Release
+- OS: linux
+- CPU: amd64
+- GC: ARC/ORC
+
+## Benchmark Results
+
+### Write Benchmark
+- Records: 10,000
+- Time: 18.081 seconds  
+- Throughput: 553 ops/sec
+- Data rate: 0.07 MiB/sec
+- Avg latency: 1.808 ms per op
+
+### Read Benchmark (Sequential)
+- Records: 10,000
+- Time: 0.108 seconds
+- Throughput: 92,962 ops/sec
+- Hit rate: 100.0%
+- Avg latency: 0.011 ms per op
+
+### Read Benchmark (Random)
+- Records: 10,000
+- Time: 0.102 seconds
+- Throughput: 98,020 ops/sec
+- Hit rate: 100.0%
+- Avg latency: 0.010 ms per op
+
+### Mixed Workload Benchmark
+- Total operations: 10,000 (80% read, 20% write)
+- Time: 3.951 seconds
+- Overall throughput: 2,531 ops/sec
+- Read throughput: 2,017 ops/sec (7,968 ops)
+- Write throughput: 514 ops/sec (2,032 ops)
+
+### Database Statistics
+- Total keys: 12,032
+- File size: 1,075,696 bytes
+- Average record size: 107.6 bytes
+
+## CRC32 Test Suite
+All 23 tests passed successfully.

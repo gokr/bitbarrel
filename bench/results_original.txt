@@ -1,0 +1,84 @@
+  Executing task bench in /home/gokr/tankfeud/kvs/kvs.nimble
+Hint: used config file '/home/gokr/.choosenim/toolchains/nim-2.2.6/config/nim.cfg' [Conf]
+Hint: used config file '/home/gokr/.choosenim/toolchains/nim-2.2.6/config/config.nims' [Conf]
+..................................................................................................................................
+/home/gokr/tankfeud/kvs/src/storage/writebuffer.nim(7, 27) Warning: imported and not used: 'strformat' [UnusedImport]
+.....
+/home/gokr/tankfeud/kvs/bench/simple_bench.nim(90, 12) Hint: 'readKey' is declared but not used [XDeclaredButNotUsed]
+CC: ../src/storage/crc32.nim
+CC: ../src/storage/record.nim
+CC: ../src/storage/datafile.nim
+CC: simple_bench.nim
+Hint:  [Link]
+Hint: mm: orc; threads: on; opt: speed; options: -d:release
+61562 lines; 3.601s; 92.121MiB peakmem; proj: /home/gokr/tankfeud/kvs/bench/simple_bench.nim; out: /home/gokr/tankfeud/kvs/bench/simple_bench [SuccessX]
+Hint: /home/gokr/tankfeud/kvs/bench/simple_bench [Exec]
+  GC: ARC/ORC
+
+
+╔════════════════════════════════════════════════════════════╗
+║ System Information                                         ║
+╚════════════════════════════════════════════════════════════╝
+  Nim version: 2.2.6
+  Build: 2025-12-13 12:52:54
+  OS: linux
+  CPU: amd64
+  Optimization: Release
+
+
+╔════════════════════════════════════════════════════════════╗
+║ Opening Database                                           ║
+╚════════════════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════════════════╗
+║ Write Benchmark                                            ║
+╚════════════════════════════════════════════════════════════╝
+  Records to write: 10_000
+  ✓ Completed in 16.662 seconds
+  ✓ Throughput: 600. ops/sec
+  ✓ Data rate: 0.07 MiB/sec
+  ✓ Avg latency: 1.666 ms per op
+
+Waiting 1 second for I/O to settle...
+
+╔════════════════════════════════════════════════════════════╗
+║ Read Benchmark (Sequential)                                ║
+╚════════════════════════════════════════════════════════════╝
+  Records to read: 10_000
+  ✓ Completed in 0.115 seconds
+  ✓ Throughput: 87117. ops/sec
+  ✓ Hit rate: 100.0%
+  ✓ Avg latency: 0.011 ms per op
+
+Waiting 1 second for I/O to settle...
+
+╔════════════════════════════════════════════════════════════╗
+║ Read Benchmark (Random)                                    ║
+╚════════════════════════════════════════════════════════════╝
+  Records to read: 10_000
+  ✓ Completed in 0.097 seconds
+  ✓ Throughput: 103497. ops/sec
+  ✓ Hit rate: 100.0%
+  ✓ Avg latency: 0.010 ms per op
+
+Waiting 1 second for I/O to settle...
+
+╔════════════════════════════════════════════════════════════╗
+║ Mixed Workload Benchmark                                   ║
+╚════════════════════════════════════════════════════════════╝
+  Total operations: 10_000
+  Read ratio: 80.0%
+  Write ratio: 20.0%
+  ✓ Completed in 3.662 seconds
+  ✓ Overall throughput: 2730. ops/sec
+  ✓ Read throughput: 2182. ops/sec (7991 ops)
+  ✓ Write throughput: 549. ops/sec (2009 ops)
+
+
+╔════════════════════════════════════════════════════════════╗
+║ Final Database Statistics                                  ║
+╚════════════════════════════════════════════════════════════╝
+  Total keys: 12_009
+  Database file size: 1_074_500 bytes
+  Records written: 10000
+  Avg record size: 107.4 bytes
