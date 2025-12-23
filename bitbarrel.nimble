@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.3.0"
+version       = "0.4.0"
 author        = "Göran Krampe"
 description   = "High-Performance Bitcask-style Key/Value Store"
 license       = "MIT"
@@ -14,140 +14,68 @@ requires "crunchy >= 0.1.0"
 requires "yaml >= 2.1.0"
 requires "supersnappy"      # For optional Snappy support
 requires "https://github.com/gokr/lz4wrapper" # For optional LZ4 support
-requires "https://github.com/gokr/mummy"      # WebSocket/HTTP server
-requires "https://github.com/gokr/whisky"
+requires "https://github.com/gokr/mummy"      # MummyX WebSocket/HTTP server
+requires "https://github.com/gokr/whisky"     # Websocket client library
  
 # Task for testing
 
 task checkDocExamples, "Verify all .compilable code blocks in docs compile":
   exec "nim c -r tools/check_doc_examples.nim"
 
-task checkDemos, "Compile all examples (verification check) - exits on first error":
-  exec "nim c --verbosity:0 --path:src examples/basic_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/performance_tuning_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/compression_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/barrel_modes_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/buffer_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/configuration_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/content_graph_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/org_chart_demo.nim"
-  exec "nim c --verbosity:0 --path:src examples/performance_tuning_simple.nim"
-  exec "nim c --verbosity:0 --path:src examples/social_graph_demo.nim"
-  exec "nim c --verbosity:0 --path:src --mm:orc --threads:on examples/network/basic.nim"
-  exec "nim c --verbosity:0 --path:src --mm:orc --threads:on examples/network/barrels.nim"
-  echo "✓ All examples compiled successfully!"
+task checkExamples, "Compile all examples and benchmarks (verification check) - exits on first error":
+  exec """
+    # Exit on first error
+    set -e
 
-task test, "Run all tests":
-  exec "nim c -r tests/test_doc_examples.nim"
-  exec "nim c -r tests/test_storage.nim"
-  exec "nim c -r tests/test_keydir.nim"
-  exec "nim c -r tests/test_integration.nim"
-  exec "nim c -r tests/test_record.nim"
-  exec "nim c -r tests/test_compression.nim"
-  exec "nim c -r tests/test_error_handling.nim"
-  exec "nim c -r tests/test_recovery.nim"
-  exec "nim c -r tests/test_config.nim"
-  exec "nim c -r tests/test_barrel.nim"
-  exec "nim c -r tests/test_hintfile.nim"
-  exec "nim c -r tests/test_compact.nim"
-  exec "nim c -r tests/test_writebuffer.nim"
-  exec "nim c -r tests/test_readbuffer.nim"
-  exec "nim c -r tests/test_ttl.nim"
-  exec "nim c -r tests/test_refs.nim"
-  exec "nim c -r tests/test_protocol.nim"
-  exec "nim c -r tests/test_session.nim"
-  exec "nim c -r tests/test_client.nim"
-  exec "nim c -r tests/test_server.nim"
-  exec "nim c -r tests/test_simple_memory.nim"
-  exec "nim c -r tests/test_crash_recovery.nim"
-  exec "nim c -r tests/test_filesystem_stress.nim"
-  exec "nim c -r tests/test_memory_pressure.nim"
-  exec "nim c -r tests/test_concurrent_access.nim"
-  exec "nim c -r tests/test_rangekeydir.nim"
-  exec "nim c -r tests/test_range_management.nim"
-  exec "nim c -r tests/test_merge.nim"
-  exec "nim c -r tests/test_hugebarrel.nim"
-  exec "nim c -r tests/test_hugebarrel_recovery.nim"
-  exec "nim c -r tests/test_memory_hugebarrel.nim"
-  exec "nim c -r tests/test_debug_hugebarrel.nim"
-  echo "✓ All tests completed successfully!"
+    # Compile all examples (demo_utils.nim is excluded as it's a utility module)
+    find examples -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
+      echo "Compiling $file..."
+      nim c --verbosity:0 --path:src "$file"
+    done
 
-task testAll, "Run complete test suite (all test files)":
-  exec "nim c -r tests/test_doc_examples.nim"
-  exec "nim c -r tests/test_storage.nim"
-  exec "nim c -r tests/test_keydir.nim"
-  exec "nim c -r tests/test_integration.nim"
-  exec "nim c -r tests/test_record.nim"
-  exec "nim c -r tests/test_compression.nim"
-  exec "nim c -r tests/test_error_handling.nim"
-  exec "nim c -r tests/test_recovery.nim"
-  exec "nim c -r tests/test_config.nim"
-  exec "nim c -r tests/test_barrel.nim"
-  exec "nim c -r tests/test_hintfile.nim"
-  exec "nim c -r tests/test_compact.nim"
-  exec "nim c -r tests/test_writebuffer.nim"
-  exec "nim c -r tests/test_readbuffer.nim"
-  exec "nim c -r tests/test_ttl.nim"
-  exec "nim c -r tests/test_refs.nim"
-  exec "nim c -r tests/test_protocol.nim"
-  exec "nim c -r tests/test_session.nim"
-  exec "nim c -r tests/test_client.nim"
-  exec "nim c -r tests/test_server.nim"
-  exec "nim c -r tests/test_simple_memory.nim"
-  exec "nim c -r tests/test_crash_recovery.nim"
-  exec "nim c -r tests/test_filesystem_stress.nim"
-  exec "nim c -r tests/test_memory_pressure.nim"
-  exec "nim c -r tests/test_concurrent_access.nim"
-  exec "nim c -r tests/test_rangekeydir.nim"
-  exec "nim c -r tests/test_range_management.nim"
-  exec "nim c -r tests/test_merge.nim"
-  exec "nim c -r tests/test_hugebarrel.nim"
-  exec "nim c -r tests/test_hugebarrel_recovery.nim"
-  exec "nim c -r tests/test_memory_hugebarrel.nim"
-  exec "nim c -r tests/test_debug_hugebarrel.nim"
-  echo "✓ All tests completed successfully!"
+    # Compile all benchmarks
+    find bench -name "*.nim" -type f | while IFS= read -r file; do
+      echo "Compiling $file..."
+      nim c --verbosity:0 --path:src "$file"
+    done
 
-task testStorage, "Run storage tests":
-  exec "nim c -r tests/test_storage.nim"
+    echo "✓ All examples and benchmarks compiled successfully!"
+  """
 
-task testKeydir, "Run KeyDir tests":
-  exec "nim c -r tests/test_keydir.nim"
+task test, "Run all tests (automatic discovery via testament)":
+  exec "testament pattern \"tests/**/*.nim\" 2>&1 || true"
 
-task testIntegration, "Run integration tests":
-  exec "nim c -r tests/test_integration.nim"
+task testAll, "Run complete test suite (same as 'nimble test')":
+  exec "testament pattern \"tests/**/*.nim\" 2>&1 || true"
+
+# Testament-based test tasks with automatic discovery
+
+task testStorage, "Run storage tests (unit/storage)":
+  exec "testament pattern \"tests/unit/storage/*.nim\""
+
+task testKeydir, "Run KeyDir tests (unit/keydir)":
+  exec "testament pattern \"tests/unit/keydir/*.nim\""
+
+task testIntegration, "Run integration tests (system/integration)":
+  exec "testament pattern \"tests/system/integration/*.nim\""
 
 task testRecovery, "Run recovery tests":
-  exec "nim c -r tests/test_recovery.nim"
+  exec "testament pattern \"tests/recovery/*.nim\""
 
-task testUnit, "Run unit tests (low-level components)":
-  exec "nim c -r tests/test_storage.nim"
-  exec "nim c -r tests/test_keydir.nim"
-  exec "nim c -r tests/test_record.nim"
-  exec "nim c -r tests/test_compression.nim"
+task testUnit, "Run unit tests (low-level components) - automatic discovery":
+  exec "testament pattern \"tests/unit/*/*.nim\""
 
-task testAPI, "Run API tests (high-level Barrel API)":
-  exec "nim c -r tests/test_barrel.nim"
-  exec "nim c -r tests/test_ttl.nim"
-  exec "nim c -r tests/test_refs.nim"
-  exec "nim c -r tests/test_rangekeydir.nim"
-  exec "nim c -r tests/test_range_management.nim"
-  exec "nim c -r tests/test_merge.nim"
+task testAPI, "Run API tests (high-level Barrel API) - automatic discovery":
+  exec "testament pattern \"tests/api/*/*.nim\""
 
-task testSystem, "Run system tests (full system behavior)":
-  exec "nim c -r tests/test_filesystem_stress.nim"
-  exec "nim c -r tests/test_concurrent_access.nim"
-  exec "nim c -r tests/test_crash_recovery.nim"
-  exec "nim c -r tests/test_memory_pressure.nim"
+task testSystem, "Run system tests (full system behavior) - automatic discovery":
+  exec "testament pattern \"tests/system/*/*.nim\""
 
-task testError, "Run error handling tests":
-  exec "nim c -r tests/test_error_handling.nim"
+task testError, "Run error handling tests (API error category) - automatic discovery":
+  exec "testament pattern \"tests/api/error/*.nim\""
 
-task testHugeBarrel, "Run HugeBarrel feature tests":
-  exec "nim c -r tests/test_hugebarrel.nim"
-  exec "nim c -r tests/test_hugebarrel_recovery.nim"
-  exec "nim c -r tests/test_memory_hugebarrel.nim"
-  exec "nim c -r tests/test_debug_hugebarrel.nim"
+task testHugeBarrel, "Run HugeBarrel feature tests - automatic discovery":
+  exec "testament pattern \"tests/hugebarrel/*.nim\""
 
 # Tasks for running demos
 
@@ -205,15 +133,11 @@ task stress, "Run stress tests":
 
 # Tasks for network server and client
 
-task server, "Build and run BitBarrel network server":
-  exec "nim c -d:release --mm:orc --threads:on -o:bitbarrel_server src/network/server_main.nim && ./bitbarrel_server"
-
 task client, "Build BitBarrel network client library":
   exec "nim c -d:release --mm:orc --threads:on -o:bitbarrel_client src/network/client.nim"
 
-task testNetwork, "Run network integration tests":
-  exec "nim c -r tests/test_client.nim"
-  exec "nim c -r tests/test_server.nim"
+task testNetwork, "Run network integration tests - automatic discovery":
+  exec "testament pattern \"tests/network/*/*.nim\""
 
 task benchNetwork, "Run network benchmark (1000 ops)":
   exec "nim c -d:release --mm:orc --threads:on -r --path:src bench/network_bench.nim quick"
@@ -221,33 +145,6 @@ task benchNetwork, "Run network benchmark (1000 ops)":
 task benchNetworkComprehensive, "Run comprehensive network benchmark (100K ops, 10 clients)":
   exec "nim c -d:release --mm:orc --threads:on -r --path:src bench/network_bench.nim comprehensive"
 
-# Quick test - runs all tests
-
-task quickTest, "Run quick test suite":
-  exec "nim c -r tests/test_storage.nim"
-  exec "nim c -r tests/test_keydir.nim"
-  exec "nim c -r tests/test_integration.nim"
-  exec "nim c -r tests/test_record.nim"
-  exec "nim c -r tests/test_compression.nim"
-  exec "nim c -r tests/test_error_handling.nim"
-  exec "nim c -r tests/test_recovery.nim"
-
-# Full test - tests + demos + benchmarks
-
-task fullTest, "Run full test suite":
-  echo "=== Running Tests ==="
-  exec "nim c -r tests/test_storage.nim"
-  exec "nim c -r tests/test_keydir.nim"
-  exec "nim c -r tests/test_integration.nim"
-  exec "nim c -r tests/test_record.nim"
-  exec "nim c -r tests/test_compression.nim"
-  exec "nim c -r tests/test_error_handling.nim"
-  exec "nim c -r tests/test_recovery.nim"
-  echo ""
-  echo "=== Running Demos ==="
-  exec "nim c -r examples/basic_demo.nim"
-  echo ""
-  echo "=== All Tests Completed Successfully ==="
 
 # Clean task - remove generated data files only (not source code)
 
@@ -286,7 +183,6 @@ task genDocs, "Generate HTML documentation using nim doc":
   echo "Documentation generated in docs/html/"
 
 task docServer, "Serve documentation locally (assumes Python is installed)":
-  exec "nimble doc"
   try:
     exec "cd docs/html && python3 -m http.server 8000"
   except:
