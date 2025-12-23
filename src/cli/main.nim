@@ -7,6 +7,8 @@ import std/[os, parseopt, strformat, strutils, osproc, posix, net]
 import ../bitbarrel/[config, config_parser]
 import ../network/server
 
+const BitBarrelVersion* = staticExec("cd " & currentSourcePath().parentDir().parentDir().parentDir() & " && nimble dump | grep '^version:' | cut -d'\"' -f2")
+
 type
   CliArgs = object
     configFile: string
@@ -25,7 +27,7 @@ var gServer: BitBarrelServer
 proc showHelp*() =
   ## Display help information
   echo """
-BitBarrel - High-Performance Bitcask Key/Value Store
+BitBarrel - High-Performance Bitcask style Key/Value Store
 
 USAGE:
   bitbarrel [OPTIONS] COMMAND
@@ -57,9 +59,7 @@ EXAMPLES:
 
 proc showVersion*() =
   ## Display version information
-  echo "BitBarrel version 0.2.0"
-  echo "High-Performance Bitcask style Key/Value Store"
-  echo ""
+  echo &"BitBarrel version {BitBarrelVersion}"
 
 proc parseCliArgs*(): CliArgs =
   ## Parse command line arguments using parseopt
