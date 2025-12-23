@@ -113,13 +113,23 @@ type
     compressionEnabled*: bool
 
   # Barrel configuration (high-level API)
+  ##
+  ## **UserSyncMode** determines write durability:
+  ## - `None`: Fastest, writes stay in OS buffer (risk of data loss on crash)
+  ## - `Sync`: Writes flushed to OS buffer (good balance of speed and safety)
+  ## - `Fsync`: Safest, writes sync to physical disk (slower)
+  ##
+  ## **BarrelMode** determines the index type:
+  ## - `bmHash`: Hash table with O(1) lookups, no ordering (default)
+  ## - `bmCritBit`: Ordered index supporting range/prefix queries
+  ## - `bmHugeCritBit`: Two-tier architecture for massive datasets
   UserSyncMode* = enum
-    None = "none"       # No sync (fastest, risk of data loss)
-    Sync = "sync"       # Sync to OS buffer
-    Fsync = "fsync"     # Sync to disk (safest)
+    None = "none"       # No sync (fastest, risk of data loss on system crash)
+    Sync = "sync"       # Sync to OS buffer (good speed/safety balance)
+    Fsync = "fsync"     # Sync to disk (safest, slower)
 
   BarrelMode* = enum
-    bmHash         # Hash table - O(1) lookup, no ordering (formerly bmNormal)
+    bmHash         # Hash table - O(1) lookup, no ordering
     bmCritBit      # CritBit tree - O(key_len), supports range/prefix queries
     bmHugeCritBit  # Two-tier for massive datasets with range queries
 
