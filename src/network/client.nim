@@ -6,7 +6,7 @@
 ## To use a different WebSocket implementation, modify this file to replace
 ## the whisky dependency with another library.
 
-import std/[locks, tables, strformat, net, strutils, os]
+import std/[locks, tables, strformat, net, strutils]
 import whisky
 import protocol
 
