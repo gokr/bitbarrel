@@ -53,6 +53,58 @@ type
     recovery*: RecoveryConfig
     logging*: LoggingConfig
 
+# YAML field access helpers - works with YamlNode.fields (TableRef[YamlNode, YamlNode])
+proc getYamlString*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: string = ""): string =
+  for k, v in fields.pairs:
+    if k.content == key and v.kind == yScalar:
+      return v.content
+  return default
+
+proc getYamlInt*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: int): int =
+  for k, v in fields.pairs:
+    if k.content == key and v.kind == yScalar:
+      try:
+        return parseInt(v.content)
+      except:
+        return default
+  return default
+
+proc getYamlInt64*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: int64): int64 =
+  for k, v in fields.pairs:
+    if k.content == key and v.kind == yScalar:
+      try:
+        let content = v.content.toLowerAscii()
+        if content.endswith("gb"):
+          let numStr = content[0..^3]
+          return parseBiggestInt(numStr) * 1024 * 1024 * 1024
+        elif content.endswith("mb"):
+          let numStr = content[0..^3]
+          return parseBiggestInt(numStr) * 1024 * 1024
+        elif content.endswith("kb"):
+          let numStr = content[0..^3]
+          return parseBiggestInt(numStr) * 1024
+        else:
+          return parseBiggestInt(content)
+      except:
+        return default
+  return default
+
+proc getYamlBool*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: bool): bool =
+  for k, v in fields.pairs:
+    if k.content == key and v.kind == yScalar:
+      let content = v.content.toLowerAscii()
+      return content == "true" or content == "yes" or content == "1"
+  return default
+
+proc getYamlFloat*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: float): float =
+  for k, v in fields.pairs:
+    if k.content == key and v.kind == yScalar:
+      try:
+        return parseFloat(v.content)
+      except:
+        return default
+  return default
+
 proc parseSyncMode*(s: string): SyncMode =
   ## Parse sync mode from string
   case s.toLowerAscii():
@@ -63,94 +115,40 @@ proc parseSyncMode*(s: string): SyncMode =
     else:
       raise newException(ValueError, &"Invalid sync mode: {s}")
 
-
-
 proc parseServerConfig*(yamlNode: YamlNode): ServerConfig =
   if yamlNode.kind != yMapping:
     raise newException(ValueError, "Server config must be a mapping")
 
   let fields = yamlNode.fields
+  result.address = getYamlString(fields, "address", "0.0.0.0")
+  result.port = getYamlInt(fields, "port", 8080)
+  result.maxConnections = getYamlInt(fields, "max_connections", 10000)
+  result.timeout = getYamlInt(fields, "timeout", 30000)
 
-  proc getYamlString(key: string, default: string = ""): string =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        return v.content
-    return default
-
-  proc getYamlInt(key: string, default: int): int =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseInt(v.content)
-        except:
-          return default
-    return default
-
-  result.address = getYamlString("address", "0.0.0.0")
-  result.port = getYamlInt("port", 8080)
-  result.maxConnections = getYamlInt("max_connections", 10000)
-  result.timeout = getYamlInt("timeout", 30000)
+proc parseCompressionLevel(s: string): CompressionLevel =
+  case s.toLowerAscii():
+    of "fast": result = clFast
+    of "best": result = clBest
+    else: result = clDefault
 
 proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
   if yamlNode.kind != yMapping:
     raise newException(ValueError, "Storage config must be a mapping")
 
   let fields = yamlNode.fields
+  result.dataDir = getYamlString(fields, "data_dir", "./data")
+  result.maxFileSize = getYamlInt64(fields, "max_file_size", 1024 * 1024 * 1024)
+  result.maxKeySize = getYamlInt64(fields, "max_key_size", 64 * 1024)
+  result.maxValueSize = getYamlInt64(fields, "max_value_size", 1024 * 1024)
 
-  proc getYamlString(key: string, default: string = ""): string =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        return v.content
-    return default
-
-  proc getYamlInt(key: string, default: int): int =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseInt(v.content)
-        except:
-          return default
-    return default
-
-  proc getYamlInt64(key: string, default: int64): int64 =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          let content = v.content.toLowerAscii()
-          if content.endswith("gb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024 * 1024 * 1024
-          elif content.endswith("mb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024 * 1024
-          elif content.endswith("kb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024
-          else:
-            return parseBiggestInt(content)
-        except:
-          return default
-    return default
-
-  proc parseCompressionLevel(s: string): CompressionLevel =
-    case s.toLowerAscii():
-      of "fast": result = clFast
-      of "best": result = clBest
-      else: result = clDefault
-
-  result.dataDir = getYamlString("data_dir", "./data")
-  result.maxFileSize = getYamlInt64("max_file_size", 1024 * 1024 * 1024)
-  result.maxKeySize = getYamlInt64("max_key_size", 64 * 1024)
-  result.maxValueSize = getYamlInt64("max_value_size", 1024 * 1024)
-
-  let syncMode = getYamlString("sync_mode", "immediate")
+  let syncMode = getYamlString(fields, "sync_mode", "immediate")
   result.syncMode = parseSyncMode(syncMode)
 
-  result.fsyncInterval = getYamlInt("fsync_interval", 100)
+  result.fsyncInterval = getYamlInt(fields, "fsync_interval", 100)
 
   # Parse compression configuration if present
-  var compressionNode: YamlNode = nil
   var foundCompression = false
+  var compressionNode: YamlNode
   for k, v in fields.pairs:
     if k.content == "compression":
       compressionNode = v
@@ -159,32 +157,9 @@ proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
 
   if foundCompression and compressionNode.kind == yMapping:
     let compFields = compressionNode.fields
-
-    proc getYamlBoolNested(key: string, default: bool): bool =
-      for k, v in compFields.pairs:
-        if k.content == key and v.kind == yScalar:
-          let content = v.content.toLowerAscii()
-          return content == "true" or content == "yes" or content == "1"
-      return default
-
-    proc getYamlIntNested(key: string, default: int): int =
-      for k, v in compFields.pairs:
-        if k.content == key and v.kind == yScalar:
-          try:
-            return parseInt(v.content)
-          except:
-            return default
-      return default
-
-    proc getYamlStringNested(key: string, default: string = ""): string =
-      for k, v in compFields.pairs:
-        if k.content == key and v.kind == yScalar:
-          return v.content
-      return default
-
-    result.compression.enabled = getYamlBoolNested("enabled", false)
-    result.compression.threshold = getYamlIntNested("threshold", 256)
-    let levelStr = getYamlStringNested("level", "default")
+    result.compression.enabled = getYamlBool(compFields, "enabled", false)
+    result.compression.threshold = getYamlInt(compFields, "threshold", 256)
+    let levelStr = getYamlString(compFields, "level", "default")
     result.compression.level = parseCompressionLevel(levelStr)
   else:
     # Default compression configuration
@@ -197,166 +172,46 @@ proc parsePerformanceConfig*(yamlNode: YamlNode): PerformanceConfig =
     raise newException(ValueError, "Performance config must be a mapping")
 
   let fields = yamlNode.fields
-
-  proc getYamlInt(key: string, default: int): int =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseInt(v.content)
-        except:
-          return default
-    return default
-
-  result.workerThreads = getYamlInt("worker_threads", 4)
-  result.writeBufferSize = getYamlInt("write_buffer_size", 1000)
-  result.writeBufferTimeout = getYamlInt("write_buffer_timeout", 10)
-  result.readAheadSize = getYamlInt("read_ahead_size", 64)
-  result.cacheSize = getYamlInt("cache_size", 256)
+  result.workerThreads = getYamlInt(fields, "worker_threads", 4)
+  result.writeBufferSize = getYamlInt(fields, "write_buffer_size", 1000)
+  result.writeBufferTimeout = getYamlInt(fields, "write_buffer_timeout", 10)
+  result.readAheadSize = getYamlInt(fields, "read_ahead_size", 64)
+  result.cacheSize = getYamlInt(fields, "cache_size", 256)
 
 proc parseCompactConfig*(yamlNode: YamlNode): CompactConfig =
   if yamlNode.kind != yMapping:
     raise newException(ValueError, "Compact config must be a mapping")
 
   let fields = yamlNode.fields
-
-  proc getYamlBool(key: string, default: bool): bool =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        let content = v.content.toLowerAscii()
-        return content == "true" or content == "yes" or content == "1"
-    return default
-
-  proc getYamlFloat(key: string, default: float): float =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseFloat(v.content)
-        except:
-          return default
-    return default
-
-  proc getYamlInt(key: string, default: int): int =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseInt(v.content)
-        except:
-          return default
-    return default
-
-  proc getYamlInt64(key: string, default: int64): int64 =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          let content = v.content.toLowerAscii()
-          if content.endswith("mb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024 * 1024
-          elif content.endswith("kb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024
-          else:
-            return parseBiggestInt(content)
-        except:
-          return default
-    return default
-
-  result.enabled = getYamlBool("enabled", true)
-  result.triggerThreshold = getYamlFloat("trigger_threshold", 0.3)
-  result.compactInterval = getYamlInt("compact_interval", 60)
-  result.compactIntervalBytes = getYamlInt64("compact_interval_bytes", 10 * 1024 * 1024)
-  result.maxFileSize = getYamlInt64("max_file_size", 1024 * 1024 * 1024).uint64
+  result.enabled = getYamlBool(fields, "enabled", true)
+  result.triggerThreshold = getYamlFloat(fields, "trigger_threshold", 0.3)
+  result.compactInterval = getYamlInt(fields, "compact_interval", 60)
+  result.compactIntervalBytes = getYamlInt64(fields, "compact_interval_bytes", 10 * 1024 * 1024)
+  result.maxFileSize = getYamlInt64(fields, "max_file_size", 1024 * 1024 * 1024).uint64
 
 proc parseRecoveryConfig*(yamlNode: YamlNode): RecoveryConfig =
   if yamlNode.kind != yMapping:
     raise newException(ValueError, "Recovery config must be a mapping")
 
   let fields = yamlNode.fields
-
-  proc getYamlBool(key: string, default: bool): bool =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        let content = v.content.toLowerAscii()
-        return content == "true" or content == "yes" or content == "1"
-    return default
-
-  proc getYamlInt(key: string, default: int): int =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseInt(v.content)
-        except:
-          return default
-    return default
-
-  proc getYamlInt64(key: string, default: int64): int64 =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          let content = v.content.toLowerAscii()
-          if content.endswith("mb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024 * 1024
-          elif content.endswith("kb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024
-          else:
-            return parseBiggestInt(content)
-        except:
-          return default
-    return default
-
-  result.enabled = getYamlBool("enabled", true)
-  result.validateChecksums = getYamlBool("validate_checksums", true)
-  result.skipCorruptRecords = getYamlBool("skip_corrupt_records", true)
-  result.checkpointInterval = getYamlInt("checkpoint_interval", 300)  # 5 minutes
-  result.checkpointSizeThreshold = getYamlInt64("checkpoint_size_threshold", 10 * 1024 * 1024)  # 10MB
-  result.maxIncrementalCheckpoints = getYamlInt("max_incremental_checkpoints", 5)
-  result.autoRecovery = getYamlBool("auto_recovery", true)
+  result.enabled = getYamlBool(fields, "enabled", true)
+  result.validateChecksums = getYamlBool(fields, "validate_checksums", true)
+  result.skipCorruptRecords = getYamlBool(fields, "skip_corrupt_records", true)
+  result.checkpointInterval = getYamlInt(fields, "checkpoint_interval", 300)  # 5 minutes
+  result.checkpointSizeThreshold = getYamlInt64(fields, "checkpoint_size_threshold", 10 * 1024 * 1024)  # 10MB
+  result.maxIncrementalCheckpoints = getYamlInt(fields, "max_incremental_checkpoints", 5)
+  result.autoRecovery = getYamlBool(fields, "auto_recovery", true)
 
 proc parseLoggingConfig*(yamlNode: YamlNode): LoggingConfig =
   if yamlNode.kind != yMapping:
     raise newException(ValueError, "Logging config must be a mapping")
 
   let fields = yamlNode.fields
-
-  proc getYamlString(key: string, default: string = ""): string =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        return v.content
-    return default
-
-  proc getYamlInt(key: string, default: int): int =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          return parseInt(v.content)
-        except:
-          return default
-    return default
-
-  proc getYamlInt64(key: string, default: int64): int64 =
-    for k, v in fields.pairs:
-      if k.content == key and v.kind == yScalar:
-        try:
-          let content = v.content.toLowerAscii()
-          if content.endswith("mb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024 * 1024
-          elif content.endswith("kb"):
-            let numStr = content[0..^3]
-            return parseBiggestInt(numStr) * 1024
-          else:
-            return parseBiggestInt(content)
-        except:
-          return default
-    return default
-
-  result.level = getYamlString("level", "info")
-  result.file = getYamlString("file", "barrel.log")
-  result.maxSize = getYamlInt64("max_size", 100 * 1024 * 1024)
-  result.maxBackups = getYamlInt("max_backups", 5)
-  result.format = getYamlString("format", "text")
+  result.level = getYamlString(fields, "level", "info")
+  result.file = getYamlString(fields, "file", "barrel.log")
+  result.maxSize = getYamlInt64(fields, "max_size", 100 * 1024 * 1024)
+  result.maxBackups = getYamlInt(fields, "max_backups", 5)
+  result.format = getYamlString(fields, "format", "text")
 
 proc getDefaultConfig*(): BitBarrelConfig =
   ## Get default configuration values
@@ -427,35 +282,16 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
     # Start with defaults
     result = getDefaultConfig()
 
-    # Parse server section
+    # Parse configuration sections
     for key, value in yamlRoot.fields.pairs:
-      if key.content == "server":
-        result.server = parseServerConfig(value)
-
-    # Parse storage section
-    for key, value in yamlRoot.fields.pairs:
-      if key.content == "storage":
-        result.storage = parseStorageConfig(value)
-
-    # Parse performance section
-    for key, value in yamlRoot.fields.pairs:
-      if key.content == "performance":
-        result.performance = parsePerformanceConfig(value)
-
-    # Parse compact section
-    for key, value in yamlRoot.fields.pairs:
-      if key.content == "compact":
-        result.compact = parseCompactConfig(value)
-
-    # Parse recovery section
-    for key, value in yamlRoot.fields.pairs:
-      if key.content == "recovery":
-        result.recovery = parseRecoveryConfig(value)
-
-    # Parse logging section
-    for key, value in yamlRoot.fields.pairs:
-      if key.content == "logging":
-        result.logging = parseLoggingConfig(value)
+      case key.content
+      of "server": result.server = parseServerConfig(value)
+      of "storage": result.storage = parseStorageConfig(value)
+      of "performance": result.performance = parsePerformanceConfig(value)
+      of "compact": result.compact = parseCompactConfig(value)
+      of "recovery": result.recovery = parseRecoveryConfig(value)
+      of "logging": result.logging = parseLoggingConfig(value)
+      else: discard
 
   except Exception as e:
     raise newException(ValueError, &"Error parsing YAML config: {e.msg}")
