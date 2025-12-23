@@ -39,6 +39,7 @@ docs/html/
 test_*_data/
 ranges/
 examples/data/
+testresults/
 
 # IDE and editor files
 *.swp
