@@ -107,7 +107,7 @@ proc main() =
         valueSize: entry.valueSize,
         recordSize: entry.recordSize
       )
-      let (readKey, readValue, _) = dataFile.readRecord(recordInfo)
+      let (_, readValue, _) = dataFile.readRecord(recordInfo)
       if readValue == expectedValue:
         echo "✓", key, "=>", readValue
         inc foundCount

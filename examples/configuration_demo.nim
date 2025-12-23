@@ -215,18 +215,6 @@ proc demonstrateBestPractices*() =
   info("   • Sync - Balanced (default)")
   info("   • Fsync - Max durability, slower")
   echo ""
-
-proc cleanupDataFiles() =
-  ## Clean up data files created during demo
-  let dataDir = "examples/data"
-  if dirExists(dataDir):
-    for file in walkDir(dataDir):
-      if file.kind == pcFile:
-        try:
-          removeFile(file.path)
-        except:
-          discard
-
 proc main() =
   sectionHeader("BitBarrel Configuration Management Demo")
 

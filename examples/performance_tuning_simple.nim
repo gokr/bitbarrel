@@ -6,8 +6,6 @@
 import os, times, strformat, strutils
 import ../src/bitbarrel as barrel
 
-var testCount = 0
-
 proc sectionHeader(title: string) =
   let line = "─".repeat(title.len + 4)
   echo ""
@@ -15,9 +13,6 @@ proc sectionHeader(title: string) =
   echo "║  " & title & " ║"
   echo "╚" & line & "╝"
   echo ""
-
-proc success(message: string) =
-  echo "  ✓ " & message
 
 proc testSyncModes() =
   sectionHeader("Sync Mode Comparison")

@@ -59,7 +59,7 @@ proc main() =
         valueSize: entry.valueSize,
         recordSize: entry.recordSize
       )
-      let (readKey, readValue, ts) = dataFile.readRecord(recordInfo)
+      let (_, readValue, _) = dataFile.readRecord(recordInfo)
       if readValue == expectedValue:
         echo &"   ✅ GET {key} = {readValue}"
       else:
@@ -92,7 +92,7 @@ proc main() =
       valueSize: entry.valueSize,
       recordSize: entry.recordSize
     )
-    let (key, value, _) = dataFile.readRecord(recordInfo)
+    let (_, value, _) = dataFile.readRecord(recordInfo)
     echo &"   ✅ Verified: user:1 = {value}"
 
   # DELETE (tombstone)
@@ -119,7 +119,7 @@ proc main() =
       valueSize: entry.valueSize,
       recordSize: entry.recordSize
     )
-    let (key, value, _) = dataFile.readRecord(recordInfo)
+    let (_, value, _) = dataFile.readRecord(recordInfo)
     if value.len == 0:
       echo "   ✅ Verified: user:2 is deleted (tombstone)"
     else:
