@@ -2,6 +2,11 @@
 ##
 ## Provides a unified interface for key-value storage operations
 ## with support for multiple index modes: Hash, CritBit (ordered), and HugeCritBit (massive datasets)
+##
+## **Index Mode Selection:**
+## - `bmHash` (default): O(1) lookups, fastest for simple get/set, no ordering
+## - `bmCritBit`: O(k) lookups where k=key length, keys sorted, supports range/prefix queries
+## - `bmHugeCritBit`: Two-tier architecture for massive datasets with range queries
 
 import std/[times, options, os, strformat, strutils, endians]
 import types
@@ -197,6 +202,22 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
 
 proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
   ## Open a barrel with optional configuration
+  ##
+  ## **Example:**
+  ## ```nim
+  ## import bitbarrel
+  ##
+  ## # Open with default settings (bmHash mode)
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## # Open with ordered index for range queries
+  ## var config = defaultBarrelConfig()
+  ## config.mode = bmCritBit
+  ## let orderedBarrel = openBarrel("data.db", config)
+  ##
+  ## # Use the barrel...
+  ## barrel.close()
+  ## ```
   result = Barrel()
   result.path = path
   result.fileId = fileId
@@ -371,7 +392,24 @@ proc indexLen(barrel: Barrel): int =
 
 proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
   ## Set a key-value pair with optional TTL
+  ##
   ## ttl: TTL in seconds, -1 uses defaultTtl from config, 0 = no expiration
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## # Basic set
+  ## barrel.set("user:1", "Alice")
+  ##
+  ## # Set with TTL (expires in 1 hour)
+  ## barrel.set("session:xyz", "data", ttl=3600)
+  ##
+  ## # Set with default TTL from config
+  ## barrel.set("cache:key", "value")  # Uses ttl=-1 (default)
+  ##
+  ## barrel.close()
+  ## ```
   if barrel.closed:
     return false
 
@@ -396,6 +434,23 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
 
 proc get*(barrel: Barrel, key: string): string =
   ## Get a value by key (returns empty string if not found)
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## barrel.set("user:1", "Alice")
+  ##
+  ## # Get value
+  ## let value = barrel.get("user:1")  # Returns "Alice"
+  ##
+  ## # Handle missing key
+  ## let missing = barrel.get("user:999")  # Returns ""
+  ## if missing.len == 0:
+  ##   echo "Key not found"
+  ##
+  ## barrel.close()
+  ## ```
   if barrel.closed:
     return ""
 
@@ -433,6 +488,23 @@ proc get*(barrel: Barrel, key: string): string =
 
 proc delete*(barrel: Barrel, key: string): bool =
   ## Delete a key (using tombstone)
+  ##
+  ## **Note:** Deletion is implemented by writing a tombstone record
+  ## (empty value). The key remains in the data file but is marked as deleted.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## barrel.set("user:1", "Alice")
+  ## barrel.delete("user:1")
+  ##
+  ## # Key no longer exists
+  ## let value = barrel.get("user:1")  # Returns ""
+  ## echo barrel.exists("user:1")  # Returns false
+  ##
+  ## barrel.close()
+  ## ```
   if barrel.closed:
     return false
 
@@ -541,7 +613,23 @@ proc clear*(barrel: Barrel): bool =
 
 proc setTtl*(barrel: Barrel, key: string, ttlSeconds: int): bool =
   ## Set TTL for an existing key (rewrites the record)
+  ##
   ## Returns true if key existed and TTL was set
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## barrel.set("session:abc", "user data")
+  ##
+  ## # Set TTL after creation
+  ## barrel.setTtl("session:abc", 1800)  # Expires in 30 minutes
+  ##
+  ## # Check remaining TTL
+  ## let remaining = barrel.getTtl("session:abc")
+  ##
+  ## barrel.close()
+  ## ```
   if barrel.closed:
     return false
 
@@ -690,10 +778,32 @@ proc countWithPrefix*(barrel: Barrel, prefix: string): int =
 
 proc itemsInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
   ## Get key-value pairs in range [startKey, endKey) with cursor-based pagination
+  ##
   ## Only available in bmCritBit mode
   ## limit: Maximum number of items to return (default: 1000)
   ## cursor: Last key from previous page (empty string for first page)
   ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var config = defaultBarrelConfig()
+  ## config.mode = bmCritBit
+  ## let barrel = openBarrel("data.db", config)
+  ##
+  ## # Add some data
+  ## barrel.set("user:100", "Alice")
+  ## barrel.set("user:200", "Bob")
+  ##
+  ## # Get first page
+  ## var cursor = ""
+  ## let (items, nextCursor, hasMore) = barrel.itemsInRange("user:0", "user:999", 100, cursor)
+  ##
+  ## # Get next page if available
+  ## if hasMore:
+  ##   let (page2, nextCursor2, hasMore2) = barrel.itemsInRange("user:0", "user:999", 100, nextCursor)
+  ##
+  ## barrel.close()
+  ## ```
   if barrel.closed:
     return (@[], "", false)
 
@@ -741,10 +851,40 @@ proc itemsInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int 
 
 proc itemsWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
   ## Get key-value pairs with given prefix with cursor-based pagination
+  ##
   ## Only available in bmCritBit mode
   ## limit: Maximum number of items to return (default: 1000)
   ## cursor: Last key from previous page (empty string for first page)
   ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var config = defaultBarrelConfig()
+  ## config.mode = bmCritBit
+  ## let barrel = openBarrel("data.db", config)
+  ##
+  ## # Add user data
+  ## barrel.set("user:100", "Alice")
+  ## barrel.set("user:200", "Bob")
+  ## barrel.set("user:300", "Charlie")
+  ##
+  ## # Paginate through all users
+  ## var cursor = ""
+  ## var allUsers: seq[(string, string)]
+  ##
+  ## while true:
+  ##   let (items, nextCursor, hasMore) = barrel.itemsWithPrefix("user:", 100, cursor)
+  ##   if items.len == 0: break
+  ##   allUsers.add(items)
+  ##   if not hasMore: break
+  ##   cursor = nextCursor
+  ##
+  ## # Print all users
+  ## for (key, value) in allUsers:
+  ##   echo key, " => ", value
+  ##
+  ## barrel.close()
+  ## ```
   if barrel.closed:
     return (@[], "", false)
 
@@ -861,6 +1001,48 @@ proc getConfig*(barrel: Barrel): BarrelConfig =
 proc getPath*(barrel: Barrel): string =
   ## Get the data file path
   barrel.path
+
+proc deleteBarrel*(path: string): bool =
+  ## Delete a barrel and all its associated files
+  ##
+  ## **Example:**
+  ## ```nim
+  ## # Create and use a barrel
+  ## let barrel = openBarrel("temp.db")
+  ## barrel.close()
+  ##
+  ## # Delete it
+  ## let success = deleteBarrel("temp.db")
+  ## ```
+  ##
+  ## This removes:
+  ## - Data files (*.data)
+  ## - Hint files (*.hint)
+  ## - Checkpoint files (*.ckpt, *.ckpt-*)
+  ## - Other auxiliary files
+  var deleted = true
+  let baseDir = parentDir(path)
+  let basePath = extractFilename(path)
+
+  for ext in [".data", ".hint", ".compacted", ".ckpt"]:
+    let filePath = path & ext
+    if fileExists(filePath):
+      try:
+        removeFile(filePath)
+      except OSError:
+        deleted = false
+
+  # Delete incremental checkpoint files (pattern: *.ckpt-*)
+  for kind, walkPath in walkDir(baseDir):
+    if kind == pcFile:
+      let fileName = extractFilename(walkPath)
+      if fileName.startsWith(basePath & ".ckpt-"):
+        try:
+          removeFile(walkPath)
+        except OSError:
+          deleted = false
+
+  return deleted
 
 proc indexCount*(barrel: Barrel): int =
   ## Get the number of entries in the index (including tombstones)
