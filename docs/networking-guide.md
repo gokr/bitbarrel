@@ -31,17 +31,18 @@ The server listens on `localhost:9876` by default.
 
 ### Nim Client Quick Start
 
-```nim
-import network/client
+```nim.compilable
+import network/client as netclient
+import net
 
 # Create a client instance
-var client = newClient("localhost", 9876.Port)
+var client = netclient.newClient("localhost", 9876.Port)
 
 # Connect to the server
 try:
   client.connect()
   echo "Connected successfully"
-except ClientError as e:
+except netclient.ClientError as e:
   echo "Failed to connect: " & e.msg
   quit(1)
 
@@ -54,7 +55,7 @@ discard client.set("greeting", "Hello, BitBarrel!")
 
 # Retrieve data
 let value = client.get("greeting")
-echo value  # Output: Hello, BitBarrel!
+echo value
 
 # Clean up
 client.close()
@@ -150,17 +151,20 @@ except ClientError as e:
 ### Connection Lifecycle
 
 ```nim
+import network/client as netclient
+import net
+
 # Best practice: explicit connection management
-var client = newClient("localhost", 9876.Port)
+var client = netclient.newClient("localhost", 9876.Port)
 
 try:
   client.connect()
 
   # Perform operations
-  client.useBarrel("mydb")
+  discard client.useBarrel("mydb")
   discard client.set("key", "value")
 
-except ClientError as e:
+except netclient.ClientError as e:
   echo "Error: " & e.msg
 
 finally:

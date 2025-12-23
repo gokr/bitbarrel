@@ -34,7 +34,7 @@ nimble demoBasic
 
 ## Your First BitBarrel
 
-```nim
+```nim.compilable
 import bitbarrel
 
 # Open a key-value store
@@ -45,8 +45,8 @@ discard barrel.set("name", "BitBarrel")
 discard barrel.set("version", "1.0")
 
 # Read data
-echo barrel.get("name")       # Output: BitBarrel
-echo barrel.get("version")    # Output: 1.0
+echo barrel.get("name")
+echo barrel.get("version")
 
 # Check existence
 if barrel.exists("name"):

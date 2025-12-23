@@ -11,7 +11,7 @@ BitBarrel is a high-performance key/value storage engine built in Nim, using the
 
 ### Get started in 30 seconds
 
-```nim
+```nim.compilable
 import bitbarrel
 
 # Open a database with default settings (fast, durable enough for most apps)
@@ -73,16 +73,13 @@ nimble buildDefault
 
 BitBarrel can be installed via nimble and used as a library in your projects:
 
-```nim
-# Install the package
-# nimble install bitbarrel
-
-# Simple high-level API
+```nim.compilable
 import bitbarrel
 
+# Simple high-level API
 var db = openBarrel("mydb")
 discard db.set("key", "value")
-echo db.get("key")  # "value"
+echo db.get("key")
 db.close()
 ```
 
@@ -150,20 +147,18 @@ BitBarrel supports three index modes optimized for different use cases:
 | `bmHugeCritBit` | Billions of keys, limited RAM | O(1) per range | Lazy‑loaded partitions | Massive datasets, range‑based caching |
 
 ### bmHash Mode – Session Store
-```nim
+```nim.compilable
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmHash  # Fast O(1) lookups (default)
+cfg.mode = BarrelMode.bmHash
 
 var sessionStore = openBarrel("sessions.db", cfg)
 
 # Store and retrieve sessions quickly
 discard sessionStore.set("sess_7a3b1c", """{"user_id": 123, "expires": 1734800000}""")
-let session = sessionStore.get("sess_7a3b1c")
-
-echo "Session store ready for high-throughput web applications"
+echo sessionStore.get("sess_7a3b1c")
 ```
 
 ### bmCritBit Mode – Time-Series Data
