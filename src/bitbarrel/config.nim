@@ -18,7 +18,53 @@ var gConfig*: BitBarrelConfig
 
 proc loadFromEnvironment*(config: var BitBarrelConfig) =
   ## Load configuration from environment variables
-  ## Pattern: BITBARREL_SECTION_SETTING
+  ##
+  ## Environment variables follow the pattern ``BITBARREL_SECTION_SETTING``
+  ##
+  ## **Server settings:**
+  ## - ``BITBARREL_SERVER_ADDRESS`` - Server bind address (default: "127.0.0.1")
+  ## - ``BITBARREL_SERVER_PORT`` - Server port (default: 8080)
+  ## - ``BITBARREL_SERVER_MAX_CONNECTIONS`` - Max concurrent connections
+  ## - ``BITBARREL_SERVER_TIMEOUT`` - Connection timeout in seconds
+  ##
+  ## **Storage settings:**
+  ## - ``BITBARREL_STORAGE_DATA_DIR`` - Directory for barrel data files
+  ## - ``BITBARREL_STORAGE_MAX_FILE_SIZE`` - Max data file size in bytes
+  ## - ``BITBARREL_STORAGE_MAX_KEY_SIZE`` - Max key size in bytes
+  ## - ``BITBARREL_STORAGE_MAX_VALUE_SIZE`` - Max value size in bytes
+  ## - ``BITBARREL_STORAGE_SYNC_MODE`` - Sync mode: "none", "sync", or "fsync"
+  ## - ``BITBARREL_STORAGE_FSYNC_INTERVAL`` - Fsync interval in seconds
+  ##
+  ## **Performance settings:**
+  ## - ``BITBARREL_PERFORMANCE_WORKER_THREADS`` - Number of worker threads
+  ## - ``BITBARREL_PERFORMANCE_WRITE_BUFFER_SIZE`` - Write buffer size in bytes
+  ## - ``BITBARREL_PERFORMANCE_WRITE_BUFFER_TIMEOUT`` - Write buffer timeout in ms
+  ## - ``BITBARREL_PERFORMANCE_READ_AHEAD_SIZE`` - Read-ahead buffer size in bytes
+  ## - ``BITBARREL_PERFORMANCE_CACHE_SIZE`` - Read cache size in bytes
+  ##
+  ## **Compact settings:**
+  ## - ``BITBARREL_COMPACT_ENABLED`` - Enable/disable auto-compaction (true/false)
+  ## - ``BITBARREL_COMPACT_TRIGGER_THRESHOLD`` - Trigger threshold (0.0 to 1.0)
+  ## - ``BITBARREL_COMPACT_COMPACT_INTERVAL`` - Compact interval in seconds
+  ## - ``BITBARREL_COMPACT_COMPACT_INTERVAL_BYTES`` - Compact interval in bytes
+  ## - ``BITBARREL_COMPACT_MAX_FILE_SIZE`` - Max compacted file size in bytes
+  ##
+  ## **Recovery settings:**
+  ## - ``BITBARREL_RECOVERY_ENABLED`` - Enable/disable recovery (true/false)
+  ## - ``BITBARREL_RECOVERY_VALIDATE_CHECKSUMS`` - Validate checksums on recovery (true/false)
+  ## - ``BITBARREL_RECOVERY_SKIP_CORRUPT_RECORDS`` - Skip corrupt records (true/false)
+  ## - ``BITBARREL_RECOVERY_CHECKPOINT_INTERVAL`` - Checkpoint interval in seconds
+  ## - ``BITBARREL_RECOVERY_CHECKPOINT_SIZE_THRESHOLD`` - Checkpoint size threshold in bytes
+  ## - ``BITBARREL_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS`` - Max incremental checkpoints
+  ## - ``BITBARREL_RECOVERY_AUTO_RECOVERY`` - Auto-recover on startup (true/false)
+  ##
+  ## **Logging settings:**
+  ## - ``BITBARREL_LOGGING_LEVEL`` - Log level: "debug", "info", "warn", "error"
+  ## - ``BITBARREL_LOGGING_FILE`` - Log file path
+  ## - ``BITBARREL_LOGGING_MAX_SIZE`` - Max log file size in bytes
+  ## - ``BITBARREL_LOGGING_MAX_BACKUPS`` - Max number of rotated log files
+  ## - ``BITBARREL_LOGGING_FORMAT`` - Log output format
+
   # Server settings
   if existsEnv("BITBARREL_SERVER_ADDRESS"):
     config.server.address = getEnv("BITBARREL_SERVER_ADDRESS")
