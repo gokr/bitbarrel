@@ -85,13 +85,18 @@ db.close()
 
 For advanced use cases, you can access the low‑level storage API:
 
-```nim
-import bitbarrel/[barrel, lowlevelapi]
+```nim.compilable
+import bitbarrel
+from bitbarrel/types import BarrelMode
 
-# Direct data file operations
-var df = lowlevelapi.openDataFile("custom.data", 1'u32)
-# Work directly with data files
-df.close()
+# Open a barrel with CritBit mode for ordered keys
+var cfg = defaultBarrelConfig()
+cfg.mode = BarrelMode.bmCritBit
+
+var db = openBarrel("/tmp/custom.db", cfg)
+discard db.set("key1", "value1")
+echo db.get("key1")
+db.close()
 ```
 
 See the [tutorial](docs/TUTORIAL.md) for comprehensive examples.
@@ -162,14 +167,14 @@ echo sessionStore.get("sess_7a3b1c")
 ```
 
 ### bmCritBit Mode – Time-Series Data
-```nim
+```nim.compilable
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
 cfg.mode = BarrelMode.bmCritBit  # Sorted keys for range queries
 
-var metricsDb = openBarrel("metrics.db", cfg)
+var metricsDb = openBarrel("/tmp/metrics.db", cfg)
 
 # Store timestamped metrics (keys are naturally sorted)
 discard metricsDb.set("metrics:temp:1734800000", "22.5")
@@ -183,10 +188,12 @@ echo "Found ", temps.len, " temperature readings"
 # Prefix search: get all humidity metrics
 let humidityKeys = metricsDb.keysWithPrefix("metrics:humidity:")
 echo "Humidity sensors: ", humidityKeys.len
+
+metricsDb.close()
 ```
 
 ### bmHugeCritBit Mode – Large Analytics Dataset
-```nim
+```nim.compilable
 import bitbarrel
 from bitbarrel/types import BarrelMode
 
@@ -195,7 +202,7 @@ cfg.mode = BarrelMode.bmHugeCritBit
 cfg.hugeConfig.maxEntriesPerRange = 1_000_000  # Split into 1M-key ranges
 cfg.hugeConfig.rangeCacheSize = 5              # Keep 5 ranges in memory
 
-var analyticsDb = openBarrel("analytics.db", cfg)
+var analyticsDb = openBarrel("/tmp/analytics.db", cfg)
 
 # Store user events (potentially billions)
 discard analyticsDb.set("events:user:123:click:1734800000", """{"page": "/home"}""")
@@ -204,6 +211,8 @@ discard analyticsDb.set("events:user:456:purchase:1734800100", """{"amount": 99.
 # Query specific user's events (loads only their range into memory)
 let userEvents = analyticsDb.keysWithPrefix("events:user:123:")
 echo "User 123 has ", userEvents.len, " events"
+
+analyticsDb.close()
 ```
 
 ## Configuration Examples
