@@ -8,6 +8,7 @@ import protocol
 # Simple WebSocket client implementation
 type
   WebSocket* = ref object
+    ## WebSocket transport connection for BitBarrel client
     socket: Socket
     host: string
     port: int
@@ -16,8 +17,13 @@ type
     clientId*: uint64
 
   WebSocketException* = object of CatchableError
+    ## Raised when WebSocket protocol errors occur
 
   BitBarrelClient* = object
+    ## Client for BitBarrel network operations
+    ##
+    ## Manages a single WebSocket connection to a BitBarrel server
+    ## and provides a high-level API for barrel and key-value operations
     host*: string
     port*: Port
     conn*: WebSocket  # Single connection for simplicity
@@ -27,15 +33,33 @@ type
     lock: Lock
 
   ClientConfig* = object
-    host*: string              # Default: "localhost"
-    port*: Port              # Default: 9876
-    connectTimeout*: int     # ms, default: 5000
+    ## Configuration for BitBarrel client connections
+    host*: string              ## Server host (default: "localhost")
+    port*: Port              ## Server port (default: 9876)
+    connectTimeout*: int     ## Connection timeout in ms (default: 5000)
 
   ClientError* = object of CatchableError
+    ## Raised when client operations fail
+
+  TraverseOptions* = object
+    ## Options for reference traversal operations
+    includeFullData*: bool    ## Return full values or just paths
+    extractArrays*: bool      ## Extract array elements individually
+    firstOnly*: bool          ## Stop after first result
 
 
 proc newClient*(config: ClientConfig): BitBarrelClient =
   ## Create a new BitBarrel client
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var config = ClientConfig(
+  ##   host: "localhost",
+  ##   port: 9876.Port,
+  ##   connectTimeout: 5000
+  ## )
+  ## var client = newClient(config)
+  ## ```
   result = BitBarrelClient(
     host: config.host,
     port: config.port,
@@ -47,6 +71,15 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
 
 proc newClient*(host: string = "localhost", port: Port = 9876.Port): BitBarrelClient =
   ## Create client with default config
+  ##
+  ## **Example:**
+  ## ```nim
+  ## # Create with defaults (localhost:9876)
+  ## var client = newClient()
+  ##
+  ## # Create with custom host
+  ## var client2 = newClient("192.168.1.100", 8080.Port)
+  ## ```
   newClient(ClientConfig(host: host, port: port))
 
 proc handshakeWebSocket(ws: var WebSocket, host: string, port: int) =
@@ -67,15 +100,19 @@ proc handshakeWebSocket(ws: var WebSocket, host: string, port: int) =
 
   ws.socket.send(handshake)
 
-  # Read response
-  var response = ""
-  while true:
-    let line = ws.socket.recvLine()
-    response.add(line & "\r\n")
-    if line.len == 0: break
+  # Small delay to ensure server processes the request
+  os.sleep(100)
+
+  # Read response - use recv() instead of recvLine() to avoid blocking issues
+  var buffer = newString(4096)
+  let bytesReceived = ws.socket.recv(buffer, 4096)
+  if bytesReceived <= 0:
+    raise newException(WebSocketException, "No response from server")
+
+  var response = buffer[0..<bytesReceived]
 
   if not response.startsWith("101 Switching Protocols"):
-    echo "DEBUG: Received response:", response
+    echo "DEBUG: Received response (", bytesReceived, " bytes):", repr(response)
     raise newException(WebSocketException, "WebSocket handshake failed")
 
   ws.connected = true
@@ -229,6 +266,18 @@ proc close*(ws: WebSocket) {.raises: [].} =
 
 proc connect*(client: var BitBarrelClient) =
   ## Connect to the server
+  ##
+  ## Performs WebSocket handshake with the BitBarrel server.
+  ## Automatically called by operations if not already connected.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient("localhost", 9876.Port)
+  ## client.connect()  # Explicit connect
+  ##
+  ## # Or let operations auto-connect
+  ## client.createBarrel("mydb")  # Connects automatically
+  ## ```
   try:
     client.conn = newWebSocket(client.host, int(client.port))
 
@@ -242,6 +291,17 @@ proc connect*(client: var BitBarrelClient) =
 
 proc close*(client: var BitBarrelClient) {.raises: [].} =
   ## Close connection
+  ##
+  ## Closes the WebSocket connection to the server.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ##
+  ## # Done with operations
+  ## client.close()
+  ## ```
   if client.conn != nil:
     client.conn.close()
     client.conn = nil
@@ -280,7 +340,14 @@ proc sendAndWait*(client: var BitBarrelClient, req: Request): Response =
 
 # Barrel management operations
 proc createBarrel*(client: var BitBarrelClient, name: string, config: string = ""): bool =
-  ## Create a new barrel
+  ## Create a new barrel on the server
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.createBarrel("ordered", """{"mode": "bmCritBit"}""")
+  ## ```
   if client.conn == nil:
     client.connect()
 
@@ -289,7 +356,13 @@ proc createBarrel*(client: var BitBarrelClient, name: string, config: string = "
   return resp.status == statusOk
 
 proc openBarrel*(client: var BitBarrelClient, name: string): bool =
-  ## Open an existing barrel
+  ## Open an existing barrel on the server
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.openBarrel("existing_db")
+  ## ```
   if client.conn == nil:
     client.connect()
 
@@ -299,6 +372,17 @@ proc openBarrel*(client: var BitBarrelClient, name: string): bool =
 
 proc useBarrel*(client: var BitBarrelClient, name: string): bool =
   ## Set current barrel for this client session
+  ##
+  ## All key-value operations will use the selected barrel
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## client.set("key", "value")
+  ## ```
   if client.conn == nil:
     client.connect()
 
@@ -310,7 +394,16 @@ proc useBarrel*(client: var BitBarrelClient, name: string): bool =
   return false
 
 proc listBarrels*(client: var BitBarrelClient): seq[string] =
-  ## List all available barrels
+  ## List all available barrels on the server
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ##
+  ## let barrels = client.listBarrels()
+  ## for name in barrels:
+  ##   echo name
+  ## ```
   if client.conn == nil:
     client.connect()
 
@@ -320,9 +413,42 @@ proc listBarrels*(client: var BitBarrelClient): seq[string] =
     return resp.value.split(',')
   return @[]
 
+proc deleteBarrel*(client: var BitBarrelClient, name: string): bool =
+  ## Delete a barrel and all its data
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ##
+  ## client.createBarrel("temp")
+  ## client.deleteBarrel("temp")
+  ## ```
+  if client.conn == nil:
+    client.connect()
+
+  let req = Request(command: cmdDropBarrel, key: name)
+  let resp = client.sendAndWait(req)
+  if resp.status == statusOk:
+    if name == client.currentBarrel:
+      client.currentBarrel = ""
+    return true
+  return false
+
 # Basic key-value operations (require current barrel)
 proc get*(client: var BitBarrelClient, key: string): string =
   ## Get value by key
+  ##
+  ## Raises `ClientError` if no barrel is selected or key is not found
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## client.set("user:1", "Alice")
+  ## let value = client.get("user:1")  # Returns "Alice"
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -341,6 +467,18 @@ proc get*(client: var BitBarrelClient, key: string): string =
 
 proc set*(client: var BitBarrelClient, key, value: string): bool =
   ## Set key-value pair
+  ##
+  ## Raises `ClientError` if no barrel is selected
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## client.set("user:1", "Alice")
+  ## client.set("config", """{"setting": 42}""")
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -352,7 +490,21 @@ proc set*(client: var BitBarrelClient, key, value: string): bool =
   return resp.status == statusOk
 
 proc delete*(client: var BitBarrelClient, key: string): bool =
-  ## Delete a key
+  ## Delete a key (using tombstone)
+  ##
+  ## Raises `ClientError` if no barrel is selected
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## client.set("temp", "data")
+  ## client.delete("temp")
+  ##
+  ## echo client.exists("temp")  # false
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -365,6 +517,19 @@ proc delete*(client: var BitBarrelClient, key: string): bool =
 
 proc exists*(client: var BitBarrelClient, key: string): bool =
   ## Check if key exists
+  ##
+  ## Raises `ClientError` if no barrel is selected
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## client.set("key", "value")
+  ## echo client.exists("key")    # true
+  ## echo client.exists("missing")  # false
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -376,7 +541,17 @@ proc exists*(client: var BitBarrelClient, key: string): bool =
   return resp.status == statusOk and resp.value == "true"
 
 proc ping*(client: var BitBarrelClient): bool =
-  ## Ping the server
+  ## Ping the server to check connectivity
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ##
+  ## if client.ping():
+  ##   echo "Server is reachable"
+  ##
+  ## client.close()
+  ## ```
   if client.conn == nil:
     client.connect()
 
@@ -391,6 +566,19 @@ proc rangeQuery*(client: var BitBarrelClient, startKey: string, endKey: string,
   ## Query key-value pairs in range [startKey, endKey) with cursor-based pagination
   ## Requires barrel opened in bmCritBit mode
   ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb", """{"mode": "bmCritBit"}""")
+  ## client.useBarrel("mydb")
+  ##
+  ## let (items, nextCursor, hasMore) = client.rangeQuery("user:0", "user:999", 100)
+  ##
+  ## # Get next page
+  ## if hasMore:
+  ##   let (nextPage, nextCursor2, hasMore2) = client.rangeQuery("user:0", "user:999", 100, nextCursor)
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -420,6 +608,24 @@ proc prefixQuery*(client: var BitBarrelClient, prefix: string,
   ## Query key-value pairs with prefix with cursor-based pagination
   ## Requires barrel opened in bmCritBit mode
   ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb", """{"mode": "bmCritBit"}""")
+  ## client.useBarrel("mydb")
+  ##
+  ## # Get all users (keys starting with "user:")
+  ## var cursor = ""
+  ## var allUsers: seq[(string, string)]
+  ##
+  ## while true:
+  ##   let (items, nextCursor, hasMore) = client.prefixQuery("user:", 100, cursor)
+  ##   if items.len == 0: break
+  ##   allUsers.add(items)
+  ##   if not hasMore: break
+  ##   cursor = nextCursor
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -445,7 +651,19 @@ proc prefixQuery*(client: var BitBarrelClient, prefix: string,
 
 proc rangeCount*(client: var BitBarrelClient, startKey: string, endKey: string): int =
   ## Count keys in range [startKey, endKey)
+  ##
   ## Requires barrel opened in bmCritBit mode
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb", """{"mode": "bmCritBit"}""")
+  ## client.useBarrel("mydb")
+  ##
+  ## # Count keys in range
+  ## let count = client.rangeCount("user:0", "user:999")
+  ## echo "Found ", count, " users"
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -469,15 +687,30 @@ proc rangeCount*(client: var BitBarrelClient, startKey: string, endKey: string):
   result = parseInt(resp.value)
 
 # Reference traversal operations
-type
-  TraverseOptions* = object
-    includeFullData*: bool    ## Return full values or just paths
-    extractArrays*: bool      ## Extract array elements individually
-    firstOnly*: bool          ## Stop after first result
-
 proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
                options: TraverseOptions): seq[protocol.TraverseResult] =
   ## Traverse references from a key using path specification
+  ##
+  ## PathSpec syntax: ``*`` for single reference, ``->*`` for following a reference
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## # Store interconnected data
+  ## client.set("user:1", """{"name": "Alice", "friend": "user:2"}""")
+  ## client.set("user:2", """{"name": "Bob"}""")
+  ##
+  ## # Traverse to find friends
+  ## let options = TraverseOptions(
+  ##   includeFullData: true,
+  ##   extractArrays: false,
+  ##   firstOnly: false
+  ## )
+  ## let results = client.traverse("user:1", "->friend", options)
+  ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
 
@@ -528,6 +761,19 @@ proc traverse*(client: var BitBarrelClient, key: string, pathSpec: string,
 proc traversePath*(client: var BitBarrelClient, key: string,
                    pathSpec: string): seq[protocol.TraverseResult] =
   ## Traverse with default options (include full data, no extraction)
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## # Get all friends (traverse with defaults)
+  ## let results = client.traversePath("user:1", "->friend")
+  ##
+  ## for res in results:
+  ##   echo res.path, " => ", res.value
+  ## ```
   let options = TraverseOptions(
     includeFullData: true,
     extractArrays: false,
