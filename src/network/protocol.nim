@@ -131,7 +131,7 @@ proc decodeRequest*(data: string): Request =
                      0x21, 0x22, 0x23}:                          # Range queries
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
-  result.command = Command(cmdByte)
+  result.command = cast[Command](cmdByte)
   result.seq = readUint32BE(data, pos)
 
   let keyLen = readUint16BE(data, pos)

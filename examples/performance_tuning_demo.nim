@@ -29,7 +29,7 @@ proc cleanupDataFiles() =
         except:
           discard
 
-proc runPerformanceTest*(barrel: SimpleBB, test: PerformanceTest): int64 =
+proc runPerformanceTest*(barrel: Barrel, test: PerformanceTest): int64 =
   ## Run a performance test and return time in ms
   echo &"\n📊 {test.name}"
 
