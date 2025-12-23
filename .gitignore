@@ -4,6 +4,7 @@ bench/**/*
 !bench/**/*.cfg
 !bench/**/*.nims
 examples/**/*
+!examples/network
 !examples/**/*.nim
 !examples/**/*.cfg
 !examples/**/*.nims
