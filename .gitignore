@@ -8,6 +8,8 @@ examples/**/*
 !examples/**/*.nim
 !examples/**/*.cfg
 !examples/**/*.nims
+examples/network/*
+!examples/network/*.nim
 tests/**/*
 !tests/**/*.nim
 !tests/**/*.cfg
