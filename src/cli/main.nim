@@ -3,8 +3,9 @@
 ## This module provides the main entry point for the BitBarrel server
 ## using standard library parseopt for argument parsing
 
-import std/[os, parseopt, strformat, strutils, osproc, posix]
+import std/[os, parseopt, strformat, strutils, osproc, posix, net]
 import ../bitbarrel/[config, config_parser]
+import ../network/server
 
 type
   CliArgs = object
@@ -18,6 +19,9 @@ type
     version: bool
     command: string  # "server", "client", etc.
 
+# Global server instance for signal handler
+var gServer: BitBarrelServer
+
 proc showHelp*() =
   ## Display help information
   echo """
@@ -27,26 +31,28 @@ USAGE:
   bitbarrel [OPTIONS] COMMAND
 
 COMMANDS:
-  server    Start the BitBarrel server
+  serve     Start the BitBarrel server
   client    Run BitBarrel client interface (coming in Phase 2)
   bench     Run benchmark tests
   test      Run all tests
 
 OPTIONS:
-  -c, --config FILE      Path to configuration file (default: bitbarrel.yaml)
-  -d, --data-dir DIR     Override data directory
-  -p, --port PORT        Override server port
-  --log-level LEVEL      Override log level (debug, info, warn, error)
-  -D, --daemon           Run as daemon
-  --pid-file FILE        PID file path for daemon mode
-  -h, --help             Show this help message
-  -v, --version          Show version information
+  -c=FILE, --config=FILE      Path to configuration file (default: bitbarrel.yaml)
+  -d=DIR, --data-dir=DIR      Override data directory
+  -p=PORT, --port=PORT        Override server port
+  --log-level=LEVEL           Override log level (debug, info, warn, error)
+  -D, --daemon                Run as daemon (no value needed)
+  --pid-file=FILE             PID file path for daemon mode
+  -h, --help                  Show this help message (no value needed)
+  -v, --version               Show version information (no value needed)
 
 EXAMPLES:
-  bitbarrel server                            # Start server with default config
-  bitbarrel -c prod.yaml server               # Start server with custom config
-  bitbarrel -d /data -p 9090 server           # Override data dir and port
-  BITBARREL_SERVER_PORT=9090 bitbarrel server      # Override via environment variable
+  bitbarrel serve                            # Start server with default config
+  bitbarrel -c=prod.yaml serve               # Start server with custom config
+  bitbarrel --config=prod.yaml serve         # Long form with equals
+  bitbarrel -d=/data -p=9090 serve           # Override data dir and port
+  bitbarrel -D serve                         # Daemon flag (no value needed)
+  bitbarrel -h                               # Show help (no value needed)
 """
 
 proc showVersion*() =
@@ -69,7 +75,11 @@ proc parseCliArgs*(): CliArgs =
     command: ""
   )
 
-  for kind, key, val in getopt():
+  # Initialize option parser with flags that don't take values
+  # Options not in shortNoVal/longNoVal automatically support = syntax for values
+  var p = initOptParser(shortNoVal = {'h', 'v', 'D'}, longNoVal = @["help", "version", "daemon"])
+
+  for kind, key, val in p.getopt():
     case kind
     of cmdArgument:
       # Handle positional arguments (commands)
@@ -86,11 +96,7 @@ proc parseCliArgs*(): CliArgs =
       of "data-dir", "d":
         result.dataDir = val
       of "port", "p":
-        try:
-          result.port = parseInt(val)
-        except ValueError:
-          echo "Error: Port must be a number"
-          quit(1)
+        result.port = parseInt(val)
       of "log-level":
         result.logLevel = val
       of "daemon", "D":
@@ -174,10 +180,27 @@ proc runServer*(args: CliArgs) =
   echo &"Log level: {config.logging.level}"
   echo ""
 
-  # TODO: Start actual server
-  echo "Server implementation coming in Phase 2"
-  echo "In the meantime, you can test using the demos:"
-  echo &"  nim c -r examples/basic_demo.nim -d \"{config.storage.dataDir}\""
+  # Convert BitBarrelConfig to ServerConfig for the network module
+  let serverConfig = server.ServerConfig(
+    address: config.server.address,
+    port: Port(config.server.port),
+    dataDir: config.storage.dataDir,
+    workerThreads: config.performance.workerThreads
+  )
+
+  # Create and start the server
+  gServer = server.newServer(serverConfig)
+
+  # Handle Ctrl+C gracefully
+  proc ctrlCHook() {.noconv.} =
+    echo "\nReceived interrupt signal, shutting down..."
+    if gServer != nil:
+      gServer.stop()
+    quit(0)
+
+  setControlCHook(ctrlCHook)
+
+  gServer.start()
 
 proc runClient*(args: CliArgs) =
   ## Run the BitBarrel client
@@ -214,7 +237,7 @@ proc main*() =
 
   # Dispatch to appropriate handler
   case args.command
-  of "server":
+  of "serve":
     runServer(args)
   of "client":
     runClient(args)
