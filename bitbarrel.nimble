@@ -276,10 +276,9 @@ task buildDefault, "Build without compression (default)":
 
 task genDocs, "Generate HTML documentation using nim doc":
   exec "mkdir -p docs/html"
+  exec "rm -rf docs/html/*.html"
   exec "nim doc --out:docs/html/bitbarrel.html --project src/bitbarrel.nim"
-  exec "nim doc --out:docs/html/client.html src/network/client.nim"
-  exec "nim doc --out:docs/html/protocol.html src/network/protocol.nim"
-  exec "nim doc --out:docs/html/server.html src/network/server.nim"
+  exec "nim doc --out:docs/html/client.html --project src/network/client.nim"
   echo "Documentation generated in docs/html/"
 
 task docServer, "Serve documentation locally (assumes Python is installed)":
