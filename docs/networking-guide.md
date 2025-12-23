@@ -31,7 +31,7 @@ The server listens on `localhost:9876` by default.
 
 ### Nim Client Quick Start
 
-```nim.compilable
+```nim
 import network/client as netclient
 import net
 
@@ -238,11 +238,11 @@ echo "Available barrels: "
 for barrel in barrels:
   echo "  - " & barrel
 
-// Output:
-// Available barrels:
-//   - users
-//   - products
-//   - orders
+# Output:
+# Available barrels:
+#   - users
+#   - products
+#   - orders
 ```
 
 ### Dropping a Barrel
@@ -297,7 +297,7 @@ discard client.set("doc:report", largeText)
 ```nim
 # Simple retrieval
 let username = client.get("username")
-echo username  // "alice"
+echo username  # "alice"
 
 # Handling missing keys
 try:
@@ -307,9 +307,9 @@ except ClientError as e:
   if e.msg.contains("not found"):
     echo "Key does not exist"
   else:
-    raise e  // Re-raise unexpected errors
+    raise e  # Re-raise unexpected errors
 
-// Safe retrieval with default
+# Safe retrieval with default
 proc getOrDefault(client: var BitBarrelClient,
                   key, defaultValue: string): string =
   try:
@@ -318,7 +318,7 @@ proc getOrDefault(client: var BitBarrelClient,
     result = defaultValue
 
 let value = getOrDefault(client, "missing", "default")
-echo value  // "default"
+echo value  # "default"
 ```
 
 ### Checking Existence (EXISTS)
@@ -334,10 +334,10 @@ else:
 ### Deleting Data (DELETE)
 
 ```nim
-// Delete a single key
+# Delete a single key
 discard client.delete("temp:data")
 
-// Conditional delete
+# Conditional delete
 if client.exists("cache:old"):
   discard client.delete("cache:old")
   echo "Cached data removed"
@@ -378,7 +378,7 @@ for key, value in items:
   except ClientError as e:
     echo "Failed to store " & key & ": " & e.msg
 
-// Retrieve multiple items
+# Retrieve multiple items
 var results: Table[string, string]
 for key, _ in items:
   try:
@@ -486,8 +486,8 @@ discard client.set("alice",
 discard client.set("bob",
   """{"name":"Bob","friends":["alice","david"]}""")
 
-// Traverse relationships (future feature)
-// let results = client.traversePath("alice", "friends->*")
+# Traverse relationships (future feature)
+# let results = client.traversePath("alice", "friends->*")
 ```
 
 ### Working with JSON Data
@@ -506,7 +506,7 @@ let user = %*{
 }
 discard client.set("user:alice", $user)
 
-// Retrieve and parse
+# Retrieve and parse
 let userJson = client.get("user:alice")
 let userData = parseJson(userJson)
 echo "Name: " & userData["name"].getStr()
@@ -531,7 +531,7 @@ proc storeFile(client: var BitBarrelClient,
     echo "Failed to read file: " & e.msg
     return false
 
-// Retrieve binary data
+# Retrieve binary data
 proc retrieveFile(client: var BitBarrelClient,
                   key, filename: string): bool =
   try:
@@ -552,7 +552,7 @@ proc checkHealth(client: var BitBarrelClient): bool =
   except:
     return false
 
-// Periodic health check
+# Periodic health check
 while true:
   if checkHealth(client):
     echo "Server is healthy"
@@ -586,7 +586,7 @@ proc worker(id: int) =
 
   client.close()
 
-// Run multiple concurrent workers
+# Run multiple concurrent workers
 parallel:
   for workerId in 1..10:
     spawn worker(workerId)
