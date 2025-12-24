@@ -1,10 +1,10 @@
 ## Tests for HugeBarrel - Two-tier storage
 
 import std/[unittest, os, strformat, strutils]
-import bitbarrel/types
-import bitbarrel/barrel
-import storage/hugebarrel
-import storage/rangekeydir
+import ../../src/bitbarrel/types
+import ../../src/bitbarrel/barrel
+import ../../src/storage/hugebarrel
+import ../../src/storage/rangekeydir
 
 suite "HugeBarrel Tests":
 

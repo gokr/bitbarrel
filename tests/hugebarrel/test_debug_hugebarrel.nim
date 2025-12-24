@@ -1,9 +1,9 @@
 ## Debug test for range query issue
 
 import std/[unittest, os]
-import bitbarrel/barrel
-import bitbarrel/types
-import storage/critbitindex
+import ../../src/bitbarrel/barrel
+import ../../src/bitbarrel/types
+import ../../src/storage/critbitindex
 
 const TestDir = "test_debug_data"
 

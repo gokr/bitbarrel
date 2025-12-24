@@ -1,6 +1,6 @@
 import unittest, os, strformat
-import storage/hugebarrel
-import bitbarrel/barrel
+import ../../src/storage/hugebarrel
+import ../../src/bitbarrel/barrel
 
 const TEST_DIR = "test_hugebarrel_recovery"
 
