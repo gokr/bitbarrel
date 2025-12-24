@@ -42,22 +42,179 @@ nimble stress            # Stress testing
 
 ## Testing
 
-Tests use Nim's `unittest` module. Located in `tests/`:
+BitBarrel uses **unittest** as the testing framework and **testament** as the test runner. This separation provides clear responsibilities:
+- **unittest**: Nim's built-in test framework for writing tests (`test` blocks, `check` assertions, `suite` groups)
+- **testament**: Bundled test discovery and execution tool that finds and runs test files
 
-| Test File | Coverage |
-|-----------|----------|
-| `test_storage.nim` | Data file format, header, append/read |
-| `test_record.nim` | Record encoding/decoding, CRC32, tombstones |
-| `test_keydir.nim` | KeyDir operations, threading |
-| `test_integration.nim` | GET/SET/DELETE workflow, persistence |
-| `test_error_handling.nim` | Corruption detection, boundary conditions |
-| `test_recovery.nim` | Recovery engine, checkpoints, hint files |
-| `test_compact.nim` | Compaction system tests |
-| `test_writebuffer.nim` | Write buffer sync modes |
-| `test_readbuffer.nim` | Read buffering/caching |
-| `test_hintfile.nim` | Hint file I/O |
+### Test Directory Structure
 
-Run individual tests directly: `nim c -r tests/test_storage.nim`
+Tests are organized by component and type:
+```
+tests/
+├── testutils.nim           # Shared test utilities and helpers
+├── api/                    # High-level Barrel API tests
+│   ├── core/               # Core barrel operations
+│   ├── error/              # Error handling tests
+│   ├── merge/              # Merge operations
+│   └── range/              # Range query tests
+├── config/                 # Configuration tests
+├── hugebarrel/             # HugeBarrel feature tests
+├── io/                     # I/O layer tests (readbuffer, writebuffer, protocol)
+├── recovery/               # Recovery, hintfile, compaction tests
+├── system/                 # Full system integration tests
+│   ├── concurrency/        # Thread safety and concurrent access
+│   ├── integration/        # End-to-end workflows
+│   └── stress/             # Memory and filesystem stress tests
+└── unit/                   # Low-level component unit tests
+    ├── compression/        # Compression algorithms
+    ├── keydir/             # Index operations
+    └── storage/            # Data record/file operations
+```
+
+### Running Tests
+
+**Run all tests:**
+```bash
+nimble test          # Runs all tests using testament
+nimble testAll       # Alias for test
+```
+
+**Run specific test categories:**
+```bash
+nimble testStorage   # Storage layer tests
+nimble testKeydir    # KeyDir index tests
+nimble testIntegration   # Integration tests
+nimble testRecovery      # Recovery system tests
+nimble testAPI       # API tests
+nimble testUnit      # All unit tests
+nimble testSystem    # System/integration tests
+nimble testHugeBarrel # HugeBarrel feature tests
+nimble testNetwork   # Network client/server tests
+```
+
+**Run individual test files with testament directly:**
+```bash
+testament pattern "tests/unit/storage/test_record.nim"
+testament pattern "tests/unit/*/*.nim"        # All unit tests
+testament pattern "tests/api/**/*.nim"        # All API tests
+```
+
+**Testament command-line options (useful for development):**
+```bash
+testament --simulate pattern "tests/**/*.nim"  # Show tests without running
+testament --failing pattern "tests/**/*.nim"   # Show only failed tests
+testament --print pattern "tests/**/*.nim"     # Verbose output
+```
+
+### Writing Tests
+
+**Basic test structure:**
+```nim
+import std/[unittest, times]
+import ../../../src/storage/record
+import ../../testutils
+
+suite "Record Module Tests":
+  test "encode and decode round-trip":
+    let original = Record(
+      key: "test_key",
+      value: "test_value",
+      timestamp: 1234567890'i64
+    )
+
+    let encoded = encode(original)
+    let decoded = decode(encoded)
+
+    check decoded.key == original.key
+    check decoded.value == original.value
+
+  test "decode fails on truncated data":
+    let shortData = "1234567"  # Only 7 bytes
+    expect ValueError:
+      discard decode(shortData)
+```
+
+**Using testutils helpers:**
+```nim
+import ../../testutils
+
+suite "DataFile Tests":
+  test "write and read records":
+    withTestDir("datafile_test"):
+      let path = testDir / "test.data"
+      var df = open(path, 1'u32)
+      defer: df.close()
+
+      let rec = testRecord("key", "value")
+      discard df.appendRecord(rec.key, rec.value, rec.timestamp)
+
+      # ... verify read works
+```
+
+### Test Framework Features
+
+**unittest components:**
+
+- **test blocks**: Define individual tests with descriptive names
+- **check statements**: Verify conditions, continue on failure within test
+- **expect blocks**: Verify specific exceptions are raised
+- **suite blocks**: Group related tests together
+- **setup/teardown**: Run code before/after each test in a suite
+
+**Test filtering with testament:**
+```bash
+# Run specific test or suite (via unittest filter string)
+testament pattern "tests/unit/storage/test_record.nim" "CRC32 test vectors"
+testament pattern "tests/**" "test suite pattern"
+```
+
+### Common Test Patterns
+
+**Resource cleanup with `defer`:**
+```nim
+test "file cleanup":
+  let path = "test_file.data"
+  defer: removeFile(path)  # Always runs
+
+  # Test code here
+```
+
+**Using testutils templates:**
+```nim
+withTestFile("temp.data"):
+  writeFile(filePath, "test data")
+  # File cleaned up automatically
+
+withTestDir("my_test"):
+  # testDir variable injected
+  # Directory cleaned up automatically
+```
+
+**Record generation helpers:**
+```nim
+let rec = testRecord("key", "value")                     # Auto timestamp
+let rec = testRecord("key", "value", 123456789)          # Specific timestamp
+let del = tombstoneRecord("deleted_key")                 # Empty value
+let big = largeRecord(1000, 10000)                      # Custom sizes
+```
+
+### Test File Conventions
+
+- **Naming**: Test files use `test_*.nim` prefix for testament discovery
+- **Structure**: Related tests grouped in `suite` blocks
+- **Imports**: Use relative imports (e.g., `../../../src/storage/record`)
+- **Cleanup**: Always clean up temporary files/directories using `defer` or testutils
+
+### nimble Task Definitions
+
+Test tasks are defined in `bitbarrel.nimble`:
+```nim
+task test, "Run all tests (automatic discovery via testament)":
+  exec "testament pattern \"tests/**/*.nim\""
+
+task testStorage, "Run storage tests (unit/storage)":
+  exec "testament pattern \"tests/unit/storage/*.nim\""
+```
 
 ## Architecture
 
