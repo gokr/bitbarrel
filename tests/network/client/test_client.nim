@@ -1,7 +1,7 @@
 import unittest
 import std/[os, random, tables, strutils]
 import mummy
-import network/[client, server]
+import ../../../src/network/[client, server]
 
 # Helper to generate test data
 proc generateTestData(count: int): Table[string, string] =

@@ -1,8 +1,10 @@
 import unittest
 import std/[os, tempfiles, random, tables, locks, httpclient, json]
 import mummy
-import network/[server, session, protocol]
-import bitbarrel/[types, config]
+import ../../../src/network/server
+import ../../../src/network/session
+import ../../../src/network/protocol
+import ../../../src/bitbarrel/[types, config]
 
 # Test server setup
 var serverThread: Thread[void]

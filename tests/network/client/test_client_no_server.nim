@@ -1,6 +1,6 @@
 import unittest
 import std/[net, random, strutils]
-import network/client
+import ../../../src/network/client
 
 # Test client that assumes server is already running on 127.0.0.1:8081
 # This version doesn't start a server thread, avoiding the ORC crash
