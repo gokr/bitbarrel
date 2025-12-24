@@ -1,10 +1,10 @@
 ## Comprehensive tests for range queries with cursor-based pagination
 
 import std/[unittest, os]
-import bitbarrel/barrel
-import bitbarrel/types
-import storage/critbitindex
-import network/protocol
+import ../../../src/bitbarrel/barrel
+import ../../../src/bitbarrel/types
+import ../../../src/storage/critbitindex
+import ../../../src/network/protocol
 
 const TestDir = "test_range_data"
 

@@ -1,8 +1,8 @@
 ## Tests for RangeKeyDir - Fast Serializable Index
 
 import std/[unittest, options, times, tables, sequtils, strformat]
-import storage/rangekeydir
-import bitbarrel/types
+import ../../../src/storage/rangekeydir
+import ../../../src/bitbarrel/types
 
 suite "RangeKeyDir Tests":
 

@@ -4,9 +4,9 @@
 
 import unittest
 import std/[os, times, strutils, sequtils, math]
-import bitbarrel"
-import storage/orderedrange"
-import storage/rangeindex"
+import ../../../src/bitbarrel/barrel
+import ../../../src/storage/orderedrange
+import ../../../src/storage/rangeindex
 
 # Test utilities
 proc setupTestDir(prefix: string): string =
