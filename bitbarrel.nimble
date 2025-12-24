@@ -161,6 +161,14 @@ task clean, "Clean up generated data files":
 
 # Build with compression support
 
+task build, "Build with LZ4 compression (default)":
+  echo "Building BitBarrel with LZ4 compression (default)..."
+  exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
+
+task buildDefault, "Build with LZ4 compression (default)":
+  echo "Building BitBarrel with LZ4 compression (default)..."
+  exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
+
 task buildLz4, "Build with LZ4 compression support":
   echo "Building BitBarrel with LZ4 compression..."
   exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
@@ -169,7 +177,7 @@ task buildSnappy, "Build with Snappy compression support":
   echo "Building BitBarrel with Snappy compression..."
   exec "nim c -d:snappyCompression -d:release src/bitbarrel.nim"
 
-task buildDefault, "Build without compression (default)":
+task buildNoCompression, "Build without compression":
   echo "Building BitBarrel without compression..."
   exec "nim c -d:release src/bitbarrel.nim"
 
