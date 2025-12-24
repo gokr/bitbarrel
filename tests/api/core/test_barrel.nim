@@ -1,9 +1,9 @@
 ## Tests for Barrel API with multiple index modes
 
 import std/[unittest, os, strutils, sequtils, algorithm, options]
-import bitbarrel/barrel
-import bitbarrel/types
-import storage/critbitindex
+import ../../../src/bitbarrel/barrel
+import ../../../src/bitbarrel/types
+import ../../../src/storage/critbitindex
 
 const TestDir = "test_barrel_data"
 

@@ -3,7 +3,7 @@
 import std/unittest
 import std/json
 import std/tables
-import bitbarrel/refs
+import ../../../src/bitbarrel/refs
 
 suite "Reference Model Tests":
   test "extractRefs - empty refs":

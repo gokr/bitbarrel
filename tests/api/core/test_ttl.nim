@@ -1,9 +1,9 @@
 ## TTL Tests
 import unittest, os, times, strformat
 
-import bitbarrel/barrel
-import bitbarrel/types
-import storage/record
+import ../../../src/bitbarrel/barrel
+import ../../../src/bitbarrel/types
+import ../../../src/storage/record
 
 suite "TTL Tests":
   var testDir: string
