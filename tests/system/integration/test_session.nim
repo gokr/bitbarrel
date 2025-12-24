@@ -1,7 +1,7 @@
 import unittest, std/[os, strutils, random, options, tables]
-import network/session
-import bitbarrel/types
-import bitbarrel/barrel
+import ../../../src/network/session
+import ../../../src/bitbarrel/types
+import ../../../src/bitbarrel/barrel
 
 suite "Session and Barrel Registry Tests":
 
