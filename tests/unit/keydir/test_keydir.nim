@@ -3,8 +3,8 @@ import tables
 import locks
 import times
 import options
-import bitbarrel/types
-import storage/keydir
+import ../../../src/bitbarrel/types
+import ../../../src/storage/keydir
 
 suite "KeyDir Operations":
   test "create and initialize KeyDir":

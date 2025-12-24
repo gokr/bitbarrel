@@ -3,9 +3,9 @@
 
 import unittest
 import std/strutils
-import bitbarrel/types
-import storage/compression
-import storage/record
+import ../../../src/bitbarrel/types
+import ../../../src/storage/compression
+import ../../../src/storage/record
 
 suite "Compression Tests":
 

@@ -1,8 +1,8 @@
 ## Tests for record encoding, decoding, validation, and CRC32
 
 import std/[unittest, times]
-import storage/record
-import bitbarrel/types
+import ../../../src/storage/record
+import ../../../src/bitbarrel/types
 import ../../testutils
 
 suite "Record Module Tests":

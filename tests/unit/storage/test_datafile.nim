@@ -1,8 +1,8 @@
 import unittest
 import os
 import times
-import bitbarrel/types
-import storage
+import ../../../src/bitbarrel/types
+import ../../../src/storage
 
 suite "Data File Format":
   test "create and read data file header":
