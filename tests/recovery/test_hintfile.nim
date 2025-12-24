@@ -1,10 +1,10 @@
 ## Tests for hint file implementation
 
 import std/[unittest, os, times, strformat, options]
-import bitbarrel/types
-import storage/hintfile
-import storage/keydir
-import ../../testutils
+import ../../src/bitbarrel/types
+import ../../src/storage/hintfile
+import ../../src/storage/keydir
+import ../testutils
 
 suite "Hint File Tests":
 

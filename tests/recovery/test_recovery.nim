@@ -3,9 +3,9 @@
 ## Test suite for crash recovery and checkpointing functionality
 
 import std/[unittest, os, times, strutils, random, tables, options, strformat]
-import storage/[recovery, checkpoint, datafile, record, keydir, hintfile]
-import bitbarrel/types
-import ../../testutils
+import ../../src/storage/[recovery, checkpoint, datafile, record, keydir, hintfile]
+import ../../src/bitbarrel/types
+import ../testutils
 
 # Utility for creating corrupt files
 proc badWrite(path: string, content: string) =

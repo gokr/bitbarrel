@@ -2,11 +2,11 @@
 
 import std/[unittest, times, strformat, strutils, options]
 import std/os except FileInfo
-import bitbarrel/types
-import storage/datafile
-import storage/keydir
-import storage/compact
-import bitbarrel/barrel
+import ../../src/bitbarrel/types
+import ../../src/storage/datafile
+import ../../src/storage/keydir
+import ../../src/storage/compact
+import ../../src/bitbarrel/barrel
 
 const TestDir = "/tmp/bitbarrel_test_compact"
 
