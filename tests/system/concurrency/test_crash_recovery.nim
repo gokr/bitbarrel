@@ -8,11 +8,11 @@
 ## - Multiple crashes in sequence
 
 import std/[unittest, os, times, strformat]
-import storage/recovery
-import storage/datafile
-import storage/checkpoint
-import storage/keydir
-import bitbarrel/types
+import ../../../src/storage/recovery
+import ../../../src/storage/datafile
+import ../../../src/storage/checkpoint
+import ../../../src/storage/keydir
+import ../../../src/bitbarrel/types
 import ../../testutils
 
 # Use testutils.now to avoid ambiguity with times.now

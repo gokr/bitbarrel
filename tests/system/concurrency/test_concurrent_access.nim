@@ -5,9 +5,9 @@
 
 import std/[unittest, os, times, threadpool]
 import std/atomics
-import storage/keydir
-import storage/datafile
-import bitbarrel/types
+import ../../../src/storage/keydir
+import ../../../src/storage/datafile
+import ../../../src/bitbarrel/types
 import ../../testutils
 
 # Global counters for testing

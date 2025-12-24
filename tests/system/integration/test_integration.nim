@@ -2,8 +2,8 @@ import unittest
 import os
 import times
 import options
-import bitbarrel/types
-import storage
+import ../../../src/bitbarrel/types
+import ../../../src/storage
 from ../src/storage/datafile import open
 from ../src/storage/keydir import init
 

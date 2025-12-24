@@ -4,10 +4,10 @@
 ## that can occur in production deployments.
 
 import std/[unittest, os, times, strformat, osproc, options, strutils]
-import storage/datafile
-import storage/keydir
-import storage/recovery
-import bitbarrel/types
+import ../../../src/storage/datafile
+import ../../../src/storage/keydir
+import ../../../src/storage/recovery
+import ../../../src/bitbarrel/types
 import ../../testutils
 
 suite "Filesystem Stress Tests":

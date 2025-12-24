@@ -1,9 +1,9 @@
 ## Simple memory safety test - just create and destroy to ensure no crashes
 
 import std/[unittest, os, strformat]
-import bitbarrel/types
-import bitbarrel/barrel
-import storage/hugebarrel
+import ../../../src/bitbarrel/types
+import ../../../src/bitbarrel/barrel
+import ../../../src/storage/hugebarrel
 
 suite "Simple Memory Safety Test":
   test "Create and close multiple times":
