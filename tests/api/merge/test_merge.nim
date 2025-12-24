@@ -2,9 +2,9 @@
 
 import std/[unittest, times, tables, strformat, strutils]
 import std/os except FileInfo
-import bitbarrel/types
-import storage/datafile
-import storage/keydir
+import ../../../src/bitbarrel/types
+import ../../../src/storage/datafile
+import ../../../src/storage/keydir
 # TODO: Uncomment when merge module is implemented
 # import storage/merge
 
