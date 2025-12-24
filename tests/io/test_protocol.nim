@@ -1,5 +1,5 @@
 import unittest, std/strutils
-import network/protocol
+import ../../src/network/protocol
 
 suite "Binary Protocol Tests":
 

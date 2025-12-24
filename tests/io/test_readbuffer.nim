@@ -1,8 +1,8 @@
 ## Tests for read buffer (cache) implementation
 
 import std/[unittest, os, times, options]
-import bitbarrel/types
-import storage/readbuffer
+import ../../src/bitbarrel/types
+import ../../src/storage/readbuffer
 
 suite "Read Buffer Tests":
 

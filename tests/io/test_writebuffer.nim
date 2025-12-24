@@ -1,10 +1,10 @@
 ## Tests for write buffer functionality
 
 import std/[unittest, os, times, strformat]
-import storage/datafile
-import storage/writebuffer
-import bitbarrel/types
-import ../../testutils
+import ../../src/storage/datafile
+import ../../src/storage/writebuffer
+import ../../src/bitbarrel/types
+import ../testutils
 
 suite "Write Buffer Tests":
   test "write buffer initialization":
