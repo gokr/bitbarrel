@@ -1,8 +1,8 @@
 ## Configuration Tests
 
 import std/[os, unittest, strformat]
-import bitbarrel/[config, config_parser]
-import bitbarrel/types
+import ../../src/bitbarrel/[config, config_parser]
+import ../../src/bitbarrel/types
 
 suite "Configuration Tests":
 
