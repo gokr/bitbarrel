@@ -37,15 +37,6 @@ suite "Error Handling Tests":
     expect IOError:
       discard df2.readRecord(info)
 
-  # test "handle unopened DataFile error":
-  #   # Test error when trying to read from uninitialized DataFile
-  #   var df = DataFile()
-  #   let info = RecordInfo(valuePos: 100, valueSize: 10, recordSize: 20, recordPos: 100)
-
-  #   # Read from unopened DataFile - should fail
-  #   expect IOError:
-  #     discard df.readRecord(info)
-
   test "validate record with maximum sizes":
     # Test boundary conditions for validation
 

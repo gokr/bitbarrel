@@ -105,7 +105,7 @@ suite "RangeKeyDir Tests":
       check found.get().recordPos == (i * 100).uint64
 
   test "Binary search correctness":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     # Insert in random-ish order
     let keys = @["zebra", "apple", "mango", "banana", "orange", "kiwi"]
@@ -139,7 +139,7 @@ suite "RangeKeyDir Tests":
     check rkd.find("zzz").isNone
 
   test "Flush merges pending with sorted":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     # Insert initial entries
     for i in 0..<5:
@@ -203,7 +203,7 @@ suite "RangeKeyDir Tests":
     check foundAfter.get().fileId == 999
 
   test "Delete marks entry as deleted":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     let entry = RangeKeyDirEntry(
       key: "to_delete",
@@ -230,7 +230,7 @@ suite "RangeKeyDir Tests":
     check not rkd.contains("to_delete")
 
   test "MinKey and MaxKey tracking":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     rkd.insert("middle", RangeKeyDirEntry(key: "middle", fileId: 1, recordPos: 0, valuePos: 0, valueSize: 0, timestamp: 0, recordSize: 0, deleted: false))
     check rkd.minKey == "middle"
@@ -245,7 +245,7 @@ suite "RangeKeyDir Tests":
     check rkd.maxKey == "zebra"
 
   test "Iteration over entries":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     for i in 0..<5:
       let entry = RangeKeyDirEntry(
@@ -269,7 +269,7 @@ suite "RangeKeyDir Tests":
     check count == 5
 
   test "Large dataset serialization":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
     let numEntries = 10000
 
     for i in 0..<numEntries:
@@ -286,7 +286,7 @@ suite "RangeKeyDir Tests":
       rkd.insert(fmt"key_{i:06d}", entry)
 
     let serialized = rkd.serialize()
-    echo fmt"Serialized {numEntries} entries to {serialized.len} bytes ({serialized.len / numEntries:.1f} bytes/entry)"
+    check serialized.len > 0  # Serialization should produce data
 
     let restored = deserialize(serialized)
     check restored.entryCount == numEntries
@@ -298,7 +298,7 @@ suite "RangeKeyDir Tests":
       check found.get().fileId == (i mod 100).uint32
 
   test "Checksum validation":
-    let rkd = newRangeKeyDir()
+    var rkd = newRangeKeyDir()
 
     rkd.insert("test", RangeKeyDirEntry(
       key: "test",
@@ -321,7 +321,7 @@ suite "RangeKeyDir Tests":
       discard deserialize(serialized)
 
   test "Auto-flush on threshold":
-    let rkd = newRangeKeyDir(maxPending = 5)
+    var rkd = newRangeKeyDir(maxPending = 5)
 
     for i in 0..<4:
       rkd.insert(fmt"key_{i}", RangeKeyDirEntry(
@@ -355,5 +355,3 @@ suite "RangeKeyDir Tests":
 
     check rkd.pendingCount == 0
     check rkd.entryCount == 5
-
-echo "Running RangeKeyDir tests..."

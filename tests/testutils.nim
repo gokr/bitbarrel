@@ -8,6 +8,7 @@
 
 import std/[os, times, strutils, random, net]
 import ../src/bitbarrel/types
+import ../src/bitbarrel/barrel
 import ../src/storage/record
 import ../src/storage/datafile
 
@@ -265,6 +266,24 @@ template testBarrelConfig*(mode: BarrelMode = bmHash): BarrelConfig =
     compactionThreshold: 0.6,
     readOnly: false
   )
+
+proc createBarrelConfig*(mode: BarrelMode = bmHash, syncMode: UserSyncMode = Sync): BarrelConfig =
+  ## Create a barrel configuration with common customizations
+  ## mode: Barrel mode (bmHash, bmCritBit, bmHugeCritBit)
+  ## syncMode: Synchronization mode (syncNone, syncBuffered, syncFsync)
+  var cfg = defaultBarrelConfig()
+  cfg.mode = mode
+  cfg.syncMode = syncMode
+  cfg
+
+template withBarrel*(name: string, config: BarrelConfig, body: untyped) =
+  ## Execute block with a barrel that is automatically opened and closed
+  ## Usage: withBarrel("test.db", createBarrelConfig(bmCritBit)):
+  ##          barrel.set("key", "value")
+  let barrel {.inject.} = openBarrel(testDir / name, config)
+  defer: barrel.close()
+  body
+
 
 # =============================================================================
 # Resource Cleanup

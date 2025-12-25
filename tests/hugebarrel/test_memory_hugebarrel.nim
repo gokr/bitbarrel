@@ -43,8 +43,6 @@ suite "HugeBarrel Memory Safety Tests":
         let retrieved = hb.get(key)
         check(retrieved == value)
 
-      echo "Memory safety test passed - no crashes detected"
-
     finally:
       hb.close()
       removeDir(testPath)
@@ -75,8 +73,6 @@ suite "HugeBarrel Memory Safety Tests":
         let expectedValue = fmt"value_data_{i}_with_extra_content"
         let retrieved = hb.get(key)
         check(retrieved == expectedValue)
-
-      echo "Concurrent access test passed - data integrity maintained"
 
     finally:
       hb.close()
@@ -109,8 +105,6 @@ suite "HugeBarrel Memory Safety Tests":
         let value = hb.get(key)
         check(value != "")
         check(value.startsWith("value_"))
-
-      echo "Range splitting test passed - refs maintain consistency"
 
     finally:
       hb.close()

@@ -55,11 +55,7 @@ suite "Compression Tests":
 
         check decompressedStr == original
       except CompressionError as e:
-        when defined(snappyCompression):
-          # Snappy can be picky, skip test if it fails
-          echo "Snappy compression test skipped: ", e.msg
-        else:
-          raise e
+        raise e
     else:
       # When compression is disabled, compress should just copy
       let original = "test string"
@@ -118,8 +114,7 @@ suite "Compression Tests":
     when compressionEnabled:
       # Check if the record was actually compressed
       # This depends on whether compression is beneficial for the test data
-      echo "Original value size: ", record.value.len
-      echo "Encoded record size: ", encoded.len - 19  # Subtract header bytes
+      discard encoded.len  # Size check done implicitly via decode roundtrip
 
   when not compressionEnabled:
     test "Backward compatibility - old format records":
@@ -148,8 +143,3 @@ suite "Compression Tests":
     check isCompressionBeneficial(100, 95) == false  # Not enough benefit
     check isCompressionBeneficial(100, 90) == true  # Just above threshold (100/90 = 1.11)
 
-# Run the tests when this file is executed directly
-when isMainModule:
-  echo "Running compression tests with ", algorithmName, " support"
-  echo "Compression enabled: ", compressionEnabled
-  echo ""

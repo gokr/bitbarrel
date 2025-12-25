@@ -24,4 +24,3 @@ suite "Simple Memory Safety Test":
       hb.close()
 
     removeDir(testPath)
-    echo "Simple memory test passed - no crashes"

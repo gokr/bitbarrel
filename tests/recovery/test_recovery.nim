@@ -588,9 +588,3 @@ suite "Integration Tests":
 
     # Performance should be reasonable (< 1 second for 1000 records)
     check recoveryTime < 1.0
-
-    echo &"Recovered {stats.keyCount} keys in {recoveryTime * 1000}ms"
-
-when isMainModule:
-  echo "Running recovery tests..."
-  # Tests run automatically via unittest framework

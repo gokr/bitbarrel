@@ -144,25 +144,25 @@ suite "Barrel API - Range Queries with Values":
       let key = "user:" & chr(ord('a') + i)
       check barrel.set(key, "User" & $(i))
 
-    let (page1, cursor1, hasMore1) = barrel.itemsInRange("user:a", "user:aaaz", 3, "")
+    let (page1, cursor1, hasMore1) = barrel.itemsInRange("user:a", "user:k", 3, "")
     check page1.len == 3
     check page1[0] == ("user:a", "User0")
     check page1[2] == ("user:c", "User2")
     check hasMore1 == true
 
-    let (page2, cursor2, hasMore2) = barrel.itemsInRange("user:a", "user:aaaz", 3, cursor1)
+    let (page2, cursor2, hasMore2) = barrel.itemsInRange("user:a", "user:k", 3, cursor1)
     check page2.len == 3
     check page2[0] == ("user:d", "User3")
     check page2[2] == ("user:f", "User5")
     check hasMore2 == true
 
-    let (page3, cursor3, hasMore3) = barrel.itemsInRange("user:a", "user:aaaz", 3, cursor2)
+    let (page3, cursor3, hasMore3) = barrel.itemsInRange("user:a", "user:k", 3, cursor2)
     check page3.len == 3
     check page3[0] == ("user:g", "User6")
     check page3[2] == ("user:i", "User8")
     check hasMore3 == true
 
-    let (page4, cursor4, hasMore4) = barrel.itemsInRange("user:a", "user:aaaz", 3, cursor3)
+    let (page4, cursor4, hasMore4) = barrel.itemsInRange("user:a", "user:k", 3, cursor3)
     check page4.len == 1
     check page4[0] == ("user:j", "User9")
     check hasMore4 == false
@@ -222,23 +222,21 @@ suite "Barrel API - Range Queries with Values":
 
     barrel.close()
 
-  test "debug itemsInRange with cursor pagination":
+  test "itemsInRange with cursor and large end key boundary":
     var config = defaultBarrelConfig()
     config.mode = bmCritBit
-    let barrel = openBarrel(TestDir / "debug.db", config)
+    let barrel = openBarrel(TestDir / "test.db", config)
 
     for i in 0..9:
       let key = "user:" & chr(ord('a') + i)
       check barrel.set(key, "User" & $(i))
 
     let (page1, cursor1, hasMore1) = barrel.itemsInRange("user:a", "user:aaaz", 3, "")
-    echo "DEBUG: Page1 returned ", page1.len, " items"
-    for i in 0..<page1.len:
-      echo "  Item ", i, ": ", page1[i][0]
+    check page1.len > 0
 
     if page1.len >= 1:
       let (page2, cursor2, hasMore2) = barrel.itemsInRange("user:a", "user:aaaz", 3, cursor1)
-      echo "DEBUG: Page2 returned ", page2.len, " items"
+      check page2.len > 0 or not hasMore2
 
     barrel.close()
 

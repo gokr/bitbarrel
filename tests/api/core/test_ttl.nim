@@ -213,8 +213,7 @@ suite "TTL Performance":
       discard encodeTimestamp(ts, i mod 3600)
     let encodeTime = cpuTime() - startEncode
 
-    echo "\nTTL encoding: ", encodeTime, "s for ", iterations, " operations"
-    echo "  ", int(iterations.float / encodeTime), " ops/sec"
+    check encodeTime < 10.0  # Encoding 100K entries should be fast
 
     # Time decoding
     let encoded = encodeTimestamp(ts, 3600)
@@ -223,8 +222,8 @@ suite "TTL Performance":
       discard decodeTimestamp(encoded)
     let decodeTime = cpuTime() - startDecode
 
-    echo "TTL decoding: ", decodeTime, "s for ", iterations, " operations"
-    echo "  ", int(iterations.float / decodeTime), " ops/sec"
+    check decodeTime < 10.0  # Decoding 100K entries should be fast
+
 
   test "TTL read overhead":
     let iterations = 50000
@@ -252,7 +251,5 @@ suite "TTL Performance":
       discard barrel.get(key)
     let timeWithTTL = cpuTime() - startWithTTL
 
-    echo "\nRead performance:"
-    echo "  Without TTL: ", int(iterations.float / timeNoTTL), " ops/sec"
-    echo "  With TTL: ", int(iterations.float / timeWithTTL), " ops/sec"
-    echo "  Overhead: ", int((timeWithTTL / timeNoTTL - 1) * 100), "%"
+    # Verify TTL overhead is reasonable (< 2x)
+    check timeWithTTL < timeNoTTL * 2.0
