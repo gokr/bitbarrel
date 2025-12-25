@@ -1,4 +1,4 @@
-import std/[osproc, os]
+import std/[osproc, os, streams]
 import unittest
 
 proc checkDocExamples(): bool =
@@ -11,13 +11,14 @@ proc checkDocExamples(): bool =
 
   var output = ""
   var stream = process.outputStream()
-  var line = ""
-  while stream.readLine(line):
+  while true:
+    let line = stream.readLine()
+    if line.len == 0 and stream.atEnd: break
     output &= line & "\n"
-  let exitCode = process.waitForExit()
+  discard process.waitForExit()
   process.close()
 
-  if exitCode != 0:
+  if output.len > 0:
     echo output
     return false
   return true
