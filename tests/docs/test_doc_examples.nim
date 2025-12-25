@@ -1,24 +1,12 @@
-import std/[osproc, os, streams]
+import std/[osproc, streams]
 import unittest
 
 proc checkDocExamples(): bool =
   ## Run the doc examples checker and report result
-  let process = startProcess(
-    "nim",
-    args = ["c", "-r", "--verbosity:0", "tools/check_doc_examples.nim"],
-    options = {poUsePath}
-  )
+  let command = "nim c -r --verbosity:0 tools/check_doc_examples.nim"
+  let (output, exitCode) = execCmdEx(command)
 
-  var output = ""
-  var stream = process.outputStream()
-  while true:
-    let line = stream.readLine()
-    if line.len == 0 and stream.atEnd: break
-    output &= line & "\n"
-  discard process.waitForExit()
-  process.close()
-
-  if output.len > 0:
+  if exitCode != 0:
     echo output
     return false
   return true
