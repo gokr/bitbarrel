@@ -2,9 +2,9 @@
 ##
 ## Measures network performance for BitBarrel operations
 
-import std/[os, strformat, times, monotimes, random, threadpool, sequtils, math]
-import src/network/[client, protocol]
-import src/network/server
+import std/[os, strformat, times, monotimes, random, threadpool, sequtils, math, algorithm, net]
+import ../src/network/[client, protocol]
+import ../src/network/server
 
 type
   BenchmarkResult = object
@@ -29,7 +29,7 @@ proc runQuick(client: var BitBarrelClient): BenchmarkResult =
   try:
     # Create and use barrel
     if not client.useBarrel("benchdb_quick"):
-      client.createBarrel("benchdb_quick")
+      discard client.createBarrel("benchdb_quick")
       discard client.useBarrel("benchdb_quick")
 
     # Mixed operations: 40% SET, 40% GET, 15% DELETE, 5% PING
@@ -72,10 +72,10 @@ proc runQuick(client: var BitBarrelClient): BenchmarkResult =
   result = BenchmarkResult(
     operations: numOps - errors,
     durationMs: durationMs,
-    opsPerSec: (numOps - errors) / (durationMs / 1000.0),
+    opsPerSec: float(numOps - errors) / (durationMs / 1000.0),
     avgLatencyMs: if latencies.len > 0: latencies.sum() / latencies.len.float else: 0,
-    p95LatencyMs: if latencies.len > 0: latencies.sorted[int(latencies.len * 0.95)] else: 0,
-    p99LatencyMs: if latencies.len > 0: latencies.sorted[int(latencies.len * 0.99)] else: 0,
+    p95LatencyMs: if latencies.len > 0: latencies.sorted[int(float(latencies.len) * 0.95)] else: 0,
+    p99LatencyMs: if latencies.len > 0: latencies.sorted[int(float(latencies.len) * 0.99)] else: 0,
     errors: errors
   )
 
@@ -161,10 +161,10 @@ proc runComprehensive(client: var BitBarrelClient): BenchmarkResult =
   result = BenchmarkResult(
     operations: numOps - totalErrors,
     durationMs: durationMs,
-    opsPerSec: (numOps - totalErrors) / (durationMs / 1000.0),
+    opsPerSec: float(numOps - totalErrors) / (durationMs / 1000.0),
     avgLatencyMs: if totalLatencies.len > 0: totalLatencies.sum() / totalLatencies.len.float else: 0,
-    p95LatencyMs: if totalLatencies.len > 0: totalLatencies.sorted[int(totalLatencies.len * 0.95)] else: 0,
-    p99LatencyMs: if totalLatencies.len > 0: totalLatencies.sorted[int(totalLatencies.len * 0.99)] else: 0,
+    p95LatencyMs: if totalLatencies.len > 0: totalLatencies.sorted[int(float(totalLatencies.len) * 0.95)] else: 0,
+    p99LatencyMs: if totalLatencies.len > 0: totalLatencies.sorted[int(float(totalLatencies.len) * 0.99)] else: 0,
     errors: totalErrors
   )
 
@@ -172,9 +172,9 @@ proc printResults(result: BenchmarkResult, testType: string) =
   ## Print benchmark results
   echo ""
   echo fmt"=== {testType} Network Benchmark Results ==="
-  echo fmt"Operations completed: {result.operations:,}"
+  echo fmt"Operations completed: {result.operations}"
   echo fmt"Total duration: {result.durationMs:.2f} ms"
-  echo fmt"Throughput: {result.opsPerSec:,.0f} ops/sec"
+  echo fmt"Throughput: {result.opsPerSec:.0f} ops/sec"
   echo fmt"Avg latency: {result.avgLatencyMs:.3f} ms"
   echo fmt"95th percentile: {result.p95LatencyMs:.3f} ms"
   echo fmt"99th percentile: {result.p99LatencyMs:.3f} ms"
