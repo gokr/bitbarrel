@@ -43,10 +43,15 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
   """
 
 task test, "Run all tests (automatic discovery via testament)":
-  exec "testament pattern \"tests/**/*.nim\" 2>&1 || true"
-
-task testAll, "Run complete test suite (same as 'nimble test')":
-  exec "testament pattern \"tests/**/*.nim\" 2>&1 || true"
+  exec """
+    echo "Running BitBarrel test suite..."
+    echo "=== Running tests/test_*.nim ==="
+    testament pattern "tests/test_*.nim" || true
+    echo "=== Running tests/category/*.nim ==="
+    testament pattern "tests/**/*.nim" || true
+    echo "=== Running tests/category/subcategory/*.nim ==="
+    testament pattern "tests/**/**/*.nim" || true
+  """
 
 # Testament-based test tasks with automatic discovery
 
