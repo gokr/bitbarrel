@@ -6,7 +6,7 @@ This document consolidates all planned and potential future enhancements for Bit
 
 ### Core Features (Completed)
 - ✅ Append-only Bitcask storage model
-- ✅ Four barrel modes: Normal (hash), CritBit (sorted), Ranged (partitioned), HugeCritBit (massive scale)
+- ✅ Three barrel modes: Normal (hash), CritBit (sorted), HugeCritBit (two-tier massive scale)
 - ✅ Range queries and prefix searches (via bmCritBit)
 - ✅ In-memory KeyDir index with O(1) lookups
 - ✅ CRC32 data integrity verification
@@ -15,17 +15,34 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ Write buffering with configurable sync modes (None/Sync/Fsync)
 - ✅ Read-ahead LRU buffering
 - ✅ Thread-safe concurrent operations
-- ✅ Compression support (LZ4 & Snappy)
+- ✅ Compression support (LZ4 & Snappy, LZ4 as default)
 - ✅ TTL support with passive expiration
-- ✅ Comprehensive test suite (32 test files)
+- ✅ Comprehensive test suite (34 test files in hierarchical structure)
+- ✅ JSON configuration parsing
 
-### HugeBarrel Mode (Completed)
-- ✅ Two-tier storage for massive datasets (100K+ entries per range)
-- ✅ Automatic range splitting when thresholds exceeded
-- ✅ LRU caching of RangeKeyDirs (configurable cache size)
-- ✅ Barrel2 crash recovery (rebuilds from data files)
-- ✅ Time-based and threshold-based flushing
-- ✅ Atomic split operations with recovery markers
+### Reference Model & Graph Traversal ✅ COMPLETED
+- ✅ Path specification with `->*` syntax for traversing references
+- ✅ Array slicing support (e.g., `matches[0:10]`)
+- ✅ Cycle detection in reference graphs
+- ✅ Server-side TRAVERSE command
+- ✅ Client support (Nim + Go)
+- ✅ Examples demonstrating graph traversal patterns
+
+### Network Layer ✅ COMPLETED
+- ✅ WebSocket server using MummyX
+- ✅ REST API endpoints for all operations
+- ✅ Binary protocol (18 command types)
+- ✅ Session management with BarrelRegistry
+- ✅ WebSocket client using whisky library
+- ✅ Range query support over network
+
+### HugeBarrel Mode (Experimental)
+- ✅ Basic two-tier storage for massive datasets
+- ✅ Range partitioning with Barrel1 (CritBit)
+- ✅ Barrel2 with multiple data files
+- ✅ LRU caching of RangeKeyDirs
+- ⚠️ Documented as experimental in `/docs/research/HUGECRITBIT.md`
+- ⚠️ Lacks coordinated compaction for production use
 
 ### Performance Achieved
 - **Writes**: ~250K ops/sec (None sync), ~245K ops/sec (Sync), ~11.5K ops/sec (Fsync)
@@ -35,65 +52,26 @@ This document consolidates all planned and potential future enhancements for Bit
 - **Stability**: Stress-tested with 25K+ keys
 - **HugeBarrel**: Scales to 100K+ entries per range partition
 
-## Priority 1: Network Protocol Layer ✅ COMPLETED
+## Client Libraries
 
-### Overview
-Network server capability using MummyX (multithreaded HTTP/WebSocket server) to enable remote access to BitBarrel instances.
+### Go Client ✅ COMPLETED
+- ✅ Located in `/clients/go/bitbarrel/`
+- ✅ Full feature parity with Nim client
+- ✅ ~1,649 lines of Go code
+- ✅ Examples: basic, barrels, concurrent access
+- ✅ Range queries and cursor pagination support
 
-### Implementation
+### Planned Client Libraries
+- Python client library
+- JavaScript/Node.js client
+- Java client
 
-**Dependencies:**
-- ✅ Added MummyX dependency to bitbarrel.nimble
-- ✅ MummyX provides: Single I/O thread + TaskPools, WebSocket support, thread-safe design
-
-**Server Components:**
-- ✅ Created `src/network/server.nim` - MummyX-based WebSocket server
-  - ✅ WebSocket upgrade handler for binary protocol
-  - ✅ Connection lifecycle management
-  - ✅ Request routing to Barrel API
-
-**Binary Protocol Design:**
-- ✅ Compact 11-byte protocol: `[type:1][seq:4][keyLen:2][key][valLen:4][value]`
-- ✅ 15 command types (7 data ops + 8 barrel management)
-- ✅ Big-endian encoding for cross-platform compatibility
-
-**Client Library:**
-- ✅ Created `src/network/client.nim` - WebSocket client library
-  - ✅ Basic WebSocket frame implementation
-  - ✅ Request/response correlation with sequence numbers
-  - ✅ Session-based barrel management
-
-**Session Management:**
-- ✅ Created `src/network/session.nim` - Session handling and BarrelRegistry
-  - ✅ Per-connection barrel state
-  - ✅ Thread-safe barrel operations
-  - ✅ Multi-barrel support
-
-**REST API:**
-- ✅ Added HTTP endpoints for compatibility
-  - ✅ GET /status, GET /version, GET /health
-  - ✅ GET /barrels, POST /barrels/{name}
-  - ✅ GET/PUT/DELETE /barrels/{name}/kv/{key}
-  - ✅ GET /metrics endpoint prepared
-
-**Testing:**
-- ✅ Protocol tests: 16/16 passing (tests/test_protocol.nim)
-- ✅ Session tests: 10/11 passing (tests/test_session.nim)
-- ⏳ Server integration tests (test_server.nim)
-- ⏳ Client tests (test_client.nim)
-- ✅ Network benchmark (bench/network_bench.nim) with:
-  - Quick benchmark (1K operations)
-  - Comprehensive benchmark (100K ops, 10 concurrent clients)
-  - Performance metrics (ops/sec, latency percentiles)
-
-**Performance Achieved:**
-- Protocol overhead: 11 bytes per request
-- Target: 30,000+ ops/sec over network
-- Latency target: <2ms average
-- Concurrent clients: 10+ (tested), scalable to 1000+
-
-**Documentation:**
-- ✅ Complete network implementation documentation: docs/FEATURES/networking.md
+### Client Features (Target)
+- Connection pooling
+- Automatic failover for replicas
+- Request batching
+- Async I/O support
+- Circuit breakers
 
 ## Priority 2: Pub/Sub Messaging System
 
@@ -232,7 +210,8 @@ PubSubConfig(
 - Backup verification tools
 
 ### Configuration Management
-- TOML/JSON configuration file support
+- ✅ JSON configuration support (COMPLETED)
+- TOML configuration file support
 - Environment variable overrides
 - Configuration validation
 - Hot reload for certain settings
@@ -243,27 +222,13 @@ PubSubConfig(
 - Disk space monitoring
 - Graceful degradation under load
 
-## Priority 6: Client Libraries
-
-### Language Bindings
-- Python client library
-- Go client library
-- JavaScript/Node.js client
-- Java client
-
-### Client Features
-- Connection pooling
-- Automatic failover for replicas
-- Request batching
-- Async I/O support
-- Circuit breakers
-
 ## Future Ideas (Lower Priority)
 
 ### Advanced Storage Formats
 - Columnar storage for analytical workloads
 - Log-structured merge (LSM) tree option
 - Tiered storage (hot/warm/cold)
+- Front-truncation compaction using `FALLOC_FL_COLLAPSE_RANGE` (Linux-specific)
 
 ### Query Language
 - Simple query DSL
@@ -282,24 +247,51 @@ PubSubConfig(
 - Helm charts
 - Docker images
 
+## Known Issues
+
+### ORC Crash in test_client.nim
+The network client test has a known issue with Nim's ORC garbage collector crashing during thread cleanup (Nim issue #25253). This is NOT a BitBarrel code issue - the tests pass successfully before the crash occurs.
+
+**Symptoms:**
+- Crash in `nim/orc.nim:unregisterCycle()` during thread shutdown
+- Only affects tests using threads with circular references
+- All tests complete successfully before the crash
+
+**Workaround:**
+- Run individual test files instead of full test suite
+- Run `test_client_no_server.nim` to avoid threading
+- Tests against external server process work correctly
+
+### Experimental Features
+- HugeBarrel (bmHugeCritBit mode) is documented as experimental
+- Full production-grade HugeBarrel implementation is planned, see `/docs/research/HUGECRITBIT.md`
+- Basic CRUD operations work but coordinated compaction is missing
+
+### Incomplete Features
+- `setBarrelConfig` on server returns error (not implemented)
+- CLI interactive client is a stub only
+- Prometheus `/metrics` endpoint is prepared but not implemented
+
 ## Development Priorities
 
 ### Immediate (Next Release)
 1. ✅ Network protocol server (MummyX integration) - COMPLETED
 2. ✅ Basic client library - COMPLETED
-3. Server/client integration tests
-4. Prometheus metrics endpoint
+3. ✅ Server/client integration tests - COMPLETED
+4. ✅ Go client library - COMPLETED
+5. ✅ Reference traversal - COMPLETED
+6. Prometheus metrics endpoint
 
 ### Short-term (2-3 Releases)
 1. Pub/Sub messaging system
 2. Replication (master-replica)
-3. Configuration file support
+3. TOML configuration file support
 
 ### Medium-term (3-6 Months)
 1. Multi-key transactions
 2. Secondary indexes
 3. Full-text search
-4. Additional client libraries
+4. Python and JavaScript client libraries
 
 ### Long-term (6+ Months)
 1. Clustering and sharding
@@ -329,14 +321,32 @@ For documentation on current features:
 - [docs/FEATURES/compression.md](docs/FEATURES/compression.md) - Compression details
 - [docs/FEATURES/data-integrity.md](docs/FEATURES/data-integrity.md) - CRC32 implementation
 - [docs/FEATURES/networking.md](docs/FEATURES/networking.md) - Network protocol
+- [docs/research/HUGECRITBIT.md](docs/research/HUGECRITBIT.md) - HugeBarrel experimental design
 
 ## Project Statistics
 
 **Current Implementation:**
-- Source files: 35 modules
-- Test files: 32 test suites
+- Source files: 40+ modules
+- Test files: 34 test suites (hierarchical structure)
+  - api/ (7 files): Core, error, range tests
+  - unit/ (4 files): Storage, KeyDir, compression unit tests
+  - system/ (6 files): Integration, concurrency, stress tests
+  - recovery/ (3 files): Recovery, compaction, hintfile tests
+  - io/ (3 files): Read/Write buffer, protocol tests
+  - network/ (3 files): Client/server tests
+  - hugebarrel/ (4 files): HugeBarrel feature tests
+  - config/ (1 file): Configuration tests
+  - docs/ (1 file): Documentation examples verification
+  - Plus: testutils.nim, test_cli_integration.nim
 - Demo files: 5+ examples
-- Documentation: Comprehensive (reorganized into USER_GUIDE, DEVELOPER_GUIDE, FEATURES)
+- Documentation: Comprehensive (reorganized into USER_GUIDE, DEVELOPER_GUIDE, FEATURES, research)
+- Client libraries: Nim (✅), Go (✅), Python (planned), JavaScript (planned)
+
+**Storage Modules:**
+- Core: keydir.nim, critbitindex.nim, datafile.nim, record.nim, compact.nim
+- I/O: writebuffer.nim, readbuffer.nim, crc32.nim, compression.nim
+- Recovery: hintfile.nim, checkpoint.nim, recovery.nim, critbithint.nim
+- Range/HugeBarrel: hugebarrel.nim, rangekeydir.nim, rangesearch.nim, rangeindex.nim, rangecache.nim, rangehint.nim, orderedrange.nim
 
 **Performance (Current):**
 - Write throughput: ~250K ops/sec (None sync)
@@ -344,6 +354,12 @@ For documentation on current features:
 - Recovery time: <1s with hint files
 - Memory overhead: ~50 bytes per key
 
+**Recent Refactoring (Dec 2025):**
+- Test suite reorganized into hierarchical directories (testament-based discovery)
+- Removed deprecated APIs: SimpleBB, SimpleConfig, DefaultConfig, merge_policy, CompactConfig
+- Switched to whisky library for WebSocket client
+- Added doc_examples verification task
+
 ---
 
-**Status**: Core implementation complete and production-ready for embedded scenarios. Network layer and cluster features planned for future releases.
+**Status**: Core implementation complete and production-ready for embedded scenarios. Network layer and Go client completed. HugeBarrel is experimental. Pub/Sub and clustering planned for future releases.
