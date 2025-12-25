@@ -16,8 +16,10 @@ docs/html/
 *.log
 *.rhint
 *.hint
+bench_direct
 
 # Test data directories
+temp_*/
 test_*_data/
 ranges/
 examples/data/
