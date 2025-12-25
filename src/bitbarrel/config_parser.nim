@@ -31,13 +31,6 @@ type
     readAheadSize*: int
     cacheSize*: int
 
-  CompactConfig* = object
-    enabled*: bool
-    triggerThreshold*: float
-    compactInterval*: int
-    compactIntervalBytes*: int64
-    maxFileSize*: uint64
-
   LoggingConfig* = object
     level*: string
     file*: string
