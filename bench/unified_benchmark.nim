@@ -74,7 +74,7 @@ proc printTableFooter(width: int) =
 
 proc runWriteBenchmark(config: BenchmarkConfig, syncMode: UserSyncMode, bufferSize: int): BenchmarkResult =
   let dbFile = "bench_unified_test.dat"
-  var cfg = defaultConfig()
+  var cfg = defaultBarrelConfig()
   cfg.syncMode = syncMode
   cfg.writeBufferSize = bufferSize
 
@@ -255,7 +255,7 @@ proc testBarrelModes(config: BenchmarkConfig) =
 
   # Test bmHash mode
   let dbFileNormal = "bench_mode_normal.dat"
-  var cfgNormal = defaultConfig()
+  var cfgNormal = defaultBarrelConfig()
   cfgNormal.mode = BarrelMode.bmHash
   var bbNormal = openDatabase(dbFileNormal, cfgNormal)
 
@@ -286,7 +286,7 @@ proc testBarrelModes(config: BenchmarkConfig) =
 
   # Test bmCritBit mode
   let dbFileCritBit = "bench_mode_critbit.dat"
-  var cfgCritBit = defaultConfig()
+  var cfgCritBit = defaultBarrelConfig()
   cfgCritBit.mode = BarrelMode.bmCritBit
   var bbCritBit = openDatabase(dbFileCritBit, cfgCritBit)
 
