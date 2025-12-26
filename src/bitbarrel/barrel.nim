@@ -22,6 +22,14 @@ import ../storage/hintfile
 export types, datafile
 
 type
+  # Forward declaration for compaction thread args (used in thread pointer)
+  CompactThreadArgs* = object
+    barrelPtr*: pointer
+    oldPath*: string
+    oldFileId*: uint32
+    newFileId*: uint32
+    compactionStart*: int64
+
   BarrelObj = object
     path*: string
     dataFile: DataFile
@@ -37,6 +45,7 @@ type
     # Compaction
     compactController*: CompactController  # Background compaction worker
     compactionState*: CompactionState      # State during non-blocking compaction
+    compactionThreadPtr: pointer           # Pointer to compaction thread (for joining)
 
   Barrel* = ref BarrelObj
 
@@ -324,12 +333,24 @@ proc openBarrel*(path: string, config: BarrelConfig): Barrel =
   ## Open a barrel with configuration (no fileId needed)
   openBarrel(path, 1'u32, config)
 
+proc joinCompactionThread(barrel: Barrel) =
+  ## Join the compaction thread if one is running
+  if barrel.compactionThreadPtr != nil:
+    # Cast back to the correct type and join
+    let threadPtr = cast[ptr Thread[CompactThreadArgs]](barrel.compactionThreadPtr)
+    threadPtr[].joinThread()
+    dealloc(threadPtr)
+    barrel.compactionThreadPtr = nil
+
 proc close*(barrel: Barrel) =
   ## Close the barrel
   if not barrel.closed:
     # Wait for any in-progress compaction to complete before closing
     while barrel.compactionState.inProgress:
       sleep(10)
+
+    # Join the compaction thread to ensure clean shutdown
+    barrel.joinCompactionThread()
 
     barrel.dataFile.close()
 
@@ -1121,14 +1142,6 @@ proc generateHintFileForBarrel*(barrel: Barrel) =
 
 # Compaction operations
 
-type
-  CompactThreadArgs = object
-    barrelPtr: pointer
-    oldPath: string
-    oldFileId: uint32
-    newFileId: uint32
-    compactionStart: int64
-
 proc compactWorkerThread(args: CompactThreadArgs) {.thread.} =
   ## Background compaction worker thread
   ## Note: This is wrapped in try/except to handle the known Nim ORC bug
@@ -1237,7 +1250,8 @@ proc triggerCompact*(barrel: var Barrel): bool =
     )
 
     # Spawn background thread for compaction
-    var thread: Thread[CompactThreadArgs]
+    # Allocate thread on heap so we can join it later
+    var threadPtr = create(Thread[CompactThreadArgs])
     let args = CompactThreadArgs(
       barrelPtr: cast[pointer](barrel),
       oldPath: oldPath,
@@ -1245,7 +1259,8 @@ proc triggerCompact*(barrel: var Barrel): bool =
       newFileId: newFileId,
       compactionStart: compactionStart
     )
-    thread.createThread(compactWorkerThread, args)
+    threadPtr[].createThread(compactWorkerThread, args)
+    barrel.compactionThreadPtr = cast[pointer](threadPtr)
 
     return true  # Return immediately - compaction runs in background
 
@@ -1264,6 +1279,9 @@ proc waitForCompaction*(barrel: Barrel, timeoutMs: int = 30000) =
     if (epochTime() - startTime) * 1000 > float(timeoutMs):
       break
     sleep(10)
+
+  # Join the compaction thread after waiting to ensure clean cleanup
+  barrel.joinCompactionThread()
 
 proc getCompactStats*(barrel: Barrel): CompactStats =
   ## Get statistics about the last compaction operation

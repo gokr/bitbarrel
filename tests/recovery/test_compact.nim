@@ -1,6 +1,6 @@
 ## Tests for compaction system
 
-import std/[unittest, times, strformat, strutils, options]
+import std/[unittest, times]
 import std/os except FileInfo
 import ../../src/bitbarrel/types
 import ../../src/storage/datafile
