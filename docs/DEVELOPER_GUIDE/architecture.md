@@ -131,16 +131,40 @@ Background process reclaims space from deleted/overwritten records:
 - Total space overhead exceeds 50%
 - Manual trigger via API
 
-**Merge Process:**
-1. Scan: Identify live records (non-deleted, latest timestamp)
-2. Merge: Write live records to new file in background
-3. Swap: Atomic KeyDir update to point to new file
-4. Delete: Remove old file
+**Non-Blocking Compaction Process:**
+
+BitBarrel uses a dual-file approach for truly non-blocking compaction:
+
+1. **Start**: Create new file, write compaction marker for crash recovery
+2. **Dual-file mode**:
+   - Old file: read-only, being compacted
+   - New file: receives ALL new writes AND compacted records
+3. **Shadowing**: If a key is written during compaction, the new write overwrites the compacted entry via timestamp comparison
+4. **Complete**: Delete old file, remove marker, generate hint file
+
+```
+Normal State:
+  activeFile: 000001.data (read/write)
+
+During Compaction (background thread):
+  oldFile: 000001.data (read-only, being compacted)
+  newFile: 000002.data (all new writes + compacted records)
+
+After Compaction:
+  activeFile: 000002.data (read/write)
+  000001.data: deleted
+```
+
+**Crash Recovery:**
+- Compaction marker file (.compacting) tracks in-progress compaction
+- On startup, if marker exists: rebuild KeyDir from both files, delete old
+- Ensures data integrity even with crashes during compaction
 
 **Benefits:**
-- Eliminates fragmentation
-- Reclaims space from deletions
-- Does not block reads/writes
+- Truly non-blocking: writes continue during compaction
+- No temporary files: direct-to-target writing
+- Automatic shadowing: KeyDir timestamp comparison handles overwrites
+- Crash-safe: marker file ensures recovery from any failure point
 - Configurable thresholds
 
 ## Performance Characteristics
@@ -193,7 +217,7 @@ All operations are thread-safe using fine-grained locking:
 - **KeyDir**: Lock-protected updates, lock-free reads
 - **DataFile**: Per-file locks for I/O operations
 - **WriteBuffer**: Lock + condition variable coordination
-- **Merge**: Background thread with atomic swaps
+- **Compaction**: Background thread with dual-file approach (writes continue during compaction)
 
 Thread-safe usage example:
 ```nim
@@ -210,7 +234,7 @@ parallel:
 - ✅ Range queries and prefix searches
 - ✅ CRC32 data integrity verification
 - ✅ Crash recovery with hint files (68K+ keys/sec)
-- ✅ Background merge and compaction
+- ✅ Non-blocking background compaction (writes continue during compaction)
 - ✅ Configurable durability (None/Sync/Fsync)
 - ✅ Write buffering and read-ahead caching
 - ✅ Thread-safe concurrent operations
