@@ -136,6 +136,15 @@ task benchCrunchy, "Run performance benchmark with crunchy CRC32":
 task stress, "Run stress tests":
   exec "nim c -d:release -r bench/stress_test.nim"
 
+task stressCompact, "Run compaction stress test (quick - 10K ops)":
+  exec "nim c -d:release -r --path:src bench/compaction_stress.nim quick"
+
+task stressCompactStandard, "Run compaction stress test (standard - 100K ops)":
+  exec "nim c -d:release -r --path:src bench/compaction_stress.nim standard"
+
+task stressCompactHeavy, "Run compaction stress test (stress - 1M ops)":
+  exec "nim c -d:release -r --path:src bench/compaction_stress.nim stress"
+
 # Tasks for network server and client
 
 task client, "Build BitBarrel network client library":
@@ -157,10 +166,11 @@ task clean, "Clean up generated data files":
   exec "rm -f test_*.data"
   exec "rm -f tests/*.data"
   exec "rm -f bench/*.data"
+  exec "rm -f bench_*.data"
   exec "rm -f examples/*.data"
   # Remove compiled test binaries
   exec "rm -f tests/test_storage tests/test_keydir tests/test_integration tests/test_recovery"
-  exec "rm -f bench/simple_bench bench/stress_test"
+  exec "rm -f bench/simple_bench bench/stress_test bench/compaction_stress"
   exec "rm -f examples/basic_demo"
   echo "Cleaned up generated data files and binaries"
 
