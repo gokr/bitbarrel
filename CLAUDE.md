@@ -8,7 +8,7 @@ BitBarrel is a high-performance Bitcask-style key-value storage engine written i
 - Append-only log files with O(1) reads via in-memory hash index
 - CRC32 data integrity verification
 - Crash recovery with hint files for fast startup (40K+ keys/sec)
-- Background compaction with threading
+- Non-blocking background compaction (writes continue during compaction)
 - Configurable durability (immediate, buffered, batched, time-based sync modes)
 - Write buffering and read-ahead caching
 
