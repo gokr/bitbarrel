@@ -9,6 +9,7 @@ New to BitBarrel? Start here:
 - [Getting Started](GETTING_STARTED.md) - Set up and running in 5 minutes
 - [User Tutorial](USER_GUIDE/tutorial.md) - Comprehensive usage guide
 - [API Reference](USER_GUIDE/api-reference.md) - Complete API documentation
+- [Comparing with Other Databases](COMPARISON.md) - BitBarrel vs Redis, PostgreSQL, MongoDB, RocksDB
 
 ## Documentation Structure
 
