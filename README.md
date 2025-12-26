@@ -246,26 +246,24 @@ var criticalDb = openBarrel("critical.db", criticalCfg)
 ## Documentation & Next Steps
 
 ### Getting Started
-- **[docs/TUTORIAL.md](docs/TUTORIAL.md)**: Comprehensive tutorial with examples
+- **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples
 - **[examples/README.md](examples/README.md)**: Demo documentation
 
 ### Test Suite
 - **[tests/README.md](tests/README.md)**: Complete test suite guide
 
 ### Performance & Benchmarks
-- **[docs/BENCHMARK_GUIDE.md](docs/BENCHMARK_GUIDE.md)**: Benchmarking guide
+- **[docs/DEVELOPER_GUIDE/performance.md](docs/DEVELOPER_GUIDE/performance.md)**: Benchmarking guide
 - **[bench/](bench/)**: Benchmark suites
 
 ### Architecture & Design
-- **[docs/DESIGN.md](docs/DESIGN.md)**: System design document
-- **[docs/COMPRESSION.md](docs/COMPRESSION.md)**: Compression implementation
-- **[docs/NETWORK_IMPLEMENTATION.md](docs/NETWORK_IMPLEMENTATION.md)**: Network layer architecture
-- **[FEEDBACK.md](FEEDBACK.md)**: Code review and improvements
-- **[PLAN.md](PLAN.md)**: Implementation plan and roadmap
+- **[docs/DEVELOPER_GUIDE/architecture.md](docs/DEVELOPER_GUIDE/architecture.md)**: System design document
+- **[docs/FEATURES/compression.md](docs/FEATURES/compression.md)**: Compression implementation
+- **[docs/network-architecture.md](docs/network-architecture.md)**: Network layer architecture
 
 ### Advanced Features
-- **[docs/REFERENCES.md](docs/REFERENCES.md)**: Reference model (graph traversal) guide
-- **[docs/CRC.md](docs/CRC.md)**: CRC32 implementation details
+- **[docs/research/REFERENCES.md](docs/research/REFERENCES.md)**: Reference model (graph traversal) guide
+- **[docs/FEATURES/data-integrity.md](docs/FEATURES/data-integrity.md)**: CRC32 implementation details
 
 ## Future Enhancements
 
