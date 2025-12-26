@@ -9,6 +9,7 @@ Hint files are companion metadata files that enable fast database recovery (40,0
 - **Per-data-file**: Each data file (`.data`) has a corresponding hint file (`.hint`)
 - **Crash safe**: Atomic file operations ensure hint files are consistent
 - **Optional but recommended**: Recovery works without hint files but much slower
+- **Incremental recovery**: Version 2 hint files support scanning only new data since hint creation
 
 ## Why "Hint" Files?
 
@@ -19,53 +20,45 @@ The name comes from Bitcask terminology—they provide "hints" about where keys 
 |--------|------------|------------|
 | Content | Key metadata only | Full records (keys + values) |
 | Size | ~50 bytes per key | Full record size (key + value + overhead) |
-| Purpose | Fast index重建 | Actual data storage |
+| Purpose | Fast index rebuild | Actual data storage |
 | Recovery speed | 68K+ keys/sec | 4K-8K keys/sec (full scan) |
-| Generated | Automatically during write/compaction | All writes go here |
+| Generated | After compaction | All writes go here |
+| Format | Version 1: 32-byte header<br>Version 2: 48-byte header | 32-byte fixed header |
 
-## Relationship with Checkpoint System
+## Hint File Format - Version 2
 
-BitBarrel has **two complementary systems** for fast recovery:
+BitBarrel uses version 2 hint files as the current format, with backward compatibility for version 1.
 
-### Checkpoint System
-- **Files**: `.cpt` (full) and `.inc` (incremental) checkpoint files
-- **Content**: Complete `KeyDir` index persistence (all keys across all data files)
-- **Purpose**: Load entire index from checkpoint without any data file scanning
-- **Location**: Separate checkpoint directory (configurable)
-- **Recovery flow**: Primary recovery path - load checkpoint first if available
-
-### Hint Files
-- **Files**: `.hint` files (one per data file)
-- **Content**: Key metadata for specific data file only
-- **Purpose**: Rebuild `KeyDir` from metadata without scanning full data files
-- **Location**: Same directory as corresponding `.data` files
-- **Recovery flow**: Secondary recovery path - used when checkpoints unavailable
-
-### How They Work Together
-1. **Recovery priority**: Checkpoints → Hint files → Full data file scan
-2. **Checkpoint available**: Load entire `KeyDir` from checkpoint (fastest)
-3. **No checkpoint**: Use hint files to rebuild `KeyDir` (still fast: 68K+ keys/sec)
-4. **No hint files**: Fall back to full data file scan (slowest)
-
-### Combined Benefits
-- **Maximum recovery speed**: Checkpoints provide instant index loading
-- **Redundancy**: Hint files provide backup recovery method
-- **Flexibility**: Can use either system independently
-- **Performance**: Both contribute to the 68K+ keys/sec recovery speeds in README
-
-## File Format
-
-### Hint File Header (32 bytes)
+### Hint File Header (Version 2: 48 bytes)
 ```
 Offset  Size  Field        Description
 0       4     magic        Magic bytes: ['H', 'I', 'N', 'T']
-4       4     version      Format version (currently 1)
+4       4     version      Format version (currently 2)
+8       8     timestamp    Creation timestamp (Unix epoch)
+16      4     entryCount   Number of entries in hint file
+20      4     dataFileId   Associated data file ID (e.g., 000001)
+24      8     lastScanPos  Byte offset where hint file stopped scanning
+32      8     dataFileSize  Size of data file when hint was created
+40      4     crc32        Header CRC32 checksum (covers first 40 bytes)
+44      4     reserved     Reserved for future use
+```
+
+### Version 1 Header (for backward compatibility: 32 bytes)
+```
+Offset  Size  Field        Description
+0       4     magic        Magic bytes: ['H', 'I', 'N', 'T']
+4       4     version      Format version (1)
 8       8     timestamp    Creation timestamp (Unix epoch)
 16      4     entryCount   Number of entries in hint file
 20      4     dataFileId   Associated data file ID (e.g., 000001)
 24      4     crc32        Header CRC32 checksum
 28      4     reserved     Reserved for future use
 ```
+
+**Key changes in Version 2:**
+- Added `lastScanPos` and `dataFileSize` fields for incremental recovery
+- Header size increased from 32 to 48 bytes
+- CRC covers first 40 bytes instead of 28 bytes
 
 ### Entry Format
 Each entry consists of:
@@ -93,8 +86,10 @@ type
     timestamp*: int64           # Creation timestamp
     entryCount*: uint32         # Number of entries
     dataFileId*: uint32         # Associated data file ID
+    lastScanPos*: uint64        # Byte offset where scan stopped (v2+)
+    dataFileSize*: uint64       # Data file size at creation (v2+)
     crc32*: uint32              # Header checksum
-    reserved*: array[4, byte]
+    reserved*: array[8, byte]   # Reserved for future use
 
   HintEntry* = object
     key*: string                # Key string
@@ -106,60 +101,98 @@ type
     deleted*: bool              # True if this is a tombstone
 ```
 
-### Hint File Generation
-Hint files are automatically created:
+## Incremental Recovery (Version 2)
 
-1. **During compaction**: New data files get corresponding hint files
-2. **On-demand**: Can be generated for existing data files via utility
-3. **Background**: Low-priority task during idle periods
+Version 2 hint files enable incremental recovery, which prevents data loss in critical scenarios.
 
-### Recovery Process
-The recovery engine (`src/storage/recovery.nim`) prioritizes hint files:
+### How It Works
+
+When a system crashes after a hint file was created but before new data was flushed to disk:
+
+1. **Load hint file entries** into KeyDir (fast metadata-only operation)
+2. **Check file size** - if current data file is larger than hint's `dataFileSize`
+3. **Scan only the tail** - from `lastScanPos` to end of file
+4. **Merge with hint entries** - newer timestamps win (prevents stale data)
+
+### Example Scenario
+
+```
+Timeline:
+1. Hint file created at byte offset 1000 (records: key1, key2)
+2. More writes occur, file grows to 2000 bytes (adds: key3, key4)
+3. System crashes
+
+Recovery with v2 hint file:
+1. Load hint file entries (key1, key2 from position 0-1000)
+2. Detect dataFileSize (1000) < currentFileSize (2000)
+3. Scan tail from offset 1000-2000
+4. Retrieve key3, key4 from tail
+5. All 4 keys recovered
+```
+
+**Without incremental recovery (v1):** key3 and key4 would be lost.
+
+### Code Example
 
 ```nim
 proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
-  ## Attempt to recover using a hint file (much faster than full scan)
-  let hintPath = getHintPath(filePath)
+  ## Attempt recovery using hint file with incremental scan
 
-  if not hintFileExists(hintPath):
-    return false  # Fall back to full scan
+  # Load hint file
+  let (header, entries, success) = readHintFile(hintPath)
 
-  # Validate and load hint file
-  if validateHintFile(hintPath):
-    engine.stats.hintFilesUsed += 1
-    return loadKeyDirFromHint(hintPath, engine.keyDir) >= 0
-  else:
-    engine.stats.hintFilesInvalid += 1
-    return false
+  # Load entries into KeyDir
+  loadKeyDirFromHint(hintPath, engine.keyDir)
+
+  # Incremental recovery: scan tail if file grew
+  if header.version >= 2 and currentFileSize > header.lastScanPos:
+    scanFileFromPosition(filePath, header.lastScanPos, currentFileSize)
+
+  return true
 ```
 
-**Recovery flow**:
-1. Check for hint file for each data file
-2. If valid hint file exists, load keys from it (fast path)
-3. If no hint file or invalid, scan data file (slow path)
-4. Statistics track: `hintFilesUsed`, `filesFromHint`, `filesFromScan`
+### When Hint Files Are Created
+
+Hint files are currently generated:
+1. **After compaction**: New data files get corresponding hint files automatically
+2. **On barrel close**: Hint file generated before closing to capture all data
+
+### Recovery Process
+
+The recovery engine (`src/storage/recovery.nim`) handles both version 1 and version 2 hint files:
+
+**For v2 hint files:**
+1. Load hint file entries into KeyDir
+2. If data file grew after hint creation, scan only the new tail
+3. Statistics track: `hintFilesUsed`, `filesFromHint`, `totalRecords`
+
+**For v1 hint files:**
+1. Load hint file entries into KeyDir (no incremental scan)
+2. Falls back to full scan if data file is newer than hint
+3. Recovery still works, but may need to scan entire file
 
 ## Performance Characteristics
 
 ### Recovery Performance
-- **With hint files**: 40,000+ keys/second (memory/CPU bound)
+- **With v2 hint files (no new data)**: 40,000+ keys/second (memory/CPU bound)
+- **With v2 hint files (with new data tail)**: 40,000+ core keys + tail scan (fast)
 - **Without hint files**: 4,000-8,000 keys/second (disk I/O bound)
 - **Speedup**: 5-10× faster recovery
 
 ### Space Overhead
 - **Per key**: ~50 bytes (vs. full record which can be kilobytes)
+- **v2 header overhead**: +16 bytes per hint file (for incremental recovery)
 - **Typical ratio**: Hint files are 1-5% the size of data files
-- **Compression**: Hint files are not compressed (already minimal size)
 
 ### Generation Cost
-- **Write overhead**: Minimal - appends to hint file during data writes
+- **Write overhead**: Minimal - sequential write after file operations
 - **Compaction overhead**: Required during compaction (already doing disk I/O)
-- **Memory usage**: Temporary buffers during generation
+- **Memory usage**: Temporary buffers during generation (~50MB for 1M keys)
 
 ## Specialized Hint Files
 
 ### Range Hint Files (`rangehint.nim`)
-For `bmRangedCritBit` mode with partitioned datasets:
+For `bmHugeCritBit` mode with partitioned datasets:
 - Magic: `['R', 'H', 'N', 'T']`
 - Associates entries with specific `rangeId`
 - Enables lazy loading/unloading of range partitions
@@ -174,62 +207,60 @@ For `bmCritBit` mode with sorted key trees:
 Hint file behavior is controlled by configuration:
 
 ```yaml
-storage:
-  data_dir: "./data"
-  recovery:
-    use_hint_files: true           # Enable hint file usage (default: true)
-    validate_hint_files: true      # Validate CRC32 on load (default: true)
-    generate_missing_hints: true   # Generate missing hint files on recovery (default: false)
-    hint_file_compression: false   # Not currently supported
+recovery:
+  use_hint_files: true           # Enable hint file usage (default: true)
+  validate_hint_files: true      # Validate CRC32 on load (default: true)
 ```
 
 ## Best Practices
 
 1. **Keep hint files**: Never delete `.hint` files - they're essential for fast recovery
-2. **Generate for existing data**: Use `nim c -r examples/hintfile_generator.nim` to create hint files for legacy data
+2. **Generate for existing data**: Hint files are created after compaction
 3. **Validate periodically**: Check hint file integrity during maintenance
 4. **Backup with data files**: Always backup hint files with their corresponding data files
-5. **Monitor generation**: Ensure new data files get hint files (check logs)
+5. **Upgrade to v2**: v2 hint files provide better data safety with incremental recovery
 
 ## Troubleshooting
 
 ### Missing Hint Files
-- Check if `use_hint_files` is enabled in configuration
+- Check if `useHintFiles` is enabled in configuration
 - Verify file permissions in data directory
-- Check logs for hint file generation errors
-- Generate missing hint files with utility tool
+- Check that compaction has run (hint files created after compaction)
+- Recovery works without hint files, just slower
 
 ### Corrupted Hint Files
-- Enable `validate_hint_files` to detect corruption early
-- Delete corrupted hint files - they'll be regenerated from data file
+- Enable `validateHintFiles` to detect corruption early
+- Delete corrupted hint files - recovery will scan data file instead
 - Check disk integrity if hint files frequently corrupt
 - Consider filesystem issues (power loss, bad sectors)
+
+### Missing Data After Recovery
+- Verify you're using v2 hint files for incremental recovery
+- Check logs for "Scanning new bytes from..." messages
+- v1 hint files don't support incremental recovery
 
 ### Slow Recovery
 - Verify hint files exist for all data files
 - Check if recovery is falling back to full scans (`filesFromScan` in stats)
 - Monitor disk I/O during recovery
-- Consider generating hint files in advance
+- Ensure v2 hint files are being generated
 
 ## API Reference
 
 The hint file API is available in `src/storage/hintfile.nim`:
 
 ```nim
-# Write a hint file
-let entries = @[HintEntry(key: "user:1", recordPos: 0, valuePos: 20, ...)]
-let success = writeHintFile("000001.hint", entries, 1'u32)
+# Write a v2 hint file
+let entries = @[HintEntry(key: "user:1", recordPos: 100, valuePos: 120, ...)]
+let dataFileSize = getFileSize("000001.data")
+let success = writeHintFile("000001.hint", 1'u32, entries, dataFileSize)
 
-# Read a hint file
-let (header, entries) = readHintFile("000001.hint")
+# Read a hint file (supports v1 and v2)
+let (header, entries, success) = readHintFile("000001.hint")
 
 # Validate a hint file
 if validateHintFile("000001.hint"):
-  echo "Hint file is valid"
-
-# Generate hint file from data file
-let count = generateHintFileFromData("000001.data", "000001.hint")
-echo "Generated hint file with ", count, " entries"
+  echo "Hint file is valid (version ", header.version, ")"
 ```
 
 ## Testing
@@ -238,22 +269,34 @@ Run hint file tests:
 
 ```bash
 # Test hint file I/O
-nim c -r --path:src tests/test_hintfile.nim
+nim c -r tests/recovery/test_hintfile.nim
 
 # Test recovery with hint files
-nim c -r --path:src tests/test_recovery.nim
+nim c -r tests/recovery/test_recovery.nim
 
-# Test hint file generation
-nim c -r --path:src examples/hintfile_generator.nim
-
-# Run all storage tests
-nimble testStorage
+# Run all recovery tests
+nimble testRecovery
 ```
 
 ## Migration and Compatibility
 
-- **Version compatibility**: Hint files are versioned; old formats remain readable
-- **Missing hint files**: Recovery works without them (slower)
+- **Version compatibility**: Hint files are versioned; v2 reads both v1 and v2 formats
+- **v1 compatibility**: Old v1 hint files still work, but don't support incremental recovery
+- **Missing hint files**: Recovery works without them (slower, but safe)
 - **Regeneration**: Hint files can always be regenerated from data files
 - **Cross-platform**: Hint files are binary compatible across platforms (same endianness)
 - **Backup/restore**: Must preserve `.hint` → `.data` file relationships
+
+## Version History
+
+### Version 2 (Current) - 2025-12-26
+- Added `lastScanPos` field for incremental recovery
+- Added `dataFileSize` field to track data file size at hint creation
+- Header size increased from 32 to 48 bytes
+- Prevents data loss when crashes occur after hint generation
+- Backward compatible with v1 hint files
+
+### Version 1 (Legacy)
+- Basic hint file format with 32-byte header
+- Full hint file or full scan recovery
+- If data file grew after hint creation, entire file rescanned
