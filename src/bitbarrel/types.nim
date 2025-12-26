@@ -94,6 +94,12 @@ type
     timeStarted*: Time
     timeCompleted*: Time
 
+  CompactionState* = object
+    inProgress*: bool             # Whether compaction is active
+    startTime*: int64             # When compaction started (epoch timestamp)
+    oldFileId*: uint32            # File being compacted
+    newFileId*: uint32            # New file for writes + compacted data
+
   # Recovery configuration
   RecoveryConfig* = object
     enabled*: bool
@@ -159,6 +165,32 @@ type
 
   # Range partition types (used by bmHugeCritBit)
   RangeId* = uint32
+
+  AccessModel* = enum
+    amHash = "hash"
+    amCritBit = "critbit"
+
+  RangeMetadata* = object
+    id*: RangeId
+    keyCount*: int64
+    lastAccess*: int64
+    hintPath*: string
+    isLoaded*: bool
+    isDirty*: bool
+    minKey*: string
+    maxKey*: string
+    accessModel*: AccessModel
+
+  RangeManagementConfig* = object
+    enabled*: bool
+    splitThresholdKeys*: int = 50_000
+    mergeThresholdKeys*: int = 10_000
+    maxRangeSizeHintMB*: int = 100
+    minRangeSizeHintMB*: int = 1
+    autoSplit*: bool = true
+    autoMerge*: bool = true
+    compactOnSplit*: bool = false
+    healthCheckInterval*: int = 300
 
   # RangeKeyDir entry for bmHugeCritBit mode
   RangeKeyDirEntry* = object
