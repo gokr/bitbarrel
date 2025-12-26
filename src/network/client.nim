@@ -180,6 +180,8 @@ proc createBarrel*(client: var BitBarrelClient, name: string, config: string = "
 
   let req = Request(command: cmdCreateBarrel, key: name, value: config)
   let resp = client.sendAndWait(req)
+  if resp.status != statusOk:
+    echo "[Client] createBarrel failed: status=", resp.status, ", error=", resp.value
   return resp.status == statusOk
 
 proc openBarrel*(client: var BitBarrelClient, name: string): bool =
