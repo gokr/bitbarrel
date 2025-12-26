@@ -55,7 +55,7 @@ nimble test
 nim c -r tests/test_storage.nim
 nim c -r tests/test_keydir.nim
 nim c -r tests/test_integration.nim
-nim c -r tests/test_merge.nim      # Merge/compaction tests
+nim c -r tests/recovery/test_compact.nim  # Compaction tests
 nim c -r tests/test_hintfile.nim   # Hint file tests
 nim c -r tests/test_recovery.nim   # Recovery with hint support
 ```
@@ -96,7 +96,7 @@ This BitBarrel uses the Bitcask storage model:
 1. **DataFile**: Handles reading/writing to disk
 2. **KeyDir**: Thread-safe in-memory hash index
 3. **Record**: Encodes/decodes key-value pairs
-4. **Merge**: Background compaction for space reclamation
+4. **Compaction**: Background compaction for space reclamation
 5. **HintFile**: Binary format for fast recovery
 6. **Write Buffer**: Configurable write batching
 7. **Read Buffer**: LRU cache for hot data

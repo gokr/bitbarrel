@@ -123,7 +123,7 @@ To enable compression on an existing BitBarrel deployment:
 1. Build BitBarrel with compression support
 2. Update configuration to enable compression
 3. New writes will use compression automatically
-4. Old records remain readable and are gradually compressed during merge operations
+4. Old records remain readable and are gradually compressed during compaction operations
 5. No data migration is required
 
 ## Troubleshooting

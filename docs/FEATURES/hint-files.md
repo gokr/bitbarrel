@@ -21,7 +21,7 @@ The name comes from Bitcask terminology—they provide "hints" about where keys 
 | Size | ~50 bytes per key | Full record size (key + value + overhead) |
 | Purpose | Fast index重建 | Actual data storage |
 | Recovery speed | 68K+ keys/sec | 4K-8K keys/sec (full scan) |
-| Generated | Automatically during write/merge | All writes go here |
+| Generated | Automatically during write/compaction | All writes go here |
 
 ## Relationship with Checkpoint System
 
@@ -109,7 +109,7 @@ type
 ### Hint File Generation
 Hint files are automatically created:
 
-1. **During merge/compaction**: New data files get corresponding hint files
+1. **During compaction**: New data files get corresponding hint files
 2. **On-demand**: Can be generated for existing data files via utility
 3. **Background**: Low-priority task during idle periods
 
@@ -153,7 +153,7 @@ proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
 
 ### Generation Cost
 - **Write overhead**: Minimal - appends to hint file during data writes
-- **Merge overhead**: Required during compaction (already doing disk I/O)
+- **Compaction overhead**: Required during compaction (already doing disk I/O)
 - **Memory usage**: Temporary buffers during generation
 
 ## Specialized Hint Files

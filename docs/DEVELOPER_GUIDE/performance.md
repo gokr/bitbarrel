@@ -147,7 +147,7 @@ kvs/
 │       └── readbuffer.nim
 │       └── recovery.nim
 │       ├── checkpoint.nim
-│       └── merge.nim
+│       └── compact.nim
 │   └── kvs.nim
 │   └── utils/
 │       ├── demo_output.nim

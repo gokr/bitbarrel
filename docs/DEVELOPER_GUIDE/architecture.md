@@ -122,7 +122,7 @@ BitBarrel provides four sync modes to balance performance and durability:
    - Each write waits for disk confirmation
    - Safe from power loss
 
-## Merge and Compaction
+## Compaction
 
 Background process reclaims space from deleted/overwritten records:
 
@@ -304,7 +304,7 @@ BitBarrel enhances the classic Bitcask model:
 
 ### Limitations
 - **Memory**: KeyDir requires RAM (practical limit with bmHash: 100M keys)
-- **Write amplification**: Append-only creates overhead (mitigated by merge)
+- **Write amplification**: Append-only creates overhead (mitigated by compaction)
 - **Single writer**: One write queue limits parallelism
 - **No multi-key transactions**: Each operation is atomic
 - **Single-node**: No built-in clustering (future enhancement)

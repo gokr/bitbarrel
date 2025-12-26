@@ -143,9 +143,9 @@ Data file format: [timestamp][keyLen][key][valLen][value]
 Hint file format: [keyLen][key][fileId][position][timestamp]
 ```
 
-### Background Merge and Compaction
+### Background Compaction
 
-Instead of stop-the-world compaction, BitBarrel performs merging in the background using a priority-based algorithm that considers deletion rates and file sizes.
+Instead of stop-the-world compaction, BitBarrel performs compaction in the background using a priority-based algorithm that considers deletion rates and file sizes.
 
 ```nim
 # Configurable thresholds
@@ -234,7 +234,7 @@ var sessions = openBarrel("sessions.db", cacheConfig())
 var users = openBarrel("users.db", criticalConfig())
 var analytics = openBarrel("analytics.db", batchConfig())
 
-# Each can have different sync modes, buffer sizes, and merge policies
+# Each can have different sync modes, buffer sizes, and compaction policies
 proc cacheConfig(): BarrelConfig =
   result = defaultBarrelConfig()
   result.syncMode = UserSyncMode.None
@@ -281,7 +281,7 @@ graph TB
         C1[KeyDir / Index]
         C2[DataFile]
         C3[Recovery]
-        C4[Merge/Compaction]
+        C4[Compaction]
         C5[Hint Files]
     end
 ```
@@ -389,7 +389,7 @@ graph LR
 - Automatic persistence and crash recovery
 - Simple KV operations only
 - Hint files for fast recovery (68K+ keys/sec)
-- Background merge/compaction
+- Background compaction
 - True multi-threaded access
 
 **When to choose BitBarrel**: When data exceeds memory, when you need durable storage by default, or when simplicity and performance matter more than Redis's rich data structures. For in-memory caching and complex data operations, Redis excels.
