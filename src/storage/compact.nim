@@ -3,8 +3,11 @@
 ## This module handles compaction of a single data file to reclaim space
 ## from deleted and expired records.
 
-import std/[os, times, strformat, strutils, locks, atomics, typedthreads, tables]
+import std/[os, times, strformat, strutils, locks, atomics, typedthreads, tables, parseutils, options]
 import ../bitbarrel/types, datafile, keydir, record, critbitindex
+
+const
+  COMPACTION_MARKER* = ".compacting"  # Marker file name for crash recovery
 
 type
   # Callback type for updating index entries after compaction
@@ -16,10 +19,14 @@ type
   # Callback type for notifying compaction completion - takes barrel and new file ID
   CompactCallbackProc* = proc(barrel: pointer, newFileId: uint32) {.gcsafe.}
 
+  # Callback type for getting current entry (for shadowing check in non-blocking compaction)
+  IndexGetProc* = proc(key: string): Option[KeyDirEntry] {.gcsafe.}
+
   CompactControllerObj* = object
     config*: types.CompactConfig
     updateEntry*: IndexUpdateProc     # Callback to update index (KeyDir or CritBit)
     clearIndex*: IndexClearProc       # Callback to clear index before compaction
+    getEntry*: IndexGetProc           # Callback to get current entry (for shadowing check)
     compactCallback*: CompactCallbackProc  # Callback after compaction completes
     compactCallbackData*: pointer     # User data for callback (e.g., pointer to Barrel)
     # Auto-compaction support
@@ -53,6 +60,42 @@ proc `=destroy`*(controller: var CompactControllerObj) =
   # These are designed to be safe to call multiple times
   deinitLock(controller.compactLock)
   deinitCond(controller.compactCondition)
+
+# Compaction marker file functions for crash recovery
+
+proc writeCompactionMarker*(barrelPath: string, oldFileId, newFileId: uint32) =
+  ## Write marker file indicating compaction in progress
+  ## Used for crash recovery to detect incomplete compaction
+  let markerPath = barrelPath / COMPACTION_MARKER
+  let content = fmt("{oldFileId},{newFileId},{getTime().toUnix}")
+  writeFile(markerPath, content)
+
+proc readCompactionMarker*(barrelPath: string): tuple[exists: bool, oldId, newId: uint32, timestamp: int64] =
+  ## Read compaction marker if it exists
+  ## Returns (exists, oldFileId, newFileId, timestamp)
+  let markerPath = barrelPath / COMPACTION_MARKER
+  if not fileExists(markerPath):
+    return (false, 0'u32, 0'u32, 0'i64)
+
+  try:
+    let content = readFile(markerPath)
+    let parts = content.split(',')
+    if parts.len >= 3:
+      var oldId, newId: uint
+      var ts: int64
+      if parseUInt(parts[0], oldId) > 0 and parseUInt(parts[1], newId) > 0:
+        discard parseBiggestInt(parts[2], ts)
+        return (true, oldId.uint32, newId.uint32, ts)
+  except IOError, ValueError:
+    discard
+
+  return (false, 0'u32, 0'u32, 0'i64)
+
+proc removeCompactionMarker*(barrelPath: string) =
+  ## Remove compaction marker after successful compaction or recovery
+  let markerPath = barrelPath / COMPACTION_MARKER
+  if fileExists(markerPath):
+    removeFile(markerPath)
 
 # Forward declarations
 proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
@@ -438,3 +481,117 @@ proc shutdown*(controller: CompactController) =
     controller.stopCompactWorker()
     deinitLock(controller.compactLock)
     deinitCond(controller.compactCondition)
+
+# Non-blocking compaction support
+
+proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
+                                 fileId: uint32, newFile: var DataFile,
+                                 compactionStart: int64): bool =
+  ## Perform non-blocking compaction: compact oldFile → newFile
+  ## The newFile is already open and may contain new writes during compaction.
+  ## This proc checks for shadowing: if a record was written during compaction
+  ## (timestamp >= compactionStart and KeyDir has newer version), skip writing it.
+  ##
+  ## Returns true if successful, false if failed
+
+  if not controller.config.enabled:
+    return false
+
+  echo fmt("Starting non-blocking compaction: file={fileId}, compactionStart={compactionStart}")
+
+  controller.compactInProgress = true
+  controller.stats.timeStarted = getTime()
+  controller.stats.recordsScanned = 0
+  controller.stats.recordsKept = 0
+  controller.stats.recordsDropped = 0
+  controller.stats.bytesScanned = 0
+  controller.stats.bytesWritten = 0
+
+  try:
+    # Open the original file for reading
+    var originalFile = datafile.open(dataPath, fileId)
+    defer: originalFile.close()
+
+    controller.stats.bytesScanned = originalFile.size.int64
+
+    # Two-pass compaction optimized for memory:
+    # Pass 1: Build map of key -> (position, timestamp, isTombstone, recordSize)
+    #         Do NOT store value - re-read in Pass 2
+    # Pass 2: Write non-tombstone records, checking for shadowing
+
+    type KeyInfo = tuple[pos: uint64, timestamp: int64, isTombstone: bool, recordSize: uint32]
+    var latestRecords: Table[string, KeyInfo]
+
+    # Pass 1: Find latest record for each key
+    var filePos: uint64 = HEADER_SIZE.uint64  # Skip header
+
+    try:
+      while filePos < originalFile.size:
+        let currentPos = filePos
+        let (key, value, timestamp, recordSize) = originalFile.readRecordAt(filePos)
+        filePos += recordSize.uint64
+        inc(controller.stats.recordsScanned)
+
+        let isTombstone = value.len == 0
+        let isExpiredRecord = isExpired(timestamp)
+
+        # Track this as the latest record for this key (overwrites previous entries)
+        # Don't store value - we'll re-read it in Pass 2
+        latestRecords[key] = (currentPos, timestamp, isTombstone or isExpiredRecord, recordSize)
+
+    except IOError:
+      discard  # End of file or read error
+
+    # Pass 2: Write only live (non-tombstone, non-expired) records, checking for shadowing
+    for key, info in latestRecords:
+      if info.isTombstone:
+        inc(controller.stats.recordsDropped)
+        continue
+
+      # Check if this record was shadowed by a write during compaction
+      # A record is shadowed if:
+      # 1. Its timestamp is less than compactionStart (it predates compaction)
+      # 2. AND the current KeyDir has a newer version
+      if info.timestamp < compactionStart and controller.getEntry != nil:
+        let currentEntry = controller.getEntry(key)
+        if currentEntry.isSome():
+          let entry = currentEntry.get()
+          # If KeyDir has a newer timestamp, this record was shadowed - skip it
+          if entry.timestamp > info.timestamp:
+            inc(controller.stats.recordsDropped)
+            continue
+
+      # Re-read value from original file (memory-efficient)
+      let (readKey, readValue, readTimestamp, _) = originalFile.readRecordAt(info.pos)
+
+      # Write the record to new file
+      let newPos = newFile.appendRecord(readKey, readValue, readTimestamp)
+      controller.stats.bytesWritten += info.recordSize.int64
+
+      # Update index with new position using callback
+      if controller.updateEntry != nil:
+        controller.updateEntry(key, KeyDirEntry(
+          fileId: newFile.fileId,
+          recordPos: newPos.recordPos,
+          valuePos: newPos.valuePos,
+          valueSize: newPos.valueSize,
+          timestamp: readTimestamp,
+          recordSize: newPos.recordSize,
+          deleted: false
+        ))
+      inc(controller.stats.recordsKept)
+
+    echo fmt("Non-blocking compaction completed!")
+    echo fmt("   Records kept: {controller.stats.recordsKept}")
+    echo fmt("   Records dropped: {controller.stats.recordsDropped}")
+    echo fmt("   Time: {(getTime() - controller.stats.timeStarted).inSeconds} seconds")
+
+    controller.stats.timeCompleted = getTime()
+    controller.compactInProgress = false
+
+    return true
+
+  except Exception as e:
+    echo fmt("Error during non-blocking compaction: {e.msg}")
+    controller.compactInProgress = false
+    return false
