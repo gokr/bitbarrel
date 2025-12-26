@@ -56,7 +56,7 @@ The test suite has been significantly enhanced with **35+ new edge case tests** 
 #### 3. **Crash Recovery Testing** (`test_crash_recovery.nim`)
 12 new tests for various crash scenarios:
 - **Process Termination**: Mid-write, during file rotation
-- **Partial Data**: Truncated checkpoints, partial records
+- **Partial Data**: Truncated hint files, partial records
 - **Missing Files**: Hint files, data files
 - **Sequential Crashes**: Multiple crash/recovery cycles
 - **Power Loss**: Simulated power loss mid-write
@@ -65,12 +65,11 @@ The test suite has been significantly enhanced with **35+ new edge case tests** 
 **Test Scenarios:**
 - Recovery after process killed mid-write
 - Recovery after process killed during file rotation
-- Recovery with partial checkpoint
+- Recovery with partial hint file (v2 incremental recovery)
 - Recovery when hint files are missing
 - Recovery with multiple corrupted files
 - Multiple crashes in sequence
 - Recovery after power loss simulation
-- Recovery with checkpoint + data files
 - Recovery cancellation during operation
 - Recovery progress tracking
 - Recovery with tombstone records
@@ -107,7 +106,7 @@ The test suite has been significantly enhanced with **35+ new edge case tests** 
 #### 6. **WebSocket Edge Cases** (expanded `test_server.nim`)
 5 new network resilience tests:
 - **Fragmentation**: Large message fragmentation handling (50KB)
-- **Size Limits**: Maximum message sizes (64KB keys, 1MB values)
+- **Size Limits**: Maximum message sizes (64KB keys, 32MB values)
 - **Connection Reset**: Graceful recovery from connection loss
 - **Keepalive**: Pong timeout handling
 - **Concurrent Connections**: Multiple simultaneous WebSocket clients
@@ -233,7 +232,7 @@ The test suite is organized into 6 categories:
 - ✅ File corruption (CRC32, bit flips)
 - ✅ Missing files (hint files, data files)
 - ✅ Sequential crashes (multiple crash cycles)
-- ✅ Checkpoint recovery (partial checkpoints)
+- ✅ Incremental hint file recovery (v2 - scan tail only)
 
 ### Concurrency Coverage
 - ✅ Multi-threaded writes (real threading, not simulated)
@@ -259,7 +258,7 @@ The test suite is organized into 6 categories:
 
 ### Network Coverage
 - ✅ WebSocket fragmentation (large messages)
-- ✅ Maximum message sizes (64KB keys, 1MB values)
+- ✅ Maximum message sizes (64KB keys, 32MB values)
 - ✅ Connection reset (graceful recovery)
 - ✅ Keepalive (ping/pong timeouts)
 - ✅ Concurrent connections (multiple clients)

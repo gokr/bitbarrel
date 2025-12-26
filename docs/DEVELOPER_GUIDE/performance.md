@@ -146,7 +146,6 @@ kvs/
 │       ├── writebuffer.nim
 │       └── readbuffer.nim
 │       └── recovery.nim
-│       ├── checkpoint.nim
 │       └── compact.nim
 │   └── kvs.nim
 │   └── utils/

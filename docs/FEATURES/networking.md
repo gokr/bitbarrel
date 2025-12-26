@@ -12,7 +12,7 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 - Barrel management: CREATE_BARREL, OPEN_BARREL, USE_BARREL, CLOSE_BARREL, LIST_BARRELS, DROP_BARREL
 - Status codes: OK, NOT_FOUND, ERROR, INVALID, NO_BARREL, BARREL_EXISTS, BARREL_NOT_FOUND
 - Big-endian encoding for cross-platform compatibility
-- Size limits: 64KB max key, 1MB max value
+- Size limits: 64KB max key, 32MB max value
 
 ### Session & Barrel Registry (`src/network/session.nim`)
 - Session management per WebSocket connection
