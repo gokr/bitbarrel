@@ -58,7 +58,7 @@ type
 
 const
   MaxKeySize* = 65535       ## 64KB max key size (2 bytes for length)
-  MaxValueSize* = 1048576   ## 1MB max value size
+  MaxValueSize* = 32 * 1024 * 1024  ## 32MB max value size
 
 
 proc writeByte(s: var string, b: byte) =
