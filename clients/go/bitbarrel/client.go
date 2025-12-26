@@ -459,6 +459,212 @@ func (c *Client) Ping() error {
 	return nil
 }
 
+// GetBarrelConfig gets the configuration for a barrel
+func (c *Client) GetBarrelConfig(name string) (string, error) {
+	req := NewRequest(CmdGetBarrelConfig, name, "")
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Status == StatusBarrelNotFound {
+		return "", ErrBarrelNotFound
+	}
+
+	if resp.Status != StatusOk {
+		return "", StatusToError(resp.Status, resp.Value)
+	}
+
+	return resp.Value, nil
+}
+
+// SetBarrelConfig sets the configuration for a barrel
+func (c *Client) SetBarrelConfig(name, config string) error {
+	req := NewRequest(CmdSetBarrelConfig, name, config)
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return err
+	}
+
+	if resp.Status == StatusBarrelNotFound {
+		return ErrBarrelNotFound
+	}
+
+	if resp.Status != StatusOk {
+		return StatusToError(resp.Status, resp.Value)
+	}
+
+	return nil
+}
+
+// RangeQuery queries key-value pairs in range [startKey, endKey)
+// Requires barrel opened in bmCritBit mode
+func (c *Client) RangeQuery(startKey, endKey string, limit int, cursor string) ([]KeyValue, string, bool, error) {
+	if err := c.ensureBarrel(); err != nil {
+		return nil, "", false, err
+	}
+
+	params := RangeQueryRequest{
+		StartKey: startKey,
+		EndKey:   endKey,
+		Limit:    limit,
+		Cursor:   cursor,
+	}
+
+	encoded, err := EncodeRangeRequest(params)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	req := NewRequest(CmdRangeQuery, "", string(encoded))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, "", false, StatusToError(resp.Status, resp.Value)
+	}
+
+	rangeResp, err := DecodeRangeResponse(resp.Value)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	return rangeResp.Items, rangeResp.NextCursor, rangeResp.HasMore, nil
+}
+
+// PrefixQuery queries key-value pairs with prefix
+// Requires barrel opened in bmCritBit mode
+func (c *Client) PrefixQuery(prefix string, limit int, cursor string) ([]KeyValue, string, bool, error) {
+	if err := c.ensureBarrel(); err != nil {
+		return nil, "", false, err
+	}
+
+	params := PrefixQueryRequest{
+		Prefix: prefix,
+		Limit:  limit,
+		Cursor: cursor,
+	}
+
+	encoded, err := EncodePrefixRequest(params)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	req := NewRequest(CmdPrefixQuery, "", string(encoded))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, "", false, StatusToError(resp.Status, resp.Value)
+	}
+
+	rangeResp, err := DecodeRangeResponse(resp.Value)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	return rangeResp.Items, rangeResp.NextCursor, rangeResp.HasMore, nil
+}
+
+// RangeCount counts keys in range [startKey, endKey)
+func (c *Client) RangeCount(startKey, endKey string) (int, error) {
+	if err := c.ensureBarrel(); err != nil {
+		return 0, err
+	}
+
+	params := RangeQueryRequest{
+		StartKey: startKey,
+		EndKey:   endKey,
+		Limit:    0,
+		Cursor:   "",
+	}
+
+	encoded, err := EncodeRangeRequest(params)
+	if err != nil {
+		return 0, err
+	}
+
+	req := NewRequest(CmdRangeCount, "", string(encoded))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return 0, err
+	}
+
+	if resp.Status != StatusOk {
+		return 0, StatusToError(resp.Status, resp.Value)
+	}
+
+	var count int
+	fmt.Sscanf(resp.Value, "%d", &count)
+	return count, nil
+}
+
+// Traverse traverses references from a key using path specification
+func (c *Client) Traverse(key, pathSpec string, options TraverseOptions) ([]TraverseResult, error) {
+	if err := c.ensureBarrel(); err != nil {
+		return nil, err
+	}
+
+	c.mu.Lock()
+	seq := atomic.AddUint32(&c.seq, 1) - 1
+	c.mu.Unlock()
+
+	// Build options byte
+	var optionsByte uint8
+	if options.IncludeFullData {
+		optionsByte |= 0x01
+	}
+	if options.ExtractArrays {
+		optionsByte |= 0x02
+	}
+	if options.FirstOnly {
+		optionsByte |= 0x04
+	}
+
+	tReq := TraverseRequest{
+		Seq:      seq,
+		Key:      key,
+		PathSpec: pathSpec,
+		Options:  optionsByte,
+	}
+
+	encoded, err := EncodeTraverseRequest(tReq)
+	if err != nil {
+		return nil, err
+	}
+
+	req := NewRequest(CmdTraverse, "", string(encoded))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, StatusToError(resp.Status, resp.Value)
+	}
+
+	_, _, results, err := DecodeTraverseResults(resp.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+// TraversePath traverses with default options (include full data, no extraction)
+func (c *Client) TraversePath(key, pathSpec string) ([]TraverseResult, error) {
+	options := TraverseOptions{
+		IncludeFullData: true,
+		ExtractArrays:   false,
+		FirstOnly:       false,
+	}
+	return c.Traverse(key, pathSpec, options)
+}
+
 // Helper functions
 
 func contains(s, substr string) bool {
