@@ -248,16 +248,97 @@ suite "Compaction Tests":
     # Update one key
     check barrel.set("key2", "updated_value2") == true
 
-    # Trigger manual compaction
-    let compacted = barrel.triggerCompact()
-    check compacted == true
+    # Trigger manual compaction (non-blocking)
+    let started = barrel.triggerCompact()
+    check started == true
+
+    # Wait for compaction to complete
+    barrel.waitForCompaction()
 
     # Verify barrel still works
     check barrel.get("key2") == "updated_value2"
     check not barrel.exists("key1")
     check not barrel.exists("key3")
 
-    # Check compaction stats
+    # Check compaction stats (now available after waiting)
     let stats = barrel.getCompactStats()
     check stats.recordsScanned > 0
     check stats.recordsDropped >= 2  # At least 2 tombstones
+
+  test "Non-blocking compaction - writes during compaction":
+    let testDir = setupTest()
+    defer: cleanupTest(testDir)
+
+    let barrelPath = testDir / "000001.data"
+
+    # Create barrel with compaction enabled
+    var config = defaultBarrelConfig()
+    config.autoCompact = true
+    config.compactThreshold = 0.0  # Always compact
+
+    var barrel = openBarrel(barrelPath, config)
+    defer: close(barrel)
+
+    # Add initial data
+    for i in 1..100:
+      check barrel.set("key" & $i, "value" & $i) == true
+
+    # Create fragmentation by deleting half
+    for i in 1..50:
+      check barrel.delete("key" & $i) == true
+
+    # Trigger non-blocking compaction
+    let started = barrel.triggerCompact()
+    check started == true
+
+    # Write new data DURING compaction (this should work)
+    for i in 101..110:
+      check barrel.set("key" & $i, "new_value" & $i) == true
+
+    # Wait for compaction to complete
+    barrel.waitForCompaction()
+
+    # Verify all data is accessible
+    # Old keys that weren't deleted
+    for i in 51..100:
+      check barrel.get("key" & $i) == "value" & $i
+
+    # New keys written during compaction
+    for i in 101..110:
+      check barrel.get("key" & $i) == "new_value" & $i
+
+    # Deleted keys should not exist
+    for i in 1..50:
+      check not barrel.exists("key" & $i)
+
+  test "Compaction marker - write and read":
+    let testDir = setupTest()
+    defer: cleanupTest(testDir)
+
+    # Write marker
+    writeCompactionMarker(testDir, 1'u32, 2'u32)
+
+    # Read marker
+    let (exists, oldId, newId, _) = readCompactionMarker(testDir)
+
+    check exists == true
+    check oldId == 1'u32
+    check newId == 2'u32
+
+    # Remove marker
+    removeCompactionMarker(testDir)
+
+    # Verify removed
+    let (exists2, _, _, _) = readCompactionMarker(testDir)
+    check exists2 == false
+
+  test "Compaction marker - no marker":
+    let testDir = setupTest()
+    defer: cleanupTest(testDir)
+
+    # Read non-existent marker
+    let (exists, oldId, newId, _) = readCompactionMarker(testDir)
+
+    check exists == false
+    check oldId == 0'u32
+    check newId == 0'u32
