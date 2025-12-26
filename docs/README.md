@@ -38,8 +38,7 @@ Detailed documentation for specific BitBarrel features:
   - [Compression](FEATURES/compression.md) - Data compression support
   - [Data Integrity](FEATURES/data-integrity.md) - CRC32 validation
   - [Networking](FEATURES/networking.md) - Network protocol and client
-  - [Checkpoint System](FEATURES/checkpoint.md) - KeyDir persistence for fast recovery
-  - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (68K+ keys/sec)
+  - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
   - [Read-Ahead LRU Buffering](FEATURES/read-buffering.md) - Caching with LRU eviction
 
 ### Historical and Research
