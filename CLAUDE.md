@@ -399,27 +399,30 @@ Always check for and remove compiler warnings:
 - Document known issues in code comments or CLAUDE.md
 
 ### Known Issues
-**ORC Crash in Threading Tests**: Some tests show ORC crash during thread cleanup due to Nim issue #25253. The tests complete successfully before the crash. This is NOT a BitBarrel code issue - it's a confirmed Nim compiler bug.
+**ORC Crash in Some Threading Tests**: Some network tests may show ORC crash during thread cleanup due to Nim issue #25253. This is NOT a BitBarrel code issue - it's a confirmed Nim compiler bug.
 
-**Affected tests:**
-- `test_client.nim` - network client tests
-- `test_compact.nim` - compaction tests (7 tests pass, crash on cleanup)
+**Note**: The compaction tests (`test_compact.nim`) have been fixed through proper thread lifecycle management - waiting for compaction to complete before closing the barrel. This same approach may help with other threading tests.
 
-**Root Cause**: Nim's ORC garbage collector crashes when cleaning up objects with circular references across thread boundaries. The crash happens in `orc.nim:unregisterCycle()` during thread shutdown, after all tests have completed successfully.
+**Potentially affected tests:**
+- `test_client.nim` - network client tests (may crash on cleanup)
 
-**Evidence this is a Nim bug, not BitBarrel code issue**:
-1. Crash location: `nim/orc.nim:unregisterCycle()` - deep inside Nim's GC, not our code
-2. Tests all pass before the crash occurs
-3. Non-threaded tests work perfectly
-4. This matches exactly Nim issue #25253 pattern
+**Root Cause**: Nim's ORC garbage collector can crash when cleaning up objects with circular references across thread boundaries. The crash happens in `orc.nim:unregisterCycle()` during thread shutdown.
 
-**Status**: Actively being investigated by Nim team. There's an "araq-orc-hotfix" branch in Nim repo suggesting active work on this.
+**Workaround**: Ensure threads complete before parent objects are destroyed. See `barrel.nim:close()` for an example:
+```nim
+# Wait for any in-progress compaction to complete before closing
+while barrel.compactionState.inProgress:
+  sleep(10)
+```
 
-To run tests without this issue:
+**Status**: Actively being investigated by Nim team.
+
+To run tests without potential issues:
 ```bash
 nimble testStorage   # Storage layer tests - all pass
 nimble testKeydir    # KeyDir index tests - all pass
 nimble testIntegration # Integration tests - all pass
+nimble testRecovery  # Recovery tests including compaction - all pass
 ```
 
 ## Nim Coding Guidelines
