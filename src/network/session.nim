@@ -1,6 +1,6 @@
 ## Session and Barrel Registry management for BitBarrel network server
 
-import std/[tables, locks, os, options]
+import std/[tables, locks, os, options, strformat]
 import ../bitbarrel/types
 import ../bitbarrel/barrel
 
@@ -13,6 +13,7 @@ type
     barrels*: Table[string, Barrel]  ## name -> Barrel
     dataDir*: string                  ## Base directory for barrel data
     lock*: Lock
+    lastError*: string               ## Last error message for debugging
 
   BarrelError* = object of CatchableError
 
@@ -20,36 +21,54 @@ type
 proc createBarrel*(reg: var BarrelRegistry, name: string, config: BarrelConfig): bool =
   ## Create a new barrel with the given configuration.
   ## Returns true if successful, false if barrel already exists or creation fails.
+  ## Sets reg.lastError with detailed error message on failure.
+  echo fmt"[DEBUG Session] createBarrel called: name='{name}', dataDir='{reg.dataDir}'"
+
   withLock reg.lock:
+    reg.lastError = ""
+
     if name in reg.barrels:
-      return false  # Barrel already exists
+      reg.lastError = fmt"Barrel '{name}' already exists"
+      echo fmt"[DEBUG Session] createBarrel failed: {reg.lastError}"
+      return false
 
     let dataPath = reg.dataDir / (name & ".data")
+    echo fmt"[DEBUG Session] dataPath='{dataPath}', trying to open barrel..."
 
     try:
-      let barrel = openBarrel(dataPath, 1, config)
+      let barrel = openBarrel(dataPath, config)
       reg.barrels[name] = barrel
+      echo fmt"[DEBUG Session] createBarrel succeeded for '{name}'"
       return true
-    except CatchableError:
+    except CatchableError as e:
+      reg.lastError = fmt"Failed to open barrel at '{dataPath}': {e.msg}"
+      echo fmt"[DEBUG Session] createBarrel exception: {reg.lastError}"
+      echo fmt"[DEBUG Session] Exception type: {e.name}, full repr: {e.repr}"
       return false
 
 proc openBarrel*(reg: var BarrelRegistry, name: string): bool =
   ## Open an existing barrel.
   ## Returns true if successful, false if barrel doesn't exist or fails to open.
+  echo fmt"[DEBUG Session] openBarrel called: name='{name}'"
+
   withLock reg.lock:
     if name in reg.barrels:
       return true  # Already open
 
     let dataPath = reg.dataDir / (name & ".data")
+    echo fmt"[DEBUG Session] openBarrel dataPath='{dataPath}'"
 
     if not fileExists(dataPath):
+      echo fmt"[DEBUG Session] openBarrel failed: path does not exist"
       return false
 
     try:
-      let barrel = openBarrel(dataPath, 1, defaultBarrelConfig())
+      let barrel = openBarrel(dataPath, defaultBarrelConfig())
       reg.barrels[name] = barrel
+      echo fmt"[DEBUG Session] openBarrel succeeded for '{name}'"
       return true
-    except CatchableError:
+    except CatchableError as e:
+      echo fmt"[DEBUG Session] openBarrel exception: {e.msg}"
       return false
 
 proc getBarrel*(reg: var BarrelRegistry, name: string): Option[Barrel] =
@@ -150,6 +169,7 @@ proc newBarrelRegistry*(dataDir: string): BarrelRegistry =
   result = BarrelRegistry(
     barrels: initTable[string, Barrel](),
     dataDir: dataDir,
-    lock: Lock()
+    lock: Lock(),
+    lastError: ""
   )
   initLock(result.lock)
