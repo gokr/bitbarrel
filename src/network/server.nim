@@ -96,21 +96,36 @@ proc handleWebSocketMessage*(
     resp.value = "pong"
 
   of cmdCreateBarrel:
+    echo fmt"[DEBUG] cmdCreateBarrel: name='{req.key}', configLen={req.value.len}"
     try:
       let config = if req.value.len > 0:
         parseBarrelConfigJson(req.value)
       else:
         defaultBarrelConfig()
+      echo fmt"[DEBUG] config parsed, dataDir={server.config.dataDir}, calling createBarrel..."
 
       if server.registry.createBarrel(req.key, config):
         resp.status = statusOk
+        echo fmt"[DEBUG] createBarrel succeeded for '{req.key}'"
       else:
-        resp.status = statusBarrelExists
+        # Use detailed error from registry
+        let errorMsg = server.registry.lastError
+        # Check if barrel already exists based on error message
+        if req.key in server.registry.barrels or errorMsg.contains("already exists"):
+          resp.status = statusBarrelExists
+          resp.value = if errorMsg.len > 0: errorMsg else: fmt"Barrel '{req.key}' already exists"
+        else:
+          resp.status = statusError
+          resp.value = if errorMsg.len > 0: errorMsg else: fmt"Failed to create barrel '{req.key}'"
+        echo fmt"[DEBUG] createBarrel failed for '{req.key}' (status: {resp.status}, msg: {resp.value})"
     except ConfigValidationError as e:
       resp.status = statusInvalid
       resp.value = e.msg
-    except CatchableError:
+      echo fmt"[DEBUG] ConfigValidationError: {e.msg}"
+    except CatchableError as e:
       resp.status = statusError
+      resp.value = fmt"Failed to create barrel: {e.msg}"
+      echo fmt"[DEBUG] createBarrel exception: {e.msg}, {e.repr}"
 
   of cmdOpenBarrel:
     if server.registry.openBarrel(req.key):
