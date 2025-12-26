@@ -457,6 +457,10 @@ suite "Integration Tests":
     # Create data file
     discard createTestDataFile(testDir / "000001.data", 1'u32, records)
 
+    # Get data file size for hint file
+    let dataFilePath = testDir / "000001.data"
+    let dataSize = if fileExists(dataFilePath): getFileSize(dataFilePath).uint64 else: 0'u64
+
     # Create corresponding hint file
     var hintEntries: seq[HintEntry]
     for record in records:
@@ -471,7 +475,7 @@ suite "Integration Tests":
       hintEntries.add(entry)
 
     let hintPath = testDir / "000001.hint"
-    check writeHintFile(hintPath, 1'u32, hintEntries) == true
+    check writeHintFile(hintPath, 1'u32, hintEntries, dataSize) == true
 
     # Run recovery with hint files enabled
     let stats = engine.recover()
@@ -480,7 +484,7 @@ suite "Integration Tests":
     check stats.hintFilesUsed == 1
     check stats.filesFromHint == 1
     check stats.filesFromScan == 0
-    check stats.totalRecords == 0  # No records were scanned
+    check stats.totalRecords == 0  # No records were scanned (hint covers entire file)
 
   test "Recovery with hint files - no hint file":
     let engine = initRecoveryEngine(testDir)

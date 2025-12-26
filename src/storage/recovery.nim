@@ -236,6 +236,7 @@ proc readRecordFromFile*(engine: RecoveryEngine, filePath: string, offset: int64
 
 proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
   ## Attempt to recover using a hint file (much faster than full scan)
+  ## Supports incremental recovery: loads hint file, then scans remainder of data file
   let hintPath = getHintPath(filePath)
 
   if not hintFileExists(hintPath):
@@ -254,22 +255,88 @@ proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
   # Load KeyDir from hint file
   try:
     engine.stats.hintFilesUsed += 1
-    let loaded = loadKeyDirFromHint(hintPath, engine.keyDir)
 
-    if loaded < 0:
+    # Read hint file to get header and entries
+    let (header, entries, success) = readHintFile(hintPath)
+    if not success:
       engine.stats.errorCount += 1
       if engine.options.enableVerboseLogging:
-        echo &"Failed to load hint file: {hintPath.extractFilename()}"
+        echo &"Failed to read hint file: {hintPath.extractFilename()}"
       return false
+
+    # Load entries into KeyDir
+    var loaded = 0
+    for entry in entries:
+      let kdEntry = KeyDirEntry(
+        fileId: header.dataFileId,
+        recordPos: entry.recordPos,
+        valuePos: entry.valuePos,
+        valueSize: entry.valueSize,
+        timestamp: entry.timestamp,
+        recordSize: entry.recordSize,
+        deleted: entry.deleted
+      )
+      if engine.keyDir.addIfNewer(entry.key, kdEntry):
+        inc loaded
 
     if engine.options.enableVerboseLogging:
       echo &"Successfully loaded {loaded} entries from hint file: {hintPath.extractFilename()}"
+
+    # Incremental recovery: scan remainder of data file if it grew after hint creation
+    if fileExists(filePath):
+      let currentFileSize = getFileSize(filePath).uint64
+
+      # If data file has new data after hint was created, scan it
+      if header.version >= HINT_VERSION_V2 and currentFileSize > header.lastScanPos:
+        let bytesToScan = currentFileSize - header.lastScanPos
+        if engine.options.enableVerboseLogging:
+          echo &"Scanning {bytesToScan} new bytes from {header.lastScanPos} to {currentFileSize}"
+
+        # Scan from lastScanPos to end of file
+        let file = open(filePath, fmRead)
+        defer: file.close()
+
+        var offset = header.lastScanPos.int64
+        var newRecords = 0
+
+        while offset < currentFileSize.int64:
+          let (record, bytesRead, isValid) = engine.readRecordFromFile(filePath, offset)
+
+          if not isValid or record == Record():
+            if engine.options.skipCorruptRecords:
+              offset += 1
+              engine.stats.corruptRecords += 1
+              continue
+            else:
+              break
+
+          # Create KeyDir entry from record
+          let recordSize = uint32(16 + record.key.len + record.value.len)
+          let valuePos = offset - record.value.len.int64
+          let kdEntry = KeyDirEntry(
+            fileId: header.dataFileId,
+            recordPos: uint64(offset - record.key.len.int64 - record.value.len.int64 - 16),
+            valuePos: uint64(valuePos),
+            valueSize: record.value.len.uint32,
+            timestamp: record.timestamp,
+            recordSize: recordSize,
+            deleted: record.value.len == 0
+          )
+
+          if engine.keyDir.addIfNewer(record.key, kdEntry):
+            newRecords += 1
+
+          offset += int64(bytesRead)
+          engine.stats.totalRecords += 1
+
+        if engine.options.enableVerboseLogging:
+          echo &"Scanned {newRecords} new records from data file tail"
 
     return true
   except Exception as e:
     engine.stats.errorCount += 1
     if engine.options.enableVerboseLogging:
-      echo &"Error loading hint file {hintPath.extractFilename()}: {e.msg}"
+      echo &"Error during hint file recovery {hintPath.extractFilename()}: {e.msg}"
     return false
 
 proc recoverFromFile*(engine: RecoveryEngine, filePath: string): bool =
