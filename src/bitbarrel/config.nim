@@ -53,9 +53,6 @@ proc loadFromEnvironment*(config: var BitBarrelConfig) =
   ## - ``BITBARREL_RECOVERY_ENABLED`` - Enable/disable recovery (true/false)
   ## - ``BITBARREL_RECOVERY_VALIDATE_CHECKSUMS`` - Validate checksums on recovery (true/false)
   ## - ``BITBARREL_RECOVERY_SKIP_CORRUPT_RECORDS`` - Skip corrupt records (true/false)
-  ## - ``BITBARREL_RECOVERY_CHECKPOINT_INTERVAL`` - Checkpoint interval in seconds
-  ## - ``BITBARREL_RECOVERY_CHECKPOINT_SIZE_THRESHOLD`` - Checkpoint size threshold in bytes
-  ## - ``BITBARREL_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS`` - Max incremental checkpoints
   ## - ``BITBARREL_RECOVERY_AUTO_RECOVERY`` - Auto-recover on startup (true/false)
   ##
   ## **Logging settings:**
@@ -120,12 +117,6 @@ proc loadFromEnvironment*(config: var BitBarrelConfig) =
     config.recovery.validateChecksums = parseBool(getEnv("BITBARREL_RECOVERY_VALIDATE_CHECKSUMS"))
   if existsEnv("BITBARREL_RECOVERY_SKIP_CORRUPT_RECORDS"):
     config.recovery.skipCorruptRecords = parseBool(getEnv("BITBARREL_RECOVERY_SKIP_CORRUPT_RECORDS"))
-  if existsEnv("BITBARREL_RECOVERY_CHECKPOINT_INTERVAL"):
-    config.recovery.checkpointInterval = parseInt(getEnv("BITBARREL_RECOVERY_CHECKPOINT_INTERVAL"))
-  if existsEnv("BITBARREL_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"):
-    config.recovery.checkpointSizeThreshold = parseBiggestInt(getEnv("BITBARREL_RECOVERY_CHECKPOINT_SIZE_THRESHOLD"))
-  if existsEnv("BITBARREL_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"):
-    config.recovery.maxIncrementalCheckpoints = parseInt(getEnv("BITBARREL_RECOVERY_MAX_INCREMENTAL_CHECKPOINTS"))
   if existsEnv("BITBARREL_RECOVERY_AUTO_RECOVERY"):
     config.recovery.autoRecovery = parseBool(getEnv("BITBARREL_RECOVERY_AUTO_RECOVERY"))
 

@@ -190,9 +190,6 @@ proc parseRecoveryConfig*(yamlNode: YamlNode): RecoveryConfig =
   result.enabled = getYamlBool(fields, "enabled", true)
   result.validateChecksums = getYamlBool(fields, "validate_checksums", true)
   result.skipCorruptRecords = getYamlBool(fields, "skip_corrupt_records", true)
-  result.checkpointInterval = getYamlInt(fields, "checkpoint_interval", 300)  # 5 minutes
-  result.checkpointSizeThreshold = getYamlInt64(fields, "checkpoint_size_threshold", 10 * 1024 * 1024)  # 10MB
-  result.maxIncrementalCheckpoints = getYamlInt(fields, "max_incremental_checkpoints", 5)
   result.autoRecovery = getYamlBool(fields, "auto_recovery", true)
 
 proc parseLoggingConfig*(yamlNode: YamlNode): LoggingConfig =
@@ -219,7 +216,7 @@ proc getDefaultConfig*(): BitBarrelConfig =
       dataDir: "./data",
       maxFileSize: 1024 * 1024 * 1024,  # 1GB
       maxKeySize: 64 * 1024,            # 64KB
-      maxValueSize: 1024 * 1024,        # 1MB
+      maxValueSize: 32 * 1024 * 1024,   # 32MB
       syncMode: syncImmediate,
       fsyncInterval: 100
     ),
@@ -241,9 +238,6 @@ proc getDefaultConfig*(): BitBarrelConfig =
       enabled: true,
       validateChecksums: true,
       skipCorruptRecords: true,
-      checkpointInterval: 300,  # 5 minutes
-      checkpointSizeThreshold: 10 * 1024 * 1024,  # 10MB
-      maxIncrementalCheckpoints: 5,
       autoRecovery: true
     ),
     logging: LoggingConfig(
