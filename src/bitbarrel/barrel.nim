@@ -61,6 +61,7 @@ proc defaultBarrelConfig*(): BarrelConfig =
     syncMode: UserSyncMode.Sync,
     autoCompact: true,
     compactThreshold: 0.3,
+    compactInterval: 60,        # Check every 60 seconds
     validateCrc: true,  # Validate CRC32 on reads (see docs/CRC.md)
     defaultTtl: 0,              # No expiration by default
     checkExpirationOnRead: true,  # Check and ignore expired records
@@ -276,7 +277,7 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     compactConfig.enabled = true
     compactConfig.maxFileSize = 1024 * 1024 * 1024  # 1GB default
     compactConfig.triggerThreshold = config.compactThreshold
-    compactConfig.compactInterval = 60  # 1 minute
+    compactConfig.compactInterval = config.compactInterval
     compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
 
     # Initialize with appropriate index based on mode
@@ -1083,29 +1084,18 @@ proc deleteBarrel*(path: string): bool =
   ## This removes:
   ## - Data files (*.data)
   ## - Hint files (*.hint)
-  ## - Checkpoint files (*.ckpt, *.ckpt-*)
   ## - Other auxiliary files
   var deleted = true
   let baseDir = parentDir(path)
   let basePath = extractFilename(path)
 
-  for ext in [".data", ".hint", ".compacted", ".ckpt"]:
+  for ext in [".data", ".hint", ".compacted"]:
     let filePath = path & ext
     if fileExists(filePath):
       try:
         removeFile(filePath)
       except OSError:
         deleted = false
-
-  # Delete incremental checkpoint files (pattern: *.ckpt-*)
-  for kind, walkPath in walkDir(baseDir):
-    if kind == pcFile:
-      let fileName = extractFilename(walkPath)
-      if fileName.startsWith(basePath & ".ckpt-"):
-        try:
-          removeFile(walkPath)
-        except OSError:
-          deleted = false
 
   return deleted
 
@@ -1132,7 +1122,9 @@ proc generateHintFileForBarrel*(barrel: Barrel) =
         recordPos: entry.recordPos,
         valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        timestamp: entry.timestamp
+        timestamp: entry.timestamp,
+        recordSize: entry.recordSize,
+        deleted: entry.deleted
       ))
   of bmCritBit:
     for key, entry in barrel.critBit.pairs():
@@ -1141,12 +1133,17 @@ proc generateHintFileForBarrel*(barrel: Barrel) =
         recordPos: entry.recordPos,
         valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        timestamp: entry.timestamp
+        timestamp: entry.timestamp,
+        recordSize: entry.recordSize,
+        deleted: entry.deleted
       ))
   of bmHugeCritBit:
     return  # HugeBarrel has its own hint file handling
 
-  discard writeHintFile(hintPath, barrel.fileId, entries)
+  # Get current data file size for incremental recovery
+  let dataFileSize = if fileExists(barrel.path): getFileSize(barrel.path).uint64 else: 0'u64
+
+  discard writeHintFile(hintPath, barrel.fileId, entries, dataFileSize)
 
 # Compaction operations
 

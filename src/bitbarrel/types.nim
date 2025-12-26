@@ -7,7 +7,7 @@ const
   VERSION* = 1'u32
   HEADER_SIZE* = 32
   MAX_KEY_SIZE* = 64 * 1024  # 64KB
-  MAX_VALUE_SIZE* = 1 * 1024 * 1024  # 1MB
+  MAX_VALUE_SIZE* = 32 * 1024 * 1024  # 32MB
 
 type
   FileHeader* = object
@@ -105,18 +105,7 @@ type
     enabled*: bool
     validateChecksums*: bool
     skipCorruptRecords*: bool
-    checkpointInterval*: int
-    checkpointSizeThreshold*: int64
-    maxIncrementalCheckpoints*: int
     autoRecovery*: bool
-
-  # Checkpoint configuration
-  CheckpointConfig* = object
-    enabled*: bool
-    interval*: int
-    sizeThreshold*: int64
-    maxIncremental*: int
-    compressionEnabled*: bool
 
   # Barrel configuration (high-level API)
   ##
@@ -153,6 +142,7 @@ type
     syncMode*: UserSyncMode
     autoCompact*: bool
     compactThreshold*: float
+    compactInterval*: int   # Seconds between compaction checks (default: 60)
     validateCrc*: bool  # Validate CRC32 on reads (default: true)
     # TTL configuration
     defaultTtl*: int        # Default TTL in seconds (0 = no expiration)
