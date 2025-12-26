@@ -57,6 +57,11 @@ type
     profileName: string
     currentEventOps: int
 
+  MonitorArgs = object
+    barrel: ptr Barrel
+    metrics: BenchmarkMetrics
+    barrelPath: string
+
 const
   QUICK_PROFILE = CompactionProfile(
     name: "Quick",
@@ -99,16 +104,18 @@ proc generateValue(id: int, size: int): string =
   return prefix & repeat('x', padSize)
 
 proc getDataFileSize(barrelPath: string): int64 =
-  let barrelDir = splitFile(barrelPath).dir
-  let searchPattern = if barrelDir == "": "*.data" else: barrelDir / "*.data"
+  # Get the directory and search for .data files
+  let dir = splitFile(barrelPath).dir
+  let baseDir = if dir == "": "." else: dir
 
-  for file in walkFiles(searchPattern):
+  var totalSize: int64 = 0
+  for file in walkFiles(baseDir / "*.data"):
     try:
-      return getFileSize(file)
+      totalSize += getFileSize(file)
     except OSError:
       continue
 
-  return 0
+  return totalSize
 
 proc parseProfile(): CompactionProfile =
   if paramCount() == 0:
@@ -239,12 +246,16 @@ proc runMixedWorkload(barrel: var Barrel, metrics: BenchmarkMetrics,
 
   echo "Mixed workload complete"
 
-proc monitorCompaction(barrel: var Barrel, metrics: BenchmarkMetrics, barrelPath: string) {.thread.} =
+proc monitorCompaction(args: MonitorArgs) {.thread.} =
+  let barrel = args.barrel
+  let metrics = args.metrics
+  let barrelPath = args.barrelPath
+
   var wasCompacting = false
   var currentEvent: CompactionEvent
 
   while not shutdownFlag:
-    let isCompacting = barrel.isCompacting()
+    let isCompacting = barrel[].isCompacting()
 
     if isCompacting and not wasCompacting:
       currentEvent = CompactionEvent(
@@ -265,7 +276,7 @@ proc monitorCompaction(barrel: var Barrel, metrics: BenchmarkMetrics, barrelPath
       currentEvent.durationMs = (currentEvent.endTime - currentEvent.startTime).inMilliseconds
       currentEvent.opsCompletedDuring = metrics.currentEventOps
 
-      let stats = barrel.getCompactStats()
+      let stats = barrel[].getCompactStats()
       currentEvent.recordsScanned = stats.recordsScanned
       currentEvent.recordsKept = stats.recordsKept
       currentEvent.recordsDropped = stats.recordsDropped
@@ -285,7 +296,7 @@ proc monitorCompaction(barrel: var Barrel, metrics: BenchmarkMetrics, barrelPath
 
       wasCompacting = false
 
-    sleep(100)
+    sleep(10)  # Poll every 10ms to catch fast compactions
 
 proc verifyDataIntegrity(barrel: var Barrel, keySpace: Table[string, string]): int =
   echo "Verifying data integrity..."
@@ -310,6 +321,18 @@ proc verifyDataIntegrity(barrel: var Barrel, keySpace: Table[string, string]): i
 
   echo fmt("Integrity check: {checked} keys verified, {errors} errors")
   return errors
+
+proc formatNumber(n: int): string =
+  var s = $n
+  var formatted = ""
+  var count = 0
+  for i in countdown(s.len - 1, 0):
+    if count == 3:
+      formatted = "," & formatted
+      count = 0
+    formatted = s[i] & formatted
+    count += 1
+  return formatted
 
 proc formatBytes(bytes: int64): string =
   if bytes < 1024:
@@ -337,7 +360,7 @@ proc printResults(metrics: BenchmarkMetrics, profile: CompactionProfile) =
   echo "  Compaction Stress Test Results"
   echo "═".repeat(70)
   echo ""
-  echo fmt("Profile: {profile.name} ({profile.totalOps:,} operations)")
+  echo fmt("Profile: {profile.name} ({formatNumber(profile.totalOps)} operations)")
   echo fmt("Workload: {int(profile.readRatio * 100)}% reads, {int((1.0 - profile.readRatio) * 100)}% writes")
   echo fmt("Compaction Threshold: {int(profile.compactThreshold * 100)}%")
   echo ""
@@ -345,11 +368,11 @@ proc printResults(metrics: BenchmarkMetrics, profile: CompactionProfile) =
   echo "┌" & "─".repeat(68) & "┐"
   echo "│ " & "Overall Performance".alignLeft(66) & " │"
   echo "├" & "─".repeat(68) & "┤"
-  echo fmt("│   Total Operations:        {metrics.totalOps:>10,}                          │")
+  echo fmt("│   Total Operations:        {formatNumber(metrics.totalOps):>10}                          │")
   echo fmt("│   Total Duration:          {formatDuration(metrics.totalDurationMs):>10}                          │")
-  echo fmt("│   Overall Throughput:      {metrics.overallOpsPerSec:>10,.0f} ops/sec                 │")
-  echo fmt("│   Read Operations:         {metrics.readOps:>10,} ({metrics.readOpsPerSec:,.0f} ops/sec)      │")
-  echo fmt("│   Write Operations:        {metrics.writeOps:>10,} ({metrics.writeOpsPerSec:,.0f} ops/sec)      │")
+  echo fmt("│   Overall Throughput:      {int(metrics.overallOpsPerSec):>10} ops/sec                 │")
+  echo fmt("│   Read Operations:         {formatNumber(metrics.readOps):>10} ({int(metrics.readOpsPerSec)} ops/sec)      │")
+  echo fmt("│   Write Operations:        {formatNumber(metrics.writeOps):>10} ({int(metrics.writeOpsPerSec)} ops/sec)      │")
   echo "└" & "─".repeat(68) & "┘"
   echo ""
 
@@ -363,7 +386,7 @@ proc printResults(metrics: BenchmarkMetrics, profile: CompactionProfile) =
     let avgTime = metrics.compactions.mapIt(it.durationMs).sum div metrics.totalCompactions
     echo fmt("│   Avg Compaction Time:     {formatDuration(avgTime):>10}                          │")
     let pct = (metrics.opsCompletedDuringCompaction.float / metrics.totalOps.float) * 100
-    echo fmt("│   Ops During Compaction:   {metrics.opsCompletedDuringCompaction:>10,} ({pct:.1f}% of workload)       │")
+    echo fmt("│   Ops During Compaction:   {formatNumber(metrics.opsCompletedDuringCompaction):>10} ({pct:.1f}% of workload)       │")
 
   echo fmt("│   Peak File Size:          {formatBytes(metrics.peakFileSize):>10}                          │")
   echo fmt("│   Final File Size:         {formatBytes(metrics.finalFileSize):>10}                          │")
@@ -391,10 +414,10 @@ proc printResults(metrics: BenchmarkMetrics, profile: CompactionProfile) =
   echo "┌" & "─".repeat(68) & "┐"
   echo "│ " & "Data Integrity".alignLeft(66) & " │"
   echo "├" & "─".repeat(68) & "┤"
-  echo fmt("│   Keys Verified:           {metrics.keysVerified:>10,}                          │")
-  echo fmt("│   Verification Errors:     {metrics.verificationErrors:>10,}                          │")
-  echo fmt("│   Read Errors:             {metrics.readErrors:>10,}                          │")
-  echo fmt("│   Write Errors:            {metrics.writeErrors:>10,}                          │")
+  echo fmt("│   Keys Verified:           {formatNumber(metrics.keysVerified):>10}                          │")
+  echo fmt("│   Verification Errors:     {formatNumber(metrics.verificationErrors):>10}                          │")
+  echo fmt("│   Read Errors:             {formatNumber(metrics.readErrors):>10}                          │")
+  echo fmt("│   Write Errors:            {formatNumber(metrics.writeErrors):>10}                          │")
   echo "└" & "─".repeat(68) & "┘"
   echo ""
 
@@ -416,6 +439,17 @@ proc main() =
   var config = defaultBarrelConfig()
   config.autoCompact = true
   config.compactThreshold = profile.compactThreshold
+
+  # Set shorter compaction intervals for quick/standard profiles
+  case profile.name
+  of "Quick":
+    config.compactInterval = 2  # Check every 2 seconds
+  of "Standard":
+    config.compactInterval = 5  # Check every 5 seconds
+  of "Stress":
+    config.compactInterval = 10  # Check every 10 seconds
+  else:
+    config.compactInterval = 60  # Default
 
   let barrelPath = "bench_compaction_stress.data"
 
@@ -446,11 +480,27 @@ proc main() =
   echo fmt("Phase 2: Creating fragmentation ({int(profile.deletionRatio * 100)}% deletions)")
   createFragmentation(barrel, keySpace, profile, metrics)
 
-  echo ""
-  echo fmt("Phase 3: Mixed workload ({profile.totalOps:,} operations)")
+  # Start monitoring thread before waiting for compaction
+  var monitorThread: Thread[MonitorArgs]
+  let monitorArgs = MonitorArgs(
+    barrel: addr barrel,
+    metrics: metrics,
+    barrelPath: barrelPath
+  )
+  createThread(monitorThread, monitorCompaction, monitorArgs)
 
-  var monitorThread: Thread[void]
-  createThread(monitorThread, monitorCompaction, barrel, metrics, barrelPath)
+  # For quick profile, manually trigger compaction to demonstrate the feature
+  if profile.name == "Quick":
+    echo ""
+    echo "Manually triggering compaction for quick profile..."
+    if barrel.triggerCompact():
+      echo "Compaction triggered successfully"
+      # Wait for compaction to complete
+      barrel.waitForCompaction(5000)
+      echo "Compaction completed"
+
+  echo ""
+  echo fmt("Phase 3: Mixed workload ({formatNumber(profile.totalOps)} operations)")
 
   metrics.startTime = getTime()
 
@@ -462,6 +512,7 @@ proc main() =
 
   metrics.endTime = getTime()
   metrics.totalDurationMs = (metrics.endTime - metrics.startTime).inMilliseconds
+  metrics.totalOps = metrics.readOps + metrics.writeOps
 
   if metrics.totalDurationMs > 0:
     let durationSec = metrics.totalDurationMs.float / 1000.0
@@ -473,9 +524,11 @@ proc main() =
   let verifyErrors = verifyDataIntegrity(barrel, keySpace)
   metrics.verificationErrors += verifyErrors
 
-  metrics.finalFileSize = getDataFileSize(barrelPath)
-  if metrics.peakFileSize == 0:
-    metrics.peakFileSize = metrics.finalFileSize
+  # Get final file size
+  let currentSize = getDataFileSize(barrelPath)
+  metrics.finalFileSize = currentSize
+  if currentSize > metrics.peakFileSize:
+    metrics.peakFileSize = currentSize
 
   echo ""
   printResults(metrics, profile)
