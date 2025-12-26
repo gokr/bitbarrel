@@ -250,20 +250,20 @@ PubSubConfig(
 ## Known Issues
 
 ### ORC Crash in Threading Tests
-Some tests have a known issue with Nim's ORC garbage collector crashing during thread cleanup (Nim issue #25253). This is NOT a BitBarrel code issue - the tests pass successfully before the crash occurs.
+Some network tests may have a known issue with Nim's ORC garbage collector crashing during thread cleanup (Nim issue #25253). This is NOT a BitBarrel code issue.
 
-**Affected tests:**
-- `test_client.nim` - network client tests
-- `test_compact.nim` - compaction tests (7 tests pass, crash on cleanup)
+**Fixed:**
+- `test_compact.nim` - Fixed through proper thread lifecycle management (waiting for thread completion before cleanup)
+
+**Potentially affected tests:**
+- `test_client.nim` - network client tests (may crash on cleanup)
 
 **Symptoms:**
 - Crash in `nim/orc.nim:unregisterCycle()` during thread shutdown
 - Only affects tests using threads with circular references
-- All tests complete successfully before the crash
 
-**Workaround:**
-- Run individual test files instead of full test suite
-- Tests work correctly - functionality is not affected
+**Solution:**
+Ensure threads complete before parent objects are destroyed. See `barrel.nim:close()` for the pattern used to fix compaction tests.
 
 ### Experimental Features
 - HugeBarrel (bmHugeCritBit mode) is documented as experimental
