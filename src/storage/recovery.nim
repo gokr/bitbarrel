@@ -287,7 +287,7 @@ proc recoverFromFile*(engine: RecoveryEngine, filePath: string): bool =
 
     engine.progress.currentFile = filePath.extractFilename()
 
-    while offset < fileSize - 16:  # Minimum record size
+    while offset < fileSize:  # Try reading even with partial data left
       let (record, bytesRead, isValid) = engine.readRecordFromFile(filePath, offset)
 
       if not isValid or record == Record():
@@ -427,6 +427,84 @@ proc getProgress*(engine: RecoveryEngine): RecoveryProgress =
 proc getStats*(engine: RecoveryEngine): RecoveryStats =
   ## Get recovery statistics
   return engine.stats
+
+# Non-blocking compaction recovery support
+import compact
+
+proc recoverFromCompaction*(barrelPath: string, keyDir: var KeyDir,
+                            options: RecoveryOptions = RecoveryOptions()): uint32 =
+  ## Handle incomplete compaction on startup
+  ## Checks for compaction marker and recovers appropriately
+  ## Returns the file ID to use after recovery
+
+  # Extract directory from path
+  let dataDir = if parentDir(barrelPath) == "": "." else: parentDir(barrelPath)
+
+  # Check for compaction marker
+  let (hasMarker, oldId, newId, _) = readCompactionMarker(dataDir)
+
+  if not hasMarker:
+    # No compaction was in progress - return highest file ID
+    return getCurrentFileId(dataDir)
+
+  let oldPath = dataDir / fmt("{oldId:06d}.data")
+  let newPath = dataDir / fmt("{newId:06d}.data")
+  let oldExists = fileExists(oldPath)
+  let newExists = fileExists(newPath)
+
+  if options.enableVerboseLogging:
+    echo fmt("Recovery: Found compaction marker ({oldId} -> {newId})")
+    echo fmt("  Old file exists: {oldExists}, New file exists: {newExists}")
+
+  if oldExists and newExists:
+    # Compaction was interrupted - both files exist
+    # Strategy: Rebuild KeyDir from both files, delete old after
+    echo fmt("Recovery: Found incomplete compaction {oldId} -> {newId}")
+
+    # Create a recovery engine to scan both files
+    var engine = initRecoveryEngine(dataDir, options)
+
+    # Recover from old file first
+    if options.enableVerboseLogging:
+      echo fmt("  Recovering from old file: {oldPath}")
+    discard engine.recoverFromFile(oldPath)
+
+    # Then recover from new file - newer entries will overwrite older ones
+    if options.enableVerboseLogging:
+      echo fmt("  Recovering from new file: {newPath}")
+    discard engine.recoverFromFile(newPath)
+
+    # Copy recovered entries to the provided KeyDir
+    for key, entry in engine.keyDir.pairs():
+      keyDir.add(key, entry)
+
+    # Now safe to delete old file
+    if options.enableVerboseLogging:
+      echo fmt("  Deleting old file: {oldPath}")
+    removeFile(oldPath)
+
+    # Remove the marker
+    removeCompactionMarker(dataDir)
+
+    if options.enableVerboseLogging:
+      echo fmt("Recovery: Compaction recovery complete, using file {newId}")
+
+    return newId
+
+  elif newExists:
+    # Old file was deleted - compaction completed but marker wasn't removed
+    if options.enableVerboseLogging:
+      echo fmt("Recovery: Compaction completed but marker remained, cleaning up")
+    removeCompactionMarker(dataDir)
+    return newId
+
+  else:
+    # New file doesn't exist - compaction hadn't started writing
+    # or crashed before any writes to new file
+    if options.enableVerboseLogging:
+      echo fmt("Recovery: Compaction hadn't started, using old file {oldId}")
+    removeCompactionMarker(dataDir)
+    return oldId
 
 proc isRunning*(engine: RecoveryEngine): bool =
   ## Check if recovery is in progress
