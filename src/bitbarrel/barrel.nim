@@ -516,7 +516,15 @@ proc get*(barrel: Barrel, key: string): string =
       recordSize: entry.recordSize
     )
     try:
-      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+      # Select the correct data file based on entry's fileId
+      var value: string
+      if barrel.dataFiles.hasKey(entry.fileId):
+        var df = barrel.dataFiles[entry.fileId]
+        let (_, v, _) = df.readRecord(recordInfo)
+        value = v
+      else:
+        let (_, v, _) = barrel.dataFile.readRecord(recordInfo)
+        value = v
 
       # Check expiration if enabled
       if barrel.config.checkExpirationOnRead and isExpired(entry.timestamp):
@@ -1151,9 +1159,12 @@ proc compactWorkerThread(args: CompactThreadArgs) {.thread.} =
     let barrel = cast[Barrel](args.barrelPtr)
 
     # Perform non-blocking compaction
-    var newFile = barrel.dataFiles[args.newFileId]
+    # IMPORTANT: Pass a reference to the dataFile, not a copy!
+    # DataFile is a value type, so we need to use a pointer to avoid
+    # stale size values when main thread writes during compaction.
+    var newFilePtr = addr barrel.dataFiles[args.newFileId]
     let success = barrel.compactController.performCompactNonBlocking(
-      args.oldPath, args.oldFileId, newFile, args.compactionStart
+      args.oldPath, args.oldFileId, newFilePtr[], args.compactionStart
     )
 
     {.gcsafe.}:
