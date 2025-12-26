@@ -4,6 +4,8 @@
 ## Replaces: run_test_client.sh, test_server_process, and test_client_no_server
 
 import unittest, os, osproc, strutils, times, net, httpclient, strformat, random
+when defined(posix):
+  import posix
 import ../src/network/client
 
 const SERVER_PORT = 8081
@@ -31,12 +33,18 @@ proc waitForServerReady(address: string, port: Port, timeout: int = MAX_WAIT_TIM
 proc cleanupProcess(process: Process) =
   ## Cleanup process if it's still running
   try:
+    # Kill any processes on the server port (more reliable than process.terminate)
+    when defined(posix):
+      discard execCmd("fuser -k " & $SERVER_PORT & "/tcp 2>/dev/null || true")
+      sleep(500)  # Give time for processes to die
+
+    # Also try to terminate the process handle
     let exitCode = process.peekExitCode()
     if exitCode == -1:  # Still running
       process.terminate()
-      sleep(100)  # Give it time to terminate
+      sleep(100)
       if process.peekExitCode() == -1:
-        process.kill()  # Force kill if needed
+        process.kill()
   except:
     discard
 
