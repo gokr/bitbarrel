@@ -399,30 +399,19 @@ Always check for and remove compiler warnings:
 - Document known issues in code comments or CLAUDE.md
 
 ### Known Issues
-**test_client.nim ORC Crash**: This test shows ORC crash during thread cleanup due to Nim issue #25253. The tests complete successfully before the crash. This is NOT a BitBarrel code issue - it's a confirmed Nim compiler bug with these characteristics:
+**ORC Crash in Threading Tests**: Some tests show ORC crash during thread cleanup due to Nim issue #25253. The tests complete successfully before the crash. This is NOT a BitBarrel code issue - it's a confirmed Nim compiler bug.
+
+**Affected tests:**
+- `test_client.nim` - network client tests
+- `test_compact.nim` - compaction tests (7 tests pass, crash on cleanup)
 
 **Root Cause**: Nim's ORC garbage collector crashes when cleaning up objects with circular references across thread boundaries. The crash happens in `orc.nim:unregisterCycle()` during thread shutdown, after all tests have completed successfully.
 
 **Evidence this is a Nim bug, not BitBarrel code issue**:
 1. Crash location: `nim/orc.nim:unregisterCycle()` - deep inside Nim's GC, not our code
-2. Stack trace shows: mummy→destroy→ORC cycle detector→SIGSEGV
-3. Tests all pass before the crash occurs
-4. Non-threaded tests work perfectly (test_session, test_integration, etc.)
-5. Simple objects without circular references work fine across threads
-6. This matches exactly Nim issue #25253 pattern
-
-**Workarounds Attempted (all failed)**:
-- ✅ Changed `BitBarrelServer` from `object` to `ref` to `ptr` - still crashes
-- ✅ Added manual destructor to break circular references - still crashes
-- ✅ Manually nilled circular references before thread exit - still crashes
-- ✅ Used global variables instead of thread parameters - still crashes
-- ✅ Tried different thread creation patterns - still crashes
-- ✅ Removed all closure captures - not possible (mummy requires closures)
-
-**Why other tests don't crash**:
-- `test_session`, `test_integration`: Don't use threads with circular references
-- `test_storage`, `test_keydir`: Pure unit tests, no threading
-- `test_client`: Uses threads + objects with circular refs → triggers Nim bug
+2. Tests all pass before the crash occurs
+3. Non-threaded tests work perfectly
+4. This matches exactly Nim issue #25253 pattern
 
 **Status**: Actively being investigated by Nim team. There's an "araq-orc-hotfix" branch in Nim repo suggesting active work on this.
 
@@ -431,7 +420,6 @@ To run tests without this issue:
 nimble testStorage   # Storage layer tests - all pass
 nimble testKeydir    # KeyDir index tests - all pass
 nimble testIntegration # Integration tests - all pass
-nimble testSession    # Session/Registry tests - all pass
 ```
 
 ## Nim Coding Guidelines

@@ -9,7 +9,7 @@ BitBarrel provides these core capabilities:
 - **Three Index Modes**: Choose from hash table (O(1)), CritBit tree (ordered), or lazy-loaded partitions
 - **Range Queries**: Prefix searches and range scans (CritBit mode)
 - **Fast Recovery**: Hint files enable ultra-fast recovery (up to 10x faster)
-- **Background Merge**: Automatic space reclamation without blocking operations
+- **Non-Blocking Compaction**: Writes continue during background compaction
 - **Read Buffering**: LRU cache for improved read performance
 - **Write Buffering**: Configurable sync modes for different durability needs
 - **Thread Safety**: Concurrent access support with proper locking

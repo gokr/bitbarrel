@@ -81,7 +81,7 @@ BitBarrel implements the **Bitcask** storage model with these key concepts:
 - **Append-only log files** - Fast sequential writes
 - **In-memory hash index** - O(1) key lookups
 - **CRC32 checksums** - Data integrity validation
-- **Background compaction** - Automatic space reclamation
+- **Non-blocking compaction** - Writes continue during background compaction
 - **Multiple index modes** - Hash, CritBit, HugeCritBit
 
 ### Index Modes
