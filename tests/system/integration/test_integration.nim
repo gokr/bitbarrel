@@ -4,8 +4,8 @@ import times
 import options
 import ../../../src/bitbarrel/types
 import ../../../src/storage
-from ../src/storage/datafile import open
-from ../src/storage/keydir import init
+from ../../../src/storage/datafile import open
+from ../../../src/storage/keydir import init
 
 suite "Integration Tests - BitBarrel Operations":
   test "GET/SET/DELETE workflow":
