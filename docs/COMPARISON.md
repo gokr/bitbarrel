@@ -112,7 +112,7 @@ When running in server mode, BitBarrel uses a compact binary protocol over WebSo
 **Characteristics:**
 - **Big-endian encoding** for cross-platform compatibility
 - **11-byte minimum overhead** for GET operations
-- Max key size: 64KB, max value: 1MB
+- Max key size: 64KB, max value: 32MB (configurable)
 - Sequence numbers for request/response correlation
 - WebSocket binary frames (opcode 0x02) with masking
 
@@ -156,34 +156,28 @@ let db = openBarrel("data.db", config)
 
 ### Recovery Mechanisms
 
-BitBarrel provides multiple mechanisms for fast crash recovery:
+BitBarrel provides fast crash recovery through hint files:
 
 | Mechanism | Speed | Description |
 |-----------|-------|-------------|
-| **Hint Files** | ~68K keys/sec | Stores only key positions, not full values |
-| **Checkpoints** | Instant | Full KeyDir snapshots (full and incremental) |
+| **Hint Files (v2)** | ~40K+ keys/sec | Stores only key positions with incremental recovery support |
 | **Full Scan** | ~4-8K keys/sec | Fallback if hint files unavailable |
 
-**Hint File Format:** `[keyLen:2][key][fileId:4][valueOffset:8][timestamp:8]`
+**Hint File Format (v2):** `[header:48][keyLen:2][key][fileId:4][valueOffset:8][timestamp:8][recordSize:4][deleted:1]`
+
+**Note:** Version 2 hint files support incremental recovery - if the data file grew after hint creation, only the new tail is scanned rather than the entire file, preventing data loss on crash.
 
 **Recovery Speed Comparison:**
 
 | Database | Recovery Approach | Typical Speed |
 |----------|-------------------|---------------|
-| **BitBarrel** | Hint files + checkpoints | ~68K keys/sec (fastest) |
+| **BitBarrel** | Hint files with incremental recovery | ~40K+ keys/sec (fast) |
 | **Redis** | RDB load or AOF replay | Fast (in-memory) |
 | **PostgreSQL** | WAL replay | Seconds to minutes |
 | **MongoDB** | Oplog replay | Seconds to minutes |
 | **RocksDB** | WAL replay + manifest | Seconds to minutes |
 
-### Checkpoint System
-
-BitBarrel supports two checkpoint types:
-
-1. **Full Checkpoints:** Complete KeyDir snapshot
-2. **Incremental Checkpoints:** Only changes since last checkpoint
-
-Checkpoints enable near-instant recovery on restart.
+**Note:** BitBarrel's recovery speed uses hint files (v2) that enable incremental recovery - if the data file grew after hint creation, only the new tail is scanned rather than the entire file.
 
 ## HugeBarrel: Two-Tier Storage for Massive Datasets
 
@@ -367,7 +361,7 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 | **Compaction** | Non-blocking | Blocking by default |
 | **Compression** | LZ4/Snappy | LZ4, Zstd, Snappy, Zlib |
 | **Transactions** | No | Yes (Optimistic/Pessimistic) |
-| **Checkpoints** | Yes | Yes |
+| **Checkpoints** | No | Yes |
 | **Deployment** | Embedded + Server | Embedded only |
 | **Graph Traversal** | Yes | No |
 | **Secondary Indexes** | No | No (via application) |
@@ -460,7 +454,7 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 
 6. **Need fast crash recovery**
    - Hint files enable ~68K keys/sec recovery
-   - Checkpoints for instant restarts
+   - Hint file v2 with incremental recovery
 
 7. **Graph-like data with cycles**
    - Inline references in values
