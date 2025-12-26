@@ -112,7 +112,7 @@ proc itemsWithPrefix*(index: var CritBitIndex, prefix: string, limit: int, curso
     for key in index.tree.keysWithPrefix(prefix):
       # Skip items until after cursor
       if not started:
-        if key <= cursor:
+        if cursor != "" and key <= cursor:
           continue
         started = true
 
@@ -183,29 +183,62 @@ proc itemsInRange*(index: var CritBitIndex, startKey: string, endKey: string, li
       else:
         break
 
-    # Iterate keys with common prefix, filter by range and cursor
-    for key in index.tree.keysWithPrefix(commonPrefix):
-      # Check range first
-      if key < startKey or key >= endKey:
-        continue
+    # Determine if we can use optimized iteration or need full iteration
+    # Use full iteration if the common prefix ends before a branch point
+    # e.g., ["user:a", "user:aaaz") has commonPrefix="user:a", but we need
+    # keys beyond what keysWithPrefix("user:a") would find
+    var useFullIter = false
+    if endKey.len > commonPrefix.len:
+      # The endKey has more characters after the common prefix
+      useFullIter = true
 
-      # Skip items until after cursor
-      if not started:
-        if key <= cursor:
+    # Iterate keys and filter by range and cursor
+    if useFullIter:
+      for key in index.tree.keys:
+        # Check range first
+        if key < startKey or key >= endKey:
           continue
-        started = true
 
-      # Skip deleted entries
-      let entry = index.tree[key]
-      if entry.deleted:
-        continue
+        # Skip items until after cursor
+        if not started:
+          if cursor != "" and key <= cursor:
+            continue
+          started = true
 
-      # Check limit
-      if collected >= limit:
-        break
+        # Skip deleted entries
+        let entry = index.tree[key]
+        if entry.deleted:
+          continue
 
-      result.add((key, entry))
-      inc collected
+        # Check limit
+        if collected >= limit:
+          break
+
+        result.add((key, entry))
+        inc collected
+    else:
+      for key in index.tree.keysWithPrefix(commonPrefix):
+        # Check range first
+        if key < startKey or key >= endKey:
+          continue
+
+        # Skip items until after cursor
+        if not started:
+          if cursor != "" and key <= cursor:
+            continue
+          started = true
+
+        # Skip deleted entries
+        let entry = index.tree[key]
+        if entry.deleted:
+          continue
+
+        # Check limit
+        if collected >= limit:
+          break
+
+        result.add((key, entry))
+        inc collected
 
 proc countWithPrefix*(index: var CritBitIndex, prefix: string): int =
   ## Count keys with given prefix
