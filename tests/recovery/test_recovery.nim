@@ -2,10 +2,9 @@
 ##
 ## Test suite for crash recovery functionality
 
-import std/[unittest, os, times, strutils, random, tables, options, strformat]
+import std/[unittest, os, times, strutils, tables, options, strformat]
 import ../../src/storage/[recovery, datafile, record, keydir, hintfile]
 import ../../src/bitbarrel/types
-import ../testutils
 
 # Utility for creating corrupt files
 proc badWrite(path: string, content: string) =
@@ -252,32 +251,6 @@ suite "Integration Tests":
     var recoveredKeyDir = engine.getKeyDir()
     check recoveredKeyDir.get("key1").get().timestamp == 1000
     check recoveredKeyDir.get("key2").get().timestamp == 2000
-
-  test "Recovery with checkpoints":
-    let cp = initCheckpointSystem(testDir)
-    let engine = initRecoveryEngine(testDir)
-
-    # Create initial data
-    var keyDir = init()
-    keyDir.add("existing", KeyDirEntry(
-      fileId: 1, recordPos: 100, valuePos: 120,
-      valueSize: 8, timestamp: 1000, recordSize: 23
-    ))
-
-    # Create checkpoint
-    let checkpointId = cp.writeCheckpoint(keyDir, "full")
-
-    # Add more data files (simulating new writes after checkpoint)
-    let newRecords = @[
-      Record(timestamp: 2000, key: "key1", value: "value1"),
-      Record(timestamp: 3000, key: "key2", value: "value2")
-    ]
-
-    discard createTestDataFile(testDir / "000002.data", 2'u32, newRecords)
-
-    # Perform recovery - currently only scans data files (checkpoint integration pending)
-    let stats = engine.recover()
-    check stats.keyCount >= 2  # key1, key2 from file (checkpoint loading not yet integrated)
 
   test "Recovery with hint files - valid hint file":
     let engine = initRecoveryEngine(testDir)

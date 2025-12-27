@@ -12,7 +12,7 @@ storage:
   data_dir: "./examples/data"
   max_file_size: 1073741824  # 1GB
   max_key_size: 65536  # 64KB
-  max_value_size: 1048576  # 1MB
+  max_value_size: 33554432  # 32MB
   sync_mode: "immediate"  # immediate, buffered, batched, time_based
   fsync_interval: 100
 
@@ -34,9 +34,6 @@ recovery:
   enabled: true
   validate_checksums: true
   skip_corrupt_records: false
-  checkpoint_interval: 300  # seconds
-  checkpoint_size_threshold: 1048576  # 1MB
-  max_incremental_checkpoints: 10
   auto_recovery: true
 
 logging:
