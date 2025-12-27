@@ -132,7 +132,7 @@ proc parseStorageConfig*(yamlNode: YamlNode): StorageConfig =
   result.dataDir = getYamlString(fields, "data_dir", "./data")
   result.maxFileSize = getYamlInt64(fields, "max_file_size", 1024 * 1024 * 1024)
   result.maxKeySize = getYamlInt64(fields, "max_key_size", 64 * 1024)
-  result.maxValueSize = getYamlInt64(fields, "max_value_size", 1024 * 1024)
+  result.maxValueSize = getYamlInt64(fields, "max_value_size", 32 * 1024 * 1024)
 
   let syncMode = getYamlString(fields, "sync_mode", "immediate")
   result.syncMode = parseSyncMode(syncMode)

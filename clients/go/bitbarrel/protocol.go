@@ -43,7 +43,7 @@ const (
 // Limits as per protocol specification
 const (
 	MaxKeySize   = 65535     // 64KB
-	MaxValueSize = 1048576   // 1MB
+	MaxValueSize = 33554432  // 32MB
 )
 
 // Request represents a BitBarrel protocol request

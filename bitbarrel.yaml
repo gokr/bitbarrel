@@ -16,7 +16,7 @@ storage:
   data_dir: "./data"
   max_file_size: 1073741824  # 1GB
   max_key_size: 65536        # 64KB
-  max_value_size: 1048576    # 1MB
+  max_value_size: 33554432   # 32MB
   sync_mode: "immediate"     # immediate, buffered, batched, time_based
   fsync_interval: 100        # ms
 

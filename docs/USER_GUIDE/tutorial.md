@@ -230,7 +230,7 @@ nim c -d:release bench/stress_test.nim
 **Tests Included:**
 
 1. **Large Keys**: Keys at maximum size (64KB)
-2. **Large Values**: Values up to 1MB
+2. **Large Values**: Values up to 32MB
 3. **Rapid Writes**: 5K sequential writes as fast as possible
 4. **Random Access**: Mixed reads/writes with 70/30 ratio
 5. **Memory Usage**: 25K keys to measure overhead

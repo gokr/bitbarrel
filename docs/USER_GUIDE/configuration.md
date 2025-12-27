@@ -105,7 +105,7 @@ storage:
   data_dir: "./data"
   max_file_size: 1073741824  # 1GB
   max_key_size: 65536        # 64KB
-  max_value_size: 1048576    # 1MB
+  max_value_size: 33554432   # 32MB (configurable)
   sync_mode: "immediate"     # immediate, buffered, batched, time_based
   validate_crc: true
 
@@ -207,7 +207,7 @@ Examples:
 
 ```nim
 MAX_KEY_SIZE* = 64 * 1024      # 64KB
-MAX_VALUE_SIZE* = 1 * 1024 * 1024  # 1MB (can be configured higher)
+MAX_VALUE_SIZE* = 32 * 1024 * 1024  # 32MB (can be configured higher)
 HEADER_SIZE* = 32              # File header size
 MAGIC_NUMBER* = "BCKS"         # File format identifier
 ```

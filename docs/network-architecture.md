@@ -110,7 +110,7 @@ type
 
 **Encoding/Decoding:**
 - Big-endian byte order for all multi-byte values
-- Size validation (max key: 64KB, max value: 1MB)
+- Size validation (max key: 64KB, max value: 32MB)
 - CRC32 not used (rely on TCP/WebSocket integrity)
 
 ### 4. Session Manager (`src/network/session.nim`)

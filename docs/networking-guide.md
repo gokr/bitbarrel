@@ -283,7 +283,7 @@ discard client.set("email", "alice@example.com")
 let userData = """{"name":"Alice","age":30,"active":true}"""
 discard client.set("user:123", userData)
 
-# Binary data (Note: limited to 1MB)
+# Binary data (Note: limited to 32MB)
 let binaryData = readFile("image.png")
 discard client.set("image:logo", binaryData)
 
@@ -521,8 +521,8 @@ proc storeFile(client: var BitBarrelClient,
                key, filename: string): bool =
   try:
     let data = readFile(filename)
-    if data.len > 1024 * 1024:  # 1MB limit
-      echo "File too large (max 1MB)"
+    if data.len > 32 * 1024 * 1024:  # 32MB limit
+      echo "File too large (max 32MB)"
       return false
 
     discard client.set(key, data)
@@ -638,7 +638,7 @@ except ClientError:
 3. **Use appropriate barrel names**: Organize data logically
 4. **Handle timeouts**: Set appropriate timeouts for your use case
 5. **Monitor health**: Implement health checks for production use
-6. **Size matters**: Keep values under 1MB; split larger data if needed
+6. **Size matters**: Keep values under 32MB; split larger data if needed
 
 ### Monitoring and Debugging
 

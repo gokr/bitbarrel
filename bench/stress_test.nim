@@ -92,7 +92,7 @@ proc testLargeKeys() =
   echo &"  Total entries: {keyDir.len}"
 
 proc testLargeValues() =
-  ## Test with large values (1MB max)
+  ## Test with large values (up to 1MB, within 32MB max limit)
   printHeader("Testing Large Values")
 
   let dbPath = "bench/stress_large_values.data"
@@ -106,7 +106,7 @@ proc testLargeValues() =
     if fileExists(dbPath):
       removeFile(dbPath)
 
-  let sizes = [1024, 10240, 102400, 512000, 1048576]  # 1KB to 1MB
+  let sizes = [1024, 10240, 102400, 512000, 1048576]  # 1KB to 1MB (within 32MB max)
   let keyPrefix = "large_val:"
 
   echo "  Testing various value sizes..."
