@@ -18,7 +18,7 @@ suite "Configuration Tests":
     check config.storage.dataDir == "./data"
     check config.storage.maxFileSize == 1024 * 1024 * 1024
     check config.storage.maxKeySize == 64 * 1024
-    check config.storage.maxValueSize == 1024 * 1024
+    check config.storage.maxValueSize == 33554432
     check config.storage.syncMode == syncImmediate
 
     # Test performance defaults
@@ -227,7 +227,7 @@ logging:
 
     try:
       # Initialize configuration
-      let config = initConfig(tempFile)
+      discard initConfig(tempFile)
 
       # Get via global accessor
       let retrieved = getConfig()

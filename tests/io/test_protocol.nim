@@ -63,14 +63,14 @@ suite "Binary Protocol Tests":
     check decoded.value.len == 0
 
   test "encodeRequest validates key size limit":
-    let longKey = "x".repeat(65536)
+    let longKey = "x".repeat(MaxKeySize + 1)
     let req = Request(command: cmdGet, key: longKey)
 
     expect ProtocolError:
       discard encodeRequest(req)
 
   test "encodeRequest validates value size limit":
-    let longValue = "x".repeat(1048577)
+    let longValue = "x".repeat(MaxValueSize + 1)
     let req = Request(command: cmdSet, key: "test", value: longValue)
 
     expect ProtocolError:
