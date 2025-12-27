@@ -3,14 +3,13 @@
 ## Tests for recovery from various crash scenarios including:
 ## - Process killed mid-write
 ## - Process killed during file rotation
-## - Partial checkpoint files
+## - Partial hint files (v2 incremental recovery)
 ## - Missing hint files
 ## - Multiple crashes in sequence
 
 import std/[unittest, os, strformat, options]
 import ../../../src/storage/recovery
 import ../../../src/storage/datafile
-import ../../../src/storage/checkpoint
 import ../../../src/storage/keydir
 import ../../../src/bitbarrel/types
 import ../../testutils
@@ -70,44 +69,6 @@ suite "Crash Recovery Tests":
 
       # Should recover data from available files
       check stats.keyCount >= 1  # key2 should be recovered from file 000002.data
-
-  test "Recovery with partial checkpoint":
-    withTestDir("partial_checkpoint"):
-      # Create a datafile
-      let testFile = testDir / "000001.data"
-      var df = datafile.open(testFile, 1'u32)
-      discard df.appendRecord("key1", "value1", now())
-      df.close()
-
-      # Create checkpoint system
-      let cp = initCheckpointSystem(testDir)
-      var keyDir = init()
-
-      # Add entries to KeyDir
-      keyDir.add("key1", KeyDirEntry(
-        fileId: 1, recordPos: 100, valuePos: 120,
-        valueSize: 6, timestamp: now(), recordSize: 26
-      ))
-
-      # Write checkpoint
-      let checkpointId = cp.writeCheckpoint(keyDir, "full")
-
-      # Truncate checkpoint file to simulate partial write
-      let checkpointPath = cp.getCheckpointPath(checkpointId, false)
-      let fileSize = getFileSize(checkpointPath)
-      truncateFileAt(checkpointPath, fileSize div 2)
-
-      # Create recovery engine with checkpoint loading
-      let engine = initRecoveryEngine(testDir)
-
-      # Run recovery - should handle corrupt checkpoint
-      let stats = engine.recover()
-
-      # Should fall back to scanning data files
-      check stats.keyCount >= 0  # May be 0 if checkpoint was corrupted
-
-      # But should still be able to recover from data file
-      # (This depends on checkpoint loading implementation)
 
   test "Recovery when hint files are missing":
     withTestDir("missing_hints"):
@@ -234,42 +195,6 @@ suite "Crash Recovery Tests":
       var recoveredKeyDir = engine.getKeyDir()
       let entry = recoveredKeyDir.get("key_0")
       check entry.isSome()
-
-  test "Recovery with checkpoint + data files":
-    withTestDir("checkpoint_recovery"):
-      # Create data file
-      let filePath = testDir / "000001.data"
-      var df = datafile.open(filePath, 1'u32)
-      discard df.appendRecord("key1", "value1", now())
-      df.close()
-
-      # Create checkpoint
-      let cp = initCheckpointSystem(testDir)
-      var keyDir = init()
-      keyDir.add("key1", KeyDirEntry(
-        fileId: 1, recordPos: 100, valuePos: 120,
-        valueSize: 6, timestamp: now(), recordSize: 26
-      ))
-      discard cp.writeCheckpoint(keyDir, "full")
-
-      # Add more data after checkpoint
-      let filePath2 = testDir / "000002.data"
-      var df2 = datafile.open(filePath2, 2'u32)
-      discard df2.appendRecord("key2", "value2", now())
-      df2.close()
-
-      # Simulate crash
-      # (No specific action needed - checkpoint + data files exist)
-
-      # Recovery should load checkpoint + scan new data
-      let engine = initRecoveryEngine(testDir)
-      let stats = engine.recover()
-
-      # Should recover from both sources
-      check stats.keyCount >= 1
-
-      # Verify checkpoint was used
-      # (Actual behavior depends on checkpoint loading implementation)
 
   test "Recovery cancellation during operation":
     withTestDir("recovery_cancel"):
