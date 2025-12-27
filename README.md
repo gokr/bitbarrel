@@ -99,7 +99,7 @@ echo db.get("key1")
 db.close()
 ```
 
-See the [tutorial](docs/TUTORIAL.md) for comprehensive examples.
+See the [tutorial](docs/USER_GUIDE/tutorial.md) for comprehensive examples.
 
 ## Features at a Glance
 
@@ -108,7 +108,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Category | Highlights |
 |----------|------------|
 | Storage | Append‑only log, three index modes, compression (LZ4/Snappy), binary record encoding |
-| Reliability | Crash recovery, hint files (68K+ keys/sec), checkpoint system, CRC32 checksums |
+| Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (15 commands), REST API, session management, thread‑safe operations |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
@@ -126,13 +126,13 @@ Here are the key performance metrics from release builds on Linux x86_64 (ThinkP
 | Write throughput (fsync) | ~9.1K ops/sec | Disk‑level durability |
 | Read throughput | ~172K ops/sec | Random access via in‑memory index |
 | Mixed workload (80% read) | ~137K ops/sec | Combined operations |
-| Recovery speed | 68K+ keys/sec | With hint files (actual benchmark: 68,694 keys/sec) |
+| Recovery speed | 40K+ keys/sec | With v2 hint files and incremental recovery |
 | Write latency (none/sync) | ~0.005 ms | Sub‑millisecond |
 | Read latency | ~0.006 ms | O(1) hash lookup |
 
-*See the [benchmark guide](docs/BENCHMARK_GUIDE.md) for detailed measurements and methodology.*
+*See the [DEVELOPER_GUIDE/performance.md](docs/DEVELOPER_GUIDE/performance.md) for detailed measurements and methodology.
 
-**CRC32 implementations**: BitBarrel includes two optional CRC32 implementations—a pure Nim lookup table (default, faster) and a SIMD‑optimized crunchy version (available via `-d:useCrunchy`). See [CRC documentation](docs/CRC.md) for performance comparison.
+**CRC32**: BitBarrel includes a pure Nim lookup table implementation for CRC32 validation.
 
 ### Performance Tips
 - Use `none` sync for fastest writes (data at risk on crash)
@@ -247,6 +247,7 @@ var criticalDb = openBarrel("critical.db", criticalCfg)
 
 ### Getting Started
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples
+- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**: Quick setup guide
 - **[examples/README.md](examples/README.md)**: Demo documentation
 
 ### Test Suite
@@ -258,12 +259,18 @@ var criticalDb = openBarrel("critical.db", criticalCfg)
 
 ### Architecture & Design
 - **[docs/DEVELOPER_GUIDE/architecture.md](docs/DEVELOPER_GUIDE/architecture.md)**: System design document
-- **[docs/FEATURES/compression.md](docs/FEATURES/compression.md)**: Compression implementation
-- **[docs/network-architecture.md](docs/network-architecture.md)**: Network layer architecture
+- **[docs/COMPARISON.md](docs/COMPARISON.md)**: Comparison with other databases
 
-### Advanced Features
-- **[docs/research/REFERENCES.md](docs/research/REFERENCES.md)**: Reference model (graph traversal) guide
-- **[docs/FEATURES/data-integrity.md](docs/FEATURES/data-integrity.md)**: CRC32 implementation details
+### Feature Documentation
+- **[docs/FEATURES/hint-files.md](docs/FEATURES/hint-files.md)**: Hint file format (v2 with incremental recovery)
+- **[docs/FEATURES/compression.md](docs/FEATURES/compression.md)**: LZ4 and Snappy compression
+- **[docs/FEATURES/data-integrity.md](docs/FEATURES/data-integrity.md)**: CRC32 implementation
+- **[docs/FEATURES/read-buffering.md](docs/FEATURES/read-buffering.md)**: Read-ahead LRU buffering
+- **[docs/FEATURES/networking.md](docs/FEATURES/networking.md)**: Network protocol and client
+
+### Advanced Topics
+- **[docs/network-architecture.md](docs/network-architecture.md)**: Network layer architecture
+- **[docs/research/REFERENCES.md](docs/research/REFERENCES.md)**: Reference model (graph traversal)
 
 ## Future Enhancements
 

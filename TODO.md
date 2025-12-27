@@ -348,7 +348,7 @@ For documentation on current features:
 **Storage Modules:**
 - Core: keydir.nim, critbitindex.nim, datafile.nim, record.nim, compact.nim
 - I/O: writebuffer.nim, readbuffer.nim, crc32.nim, compression.nim
-- Recovery: hintfile.nim, checkpoint.nim, recovery.nim, critbithint.nim
+- Recovery: hintfile.nim, recovery.nim, critbithint.nim
 - Range/HugeBarrel: hugebarrel.nim, rangekeydir.nim, rangesearch.nim, rangeindex.nim, rangecache.nim, rangehint.nim, orderedrange.nim
 
 **Performance (Current):**

@@ -241,7 +241,6 @@ task testStorage, "Run storage tests (unit/storage)":
 | `recovery.nim` | Crash recovery, KeyDir reconstruction |
 | `hintfile.nim` | Fast recovery metadata (key positions only) |
 | `writebuffer.nim` | Write batching with 4 sync modes |
-| `checkpoint.nim` | KeyDir snapshots (full/incremental) |
 
 ### Bitcask Model
 
@@ -367,8 +366,7 @@ src/
 │   ├── compact.nim       # Compaction system
 │   ├── recovery.nim     # Crash recovery
 │   ├── writebuffer.nim  # Write buffering
-│   ├── hintfile.nim     # Hint files
-│   └── checkpoint.nim   # KeyDir checkpoints
+│   └── hintfile.nim     # Hint files
 └── cli/
     └── main.nim         # CLI interface
 tests/                   # Test suite (14 files)
