@@ -4,28 +4,29 @@ Python client for BitBarrel key-value storage using WebSocket connection.
 
 ## Installation
 
-This package requires the [Nim compiler](https://nim-lang.org) to build the native extension.
+The client requires Python >= 3.8 and the `websocket-client` library for WebSocket communication.
 
-### Prerequisites
+### Virtual Environment Setup
 
-1. Install Nim from https://nim-lang.org or via your package manager:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt install nim
+It is recommended to use a virtual environment:
 
-   # macOS (with Homebrew)
-   brew install nim
+```bash
+# Create virtual environment
+python3 -m venv venv
 
-   # Windows
-   # Download installer from https://nim-lang.org/install.html
-   ```
+# Activate virtual environment
+# On Linux/macOS:
+source venv/bin/activate
+# On Windows:
+venv\Scripts\activate
 
-2. Install nimpy (Nim package):
-   ```bash
-   nimble install nimpy
-   ```
+# Install the package
+pip install -e .
+```
 
-### Install the package
+### Direct Installation
+
+Without a virtual environment:
 
 ```bash
 pip install -e .
@@ -71,35 +72,38 @@ client.close()
 ### Connection
 
 ```python
-Client(host: str = "localhost", port: int = 9876, connect_timeout: int = 5000)
+Client(host: str = "localhost", port: int = 9876,
+        connect_timeout: float = 5.0, request_timeout: float = 3.0)
 ```
 
 ```python
 client.connect()
 client.close()
+client.connected  # bool property
 ```
 
 ### Barrel Management
 
 ```python
-client.create_barrel(name: str, config: str = "") -> bool
-client.open_barrel(name: str) -> bool
-client.use_barrel(name: str) -> bool
+client.create_barrel(name: str, config: str = "") -> None
+client.open_barrel(name: str) -> None
+client.use_barrel(name: str) -> None
 client.list_barrels() -> List[str]
-client.close_barrel(name: str = "") -> bool
-client.drop_barrel(name: str) -> bool
+client.close_barrel(name: Optional[str] = None) -> None
+client.drop_barrel(name: str) -> None
+client.current_barrel  # str property
 ```
 
 ### Key-Value Operations
 
 ```python
 client.get(key: str) -> str
-client.set(key: str, value: str) -> bool
-client.delete(key: str) -> bool
+client.set(key: str, value: str) -> None
+client.delete(key: str) -> None
 client.exists(key: str) -> bool
 client.count() -> int
 client.list_keys() -> List[str]
-client.ping() -> bool
+client.ping() -> None
 ```
 
 ### Range Queries (requires bmCritBit mode barrel)
@@ -124,10 +128,10 @@ count = client.range_count("user:1000", "user:2000")
 # Traverse references
 results = client.traverse(
     key="user:1",
-    pathSpec="->friend",
-    includeFullData=True,
-    extractArrays=False,
-    firstOnly=False
+    path_spec="->friend",
+    include_full_data=True,
+    extract_arrays=False,
+    first_only=False
 )
 
 for r in results:
@@ -137,22 +141,17 @@ for r in results:
 results = client.traverse_path("user:1", "->friend")
 ```
 
-## Examples
-
-See the `examples/` directory for more examples:
-
-- `basic.py` - Basic CRUD operations
-- `barrels.py` - Barrel management
-- `range_queries.py` - Range and prefix queries
-- `traversal.py` - Reference traversal
-
 ## Helper Functions
 
 The `bitbarrel.helpers` module provides convenience functions:
 
 ```python
 from bitbarrel import Client
-from bitbarrel.helpers import get_all_with_prefix, batch_set
+from bitbarrel.helpers import (
+    paginate_range_result,
+    get_all_with_prefix,
+    batch_set,
+)
 
 client = Client()
 client.connect()
@@ -163,6 +162,38 @@ items = get_all_with_prefix(client, "user:")
 
 # Batch set
 batch_set(client, [("key1", "val1"), ("key2", "val2")])
+
+# Paginate through results
+def fetch_page(cursor):
+    return client.prefix_query("user:", limit=100, cursor=cursor)
+
+all_items = paginate_range_result(fetch_page)
+```
+
+## Error Handling
+
+The client uses exception-based error handling:
+
+```python
+from bitbarrel import (
+    BitBarrelError,
+    ConnectionError,
+    NotFoundError,
+    NoBarrelError,
+    BarrelExistsError,
+    ServerError,
+)
+
+try:
+    client.get("nonexistent")
+except NotFoundError:
+    print("Key not found")
+except NoBarrelError:
+    print("No barrel selected - use use_barrel() first")
+except ConnectionError as e:
+    print(f"Connection failed: {e}")
+except BitBarrelError as e:
+    print(f"BitBarrel error: {e}")
 ```
 
 ## License

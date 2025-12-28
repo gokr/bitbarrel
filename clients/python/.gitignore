@@ -1,0 +1,70 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.cache
+.pytest_cache
+.hypothesis/
+*.cover
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+savedenv/
+
+# mypy
+.pytype
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDEs
+.vim/
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nim build artifacts (removed above, but keep for safety)
+bitbarrel_core/
+*.nim.c
+*.nim.h
+*.cache
+nimbledeps/
+
+# Test data
+test_data/
+tests/data/

@@ -1,48 +1,46 @@
 """Convenience helpers for BitBarrel Python client."""
 
-
-from typing import Tuple, List, Iterator, Any
-from .types import RangeResult
+from typing import Tuple, List, Iterator, Optional, Callable
 
 
 def paginate_range_result(
-    result: RangeResult,
-    fetch_next: callable,
-    callback: callable = None
+    fetch_func: Callable[[str], "RangeResult"],
+    start_cursor: str = "",
+    callback: Optional[Callable[[str, str], None]] = None
 ) -> List[Tuple[str, str]]:
     """Paginate through a range query result automatically.
 
     Args:
-        result: Initial range query result
-        fetch_next: Function to fetch next page, takes cursor as argument
+        fetch_func: Function to fetch next page, takes cursor as argument
+        start_cursor: Initial cursor (empty for first page)
         callback: Optional callback function called for each item
 
     Returns:
         List of all key-value pairs from all pages
     """
+    from .client import RangeResult
+
     all_items = []
+    cursor = start_cursor
 
-    cursor = ""
-    has_more = True
-
-    while has_more:
-        result = fetch_next(result.nextCursor)
+    while True:
+        result = fetch_func(cursor)
 
         for key, value in result.items:
             if callback:
                 callback(key, value)
             all_items.append((key, value))
 
-        has_more = result.hasMore
-        cursor = result.nextCursor
-        if not cursor:
+        if not result.hasMore or not result.nextCursor:
             break
+
+        cursor = result.nextCursor
 
     return all_items
 
 
 def iterate_range(
-    fetch: callable,
+    client,
     start_key: str = "",
     end_key: str = "",
     prefix: str = "",
@@ -51,7 +49,7 @@ def iterate_range(
     """Iterate over keys/values in a range or prefix.
 
     Args:
-        fetch: Function to fetch data (range_query or prefix_query)
+        client: BitBarrelClient instance
         start_key: Start key for range query
         end_key: End key for range query
         prefix: Prefix for prefix query
@@ -64,9 +62,9 @@ def iterate_range(
 
     while True:
         if prefix:
-            result = fetch(prefix, page_size, cursor)
+            result = client.prefix_query(prefix, page_size, cursor)
         else:
-            result = fetch(start_key, end_key, page_size, cursor)
+            result = client.range_query(start_key, end_key, page_size, cursor)
 
         if not result.items:
             break
@@ -90,7 +88,7 @@ def get_all_with_prefix(client, prefix: str) -> List[Tuple[str, str]]:
     Returns:
         List of (key, value) tuples
     """
-    result = client.prefixQuery(prefix)
+    result = client.prefix_query(prefix)
     return list(result.items)
 
 
@@ -109,7 +107,7 @@ def get_all_in_range(
     Returns:
         List of (key, value) tuples
     """
-    result = client.rangeQuery(start_key, end_key)
+    result = client.range_query(start_key, end_key)
     return list(result.items)
 
 
@@ -125,12 +123,15 @@ def batch_set(client, items: List[Tuple[str, str]]) -> int:
     """
     success = 0
     for key, value in items:
-        if client.set(key, value):
+        try:
+            client.set(key, value)
             success += 1
+        except Exception:
+            pass
     return success
 
 
-def batch_get(client, keys: List[str]) -> List[Tuple[str, str]]:
+def batch_get(client, keys: List[str]) -> List[Tuple[str, Optional[str]]]:
     """Get multiple values by keys.
 
     Args:
@@ -162,6 +163,9 @@ def batch_delete(client, keys: List[str]) -> int:
     """
     success = 0
     for key in keys:
-        if client.delete(key):
+        try:
+            client.delete(key)
             success += 1
+        except Exception:
+            pass
     return success
