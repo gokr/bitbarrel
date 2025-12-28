@@ -22,13 +22,11 @@ type
 
   CritBitHintEntry* = object
     key*: string                # Key string
-    fileId*: uint32             # Data file ID
     recordPos*: uint64          # Record position in file
-    valuePos*: uint64           # Value position in file
-    valueSize*: uint32          # Size of value
-    timestamp*: int64           # For conflict resolution and TTL
+    fileId*: uint32             # Data file ID
+    valueSize*: uint32          # Size of value (0 = tombstone)
     recordSize*: uint32         # Total record size for merge decisions
-    deleted*: bool              # True if this entry is a tombstone
+    keyLen*: uint16             # Key length for valuePos calculation
 
 proc crc32(data: pointer, len: int): uint32 {.inline.} =
   ## Simple CRC32 implementation
@@ -76,13 +74,11 @@ proc saveCritBitHint*(index: var CritBitIndex, rangeId: uint32, filePath: string
     for key, value in index.pairs:
       entries.add(CritBitHintEntry(
         key: key,
-        fileId: value.fileId,
         recordPos: value.recordPos,
-        valuePos: value.valuePos,
+        fileId: value.fileId,
         valueSize: value.valueSize,
-        timestamp: value.timestamp,
         recordSize: value.recordSize,
-        deleted: value.deleted
+        keyLen: value.keyLen
       ))
       inc(entryCount)
 
@@ -98,13 +94,11 @@ proc saveCritBitHint*(index: var CritBitIndex, rangeId: uint32, filePath: string
         stream.write(entry.key)
 
       # Write value fields
-      stream.write(entry.fileId)
       stream.write(entry.recordPos)
-      stream.write(entry.valuePos)
+      stream.write(entry.fileId)
       stream.write(entry.valueSize)
-      stream.write(entry.timestamp)
       stream.write(entry.recordSize)
-      stream.write(entry.deleted.uint8)
+      stream.write(entry.keyLen)
 
     # Update header with final entry count
     header.entryCount = entryCount
@@ -163,7 +157,7 @@ proc loadCritBitHint*(filePath: string): tuple[index: CritBitIndex, entryCount: 
 
     # Read entries
     for i in 0..<header.entryCount:
-      # Read key
+      # Read key length and key
       var keyLen: uint32
       discard stream.readData(addr keyLen, sizeof(uint32))
 
@@ -172,32 +166,26 @@ proc loadCritBitHint*(filePath: string): tuple[index: CritBitIndex, entryCount: 
         key = newString(keyLen)
         discard stream.readData(addr key[0], keyLen.int)
 
-      # Read value fields
-      var fileId: uint32
+      # Read value fields (new format: recordPos, fileId, valueSize, recordSize, keyLen)
       var recordPos: uint64
-      var valuePos: uint64
+      var fileId: uint32
       var valueSize: uint32
-      var timestamp: int64
       var recordSize: uint32
-      var deleted: uint8
+      var entryKeyLen: uint16
 
-      discard stream.readData(addr fileId, sizeof(uint32))
       discard stream.readData(addr recordPos, sizeof(uint64))
-      discard stream.readData(addr valuePos, sizeof(uint64))
+      discard stream.readData(addr fileId, sizeof(uint32))
       discard stream.readData(addr valueSize, sizeof(uint32))
-      discard stream.readData(addr timestamp, sizeof(int64))
       discard stream.readData(addr recordSize, sizeof(uint32))
-      discard stream.readData(addr deleted, sizeof(uint8))
+      discard stream.readData(addr entryKeyLen, sizeof(uint16))
 
       # Add to index
       result.index.add(key, KeyDirEntry(
-        fileId: fileId,
         recordPos: recordPos,
-        valuePos: valuePos,
+        fileId: fileId,
         valueSize: valueSize,
-        timestamp: timestamp,
         recordSize: recordSize,
-        deleted: deleted.bool
+        keyLen: entryKeyLen
       ))
 
       inc(result.entryCount)

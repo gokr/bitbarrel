@@ -24,24 +24,23 @@ template withKeyDir*(body: untyped) =
   body
   # KeyDir doesn't need explicit cleanup in current implementation
 
-proc newRecordInfo*(recordPos, valuePos: uint64, valueSize, recordSize: uint32): RecordInfo =
+proc newRecordInfo*(recordPos: uint64, valueSize, recordSize: uint32, keyLen: uint16): RecordInfo =
   ## Helper to create RecordInfo
   result = RecordInfo(
     recordPos: recordPos,
-    valuePos: valuePos,
     valueSize: valueSize,
-    recordSize: recordSize
+    recordSize: recordSize,
+    keyLen: keyLen
   )
 
-proc newKeyDirEntry*(fileId: uint32, recordPos, valuePos: uint64, valueSize, recordSize: uint32, timestamp: int64): KeyDirEntry =
+proc newKeyDirEntry*(recordPos: uint64, fileId: uint32, valueSize, recordSize: uint32, keyLen: uint16): KeyDirEntry =
   ## Helper to create KeyDirEntry
   result = KeyDirEntry(
-    fileId: fileId,
     recordPos: recordPos,
-    valuePos: valuePos,
+    fileId: fileId,
     valueSize: valueSize,
-    timestamp: timestamp,
-    recordSize: recordSize
+    recordSize: recordSize,
+    keyLen: keyLen
   )
 
 # Constants for easier access

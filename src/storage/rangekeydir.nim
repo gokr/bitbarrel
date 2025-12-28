@@ -82,8 +82,6 @@ proc writeUint64(s: var string, val: uint64) =
   s.add(char((val shr 48) and 0xFF))
   s.add(char((val shr 56) and 0xFF))
 
-proc writeInt64(s: var string, val: int64) =
-  writeUint64(s, cast[uint64](val))
 
 proc writeString(s: var string, val: string) =
   writeUint16(s, val.len.uint16)
@@ -108,9 +106,6 @@ proc readUint64(data: string, pos: int): uint64 =
            (uint64(data[pos + 5].uint8) shl 40) or
            (uint64(data[pos + 6].uint8) shl 48) or
            (uint64(data[pos + 7].uint8) shl 56)
-
-proc readInt64(data: string, pos: int): int64 =
-  cast[int64](readUint64(data, pos))
 
 proc readString(data: string, pos: int): (string, int) =
   let length = readUint16(data, pos).int
@@ -156,13 +151,11 @@ proc readEntryAt*(rkd: RangeKeyDir, entryOffset: int): RangeKeyDirEntry =
 
   result = RangeKeyDirEntry(
     key: key,
-    fileId: readUint32(rkd.data, pos),
-    recordPos: readUint64(rkd.data, pos + 4),
-    valuePos: readUint64(rkd.data, pos + 12),
-    valueSize: readUint32(rkd.data, pos + 20),
-    timestamp: readInt64(rkd.data, pos + 24),
-    recordSize: readUint32(rkd.data, pos + 32),
-    deleted: rkd.data[pos + 36] == '\x01'
+    recordPos: readUint64(rkd.data, pos),
+    fileId: readUint32(rkd.data, pos + 8),
+    valueSize: readUint32(rkd.data, pos + 12),
+    recordSize: readUint32(rkd.data, pos + 16),
+    keyLen: readUint16(rkd.data, pos + 20)
   )
 
 # --- Serialization ---
@@ -201,16 +194,14 @@ proc serialize*(rkd: RangeKeyDir): string =
   for (key, entry) in allEntries:
     offsets.add(entriesData.len.uint32)
 
-    # Entry format: keyLen(2) + key + fileId(4) + recordPos(8) + valuePos(8) +
-    #               valueSize(4) + timestamp(8) + recordSize(4) + deleted(1)
+    # Entry format: keyLen(2) + key + recordPos(8) + fileId(4) + valueSize(4) +
+    #               recordSize(4) + keyLen(2)
     entriesData.writeString(key)
-    entriesData.writeUint32(entry.fileId)
     entriesData.writeUint64(entry.recordPos)
-    entriesData.writeUint64(entry.valuePos)
+    entriesData.writeUint32(entry.fileId)
     entriesData.writeUint32(entry.valueSize)
-    entriesData.writeInt64(entry.timestamp)
     entriesData.writeUint32(entry.recordSize)
-    entriesData.add(if entry.deleted: '\x01' else: '\x00')
+    entriesData.writeUint16(entry.keyLen)
 
   # Update minKey/maxKey from sorted entries
   var minKey = rkd.minKey
@@ -277,7 +268,7 @@ proc deserialize*(data: string): RangeKeyDir =
   if version != RANGEKEYDIR_VERSION:
     raise newException(ValueError, fmt("Unsupported version: {version}"))
 
-  let flags = readUint32(data, 8)
+  let _ = readUint32(data, 8)  # flags (reserved for future use)
   let entryCount = readUint32(data, 12).int
   let minKeyLen = readUint16(data, 16).int
   let maxKeyLen = readUint16(data, 18).int
@@ -356,7 +347,7 @@ proc find*(rkd: RangeKeyDir, key: string): Option[RangeKeyDirEntry] =
 proc contains*(rkd: RangeKeyDir, key: string): bool =
   ## Check if key exists (not deleted)
   let entry = rkd.find(key)
-  entry.isSome and not entry.get().deleted
+  entry.isSome and not entry.get().isDeleted
 
 # --- Insert operations ---
 
@@ -373,11 +364,11 @@ proc insert*(rkd: var RangeKeyDir, key: string, entry: RangeKeyDirEntry) =
     rkd.maxKey = key
 
 proc delete*(rkd: var RangeKeyDir, key: string) =
-  ## Mark a key as deleted
+  ## Mark a key as deleted (valueSize = 0 indicates tombstone)
   let existing = rkd.find(key)
   if existing.isSome:
     var entry = existing.get()
-    entry.deleted = true
+    entry.valueSize = 0
     rkd.insert(key, entry)
 
 proc flush*(rkd: var RangeKeyDir) =

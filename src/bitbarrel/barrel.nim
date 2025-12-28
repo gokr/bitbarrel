@@ -186,16 +186,13 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
 
     # Build KeyDirEntry
     let recordPos = offset.uint64 + 4  # Position after CRC
-    let valuePos = recordPos + 8 + 4 + keyLen.uint64 + 4 + 1 + 1  # Position of value
 
     let entry = KeyDirEntry(
-      fileId: barrel.fileId,
       recordPos: recordPos,
-      valuePos: valuePos,
+      fileId: barrel.fileId,
       valueSize: valueLen,
-      timestamp: timestamp,
       recordSize: recordSize,
-      deleted: valueLen == 0  # Tombstone if value is empty
+      keyLen: keyLen.uint16
     )
 
     # Add to index (newer entries overwrite older)
@@ -373,6 +370,8 @@ proc close*(barrel: Barrel) =
     # Stop compaction worker
     if barrel.compactController != nil:
       barrel.compactController.shutdown()
+      # Break circular reference (Barrel <-> CompactController via compactCallback)
+      barrel.compactController = nil
 
     barrel.closed = true
 
@@ -451,8 +450,11 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
   if barrel.closed:
     return false
 
-  let rawTimestamp = getTime().toUnix() * 1000  # Convert to milliseconds
+  let nowTsMs = getTime().toUnix() * 1000  # Convert to milliseconds
+  # Use configured TTL if not specified (-1), or explicit TTL
   let ttlToUse = if ttl == -1: barrel.config.defaultTtl else: ttl
+  # Encode timestamp with TTL
+  let encodedTimestamp = encodeTimestamp(nowTsMs, ttlToUse)
 
   try:
     # Route writes to new file during compaction
@@ -462,18 +464,16 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
       barrel.fileId
 
     let info = if barrel.compactionState.inProgress:
-      barrel.dataFiles[barrel.compactionState.newFileId].appendRecord(key, value, rawTimestamp div 1000)
+      barrel.dataFiles[barrel.compactionState.newFileId].appendRecord(key, value, encodedTimestamp)
     else:
-      barrel.dataFile.appendRecord(key, value, rawTimestamp div 1000)
+      barrel.dataFile.appendRecord(key, value, encodedTimestamp)
 
     let entry = KeyDirEntry(
-      fileId: targetFileId,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
+      fileId: targetFileId,
       valueSize: info.valueSize,
-      timestamp: encodeTimestamp(rawTimestamp, ttlToUse),
       recordSize: info.recordSize,
-      deleted: false  # Not a tombstone
+      keyLen: info.keyLen
     )
     barrel.indexAdd(key, entry)
     return true
@@ -507,28 +507,31 @@ proc get*(barrel: Barrel, key: string): string =
     let entry = found.get()
 
     # Fast path: check deleted flag before disk read
-    if entry.deleted:
+    if entry.isDeleted:
       return ""
 
     let recordInfo = RecordInfo(
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
       valueSize: entry.valueSize,
-      recordSize: entry.recordSize
+      recordSize: entry.recordSize,
+      keyLen: entry.keyLen
     )
     try:
       # Select the correct data file based on entry's fileId
       var value: string
+      var timestamp: int64 = 0
       if barrel.dataFiles.hasKey(entry.fileId):
         var df = barrel.dataFiles[entry.fileId]
-        let (_, v, _) = df.readRecord(recordInfo)
+        let (_, v, ts) = df.readRecord(recordInfo)
         value = v
+        timestamp = ts
       else:
-        let (_, v, _) = barrel.dataFile.readRecord(recordInfo)
+        let (_, v, ts) = barrel.dataFile.readRecord(recordInfo)
         value = v
+        timestamp = ts
 
-      # Check expiration if enabled
-      if barrel.config.checkExpirationOnRead and isExpired(entry.timestamp):
+      # Check expiration if enabled (timestamp read from disk)
+      if barrel.config.checkExpirationOnRead and isExpired(timestamp):
         if barrel.config.deleteExpiredOnRead:
           # Write tombstone (handled by external call)
           # We can't call barrel.delete(key) here due to recursion
@@ -579,13 +582,11 @@ proc delete*(barrel: Barrel, key: string): bool =
       barrel.dataFile.appendRecord(key, "", timestamp)
 
     let entry = KeyDirEntry(
-      fileId: targetFileId,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
-      valueSize: info.valueSize,
-      timestamp: timestamp,
+      fileId: targetFileId,
+      valueSize: 0,  # Empty value = tombstone
       recordSize: info.recordSize,
-      deleted: true  # Mark as deleted
+      keyLen: info.keyLen
     )
     barrel.indexAdd(key, entry)
     return true
@@ -594,13 +595,13 @@ proc delete*(barrel: Barrel, key: string): bool =
 
 proc exists*(barrel: Barrel, key: string): bool =
   ## Check if a key exists (and is not deleted)
-  ## Now O(1) - no disk read needed thanks to deleted flag
+  ## O(1) - valueSize == 0 indicates tombstone
   if barrel.closed:
     return false
 
   let found = barrel.indexGet(key)
   if found.isSome():
-    return not found.get().deleted
+    return not found.get().isDeleted
   return false
 
 proc count*(barrel: Barrel): int =
@@ -613,13 +614,13 @@ proc count*(barrel: Barrel): int =
   of bmHash:
     var count = 0
     for key, entry in barrel.keyDir.pairs():
-      if not entry.deleted:
+      if not entry.isDeleted:
         inc count
     return count
   of bmCritBit:
     var count = 0
     for key, entry in barrel.critBit.pairs():
-      if not entry.deleted:
+      if not entry.isDeleted:
         inc count
     return count
   of bmHugeCritBit:
@@ -640,7 +641,7 @@ proc listKeys*(barrel: Barrel, limit: int = 1000, offset: int = 0): seq[string] 
   case barrel.mode
   of bmHash:
     for key, entry in barrel.keyDir.pairs():
-      if entry.deleted:
+      if entry.isDeleted:
         continue
       if skipped < offset:
         inc skipped
@@ -651,7 +652,7 @@ proc listKeys*(barrel: Barrel, limit: int = 1000, offset: int = 0): seq[string] 
       inc collected
   of bmCritBit:
     for key, entry in barrel.critBit.pairs():
-      if entry.deleted:
+      if entry.isDeleted:
         continue
       if skipped < offset:
         inc skipped
@@ -710,13 +711,34 @@ proc setTtl*(barrel: Barrel, key: string, ttlSeconds: int): bool =
 proc getTtl*(barrel: Barrel, key: string): int =
   ## Get remaining TTL for a key in seconds
   ## Returns 0 if key doesn't exist or has no expiration
+  ## Note: Requires disk read since timestamp not stored in index
   if barrel.closed:
     return 0
 
   let found = barrel.indexGet(key)
   if found.isSome():
     let entry = found.get()
-    result = getRemainingTtl(entry.timestamp)
+    if entry.isDeleted:
+      return 0
+    # Read timestamp from disk
+    let recordInfo = RecordInfo(
+      recordPos: entry.recordPos,
+      valueSize: entry.valueSize,
+      recordSize: entry.recordSize,
+      keyLen: entry.keyLen
+    )
+    try:
+      var timestamp: int64 = 0
+      if barrel.dataFiles.hasKey(entry.fileId):
+        var df = barrel.dataFiles[entry.fileId]
+        let (_, _, ts) = df.readRecord(recordInfo)
+        timestamp = ts
+      else:
+        let (_, _, ts) = barrel.dataFile.readRecord(recordInfo)
+        timestamp = ts
+      result = getRemainingTtl(timestamp)
+    except:
+      result = 0
   else:
     result = 0
 
@@ -737,7 +759,7 @@ proc keysWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, offset: 
   of bmCritBit:
     # CritBit has efficient prefix search, but still apply pagination
     for key, entry in barrel.critBit.pairsWithPrefix(prefix):
-      if entry.deleted:
+      if entry.isDeleted:
         continue
       if skipped < offset:
         inc skipped
@@ -748,7 +770,7 @@ proc keysWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, offset: 
       inc collected
   of bmHash:
     for key, entry in barrel.keyDir.pairs():
-      if entry.deleted:
+      if entry.isDeleted:
         continue
       if key.len >= prefix.len and key[0..<prefix.len] == prefix:
         if skipped < offset:
@@ -777,7 +799,7 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int =
   of bmCritBit:
     # CritBit doesn't have pairsInRange, use pairs with filtering
     for key, entry in barrel.critBit.pairs():
-      if entry.deleted:
+      if entry.isDeleted:
         continue
       if key >= startKey and key < endKey:
         if skipped < offset:
@@ -789,7 +811,7 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int =
         inc collected
   of bmHash:
     for key, entry in barrel.keyDir.pairs():
-      if entry.deleted:
+      if entry.isDeleted:
         continue
       if key >= startKey and key < endKey:
         if skipped < offset:
@@ -809,11 +831,11 @@ iterator keys*(barrel: Barrel): string =
     case barrel.mode
     of bmCritBit:
       for key, entry in barrel.critBit.pairs():
-        if not entry.deleted:
+        if not entry.isDeleted:
           yield key
     of bmHash:
       for key, entry in barrel.keyDir.pairs():
-        if not entry.deleted:
+        if not entry.isDeleted:
           yield key
     of bmHugeCritBit:
       # TODO: HugeBarrel keys (Phase 3)
@@ -828,12 +850,12 @@ proc countWithPrefix*(barrel: Barrel, prefix: string): int =
   of bmCritBit:
     result = 0
     for key, entry in barrel.critBit.pairsWithPrefix(prefix):
-      if not entry.deleted:
+      if not entry.isDeleted:
         inc result
   of bmHash:
     result = 0
     for key, entry in barrel.keyDir.pairs():
-      if not entry.deleted and key.len >= prefix.len and key[0..<prefix.len] == prefix:
+      if not entry.isDeleted and key.len >= prefix.len and key[0..<prefix.len] == prefix:
         inc result
   of bmHugeCritBit:
     # TODO: HugeBarrel countWithPrefix (Phase 3)
@@ -885,22 +907,22 @@ proc itemsInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int 
   for entry in entries:
     let (key, dirEntry) = entry
     # Skip deleted entries
-    if dirEntry.deleted:
+    if dirEntry.isDeleted:
       continue
 
     # Read value from DataFile
     let recordInfo = RecordInfo(
       recordPos: dirEntry.recordPos,
-      valuePos: dirEntry.valuePos,
       valueSize: dirEntry.valueSize,
-      recordSize: dirEntry.recordSize
+      recordSize: dirEntry.recordSize,
+      keyLen: dirEntry.keyLen
     )
 
     try:
-      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+      let (_, value, timestamp) = barrel.dataFile.readRecord(recordInfo)
 
-      # Check expiration if enabled
-      if barrel.config.checkExpirationOnRead and isExpired(dirEntry.timestamp):
+      # Check expiration if enabled (using timestamp from disk)
+      if barrel.config.checkExpirationOnRead and isExpired(timestamp):
         continue
 
       items.add((key, value))
@@ -966,22 +988,22 @@ proc itemsWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, cursor:
   for entry in entries:
     let (key, dirEntry) = entry
     # Skip deleted entries
-    if dirEntry.deleted:
+    if dirEntry.isDeleted:
       continue
 
     # Read value from DataFile
     let recordInfo = RecordInfo(
       recordPos: dirEntry.recordPos,
-      valuePos: dirEntry.valuePos,
       valueSize: dirEntry.valueSize,
-      recordSize: dirEntry.recordSize
+      recordSize: dirEntry.recordSize,
+      keyLen: dirEntry.keyLen
     )
 
     try:
-      let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+      let (_, value, timestamp) = barrel.dataFile.readRecord(recordInfo)
 
-      # Check expiration if enabled
-      if barrel.config.checkExpirationOnRead and isExpired(dirEntry.timestamp):
+      # Check expiration if enabled (using timestamp from disk)
+      if barrel.config.checkExpirationOnRead and isExpired(timestamp):
         continue
 
       items.add((key, value))
@@ -1002,22 +1024,22 @@ iterator itemsInRange*(barrel: Barrel, startKey: string, endKey: string): (strin
   if not barrel.closed and barrel.mode == bmCritBit:
     for key, entry in barrel.critBit.itemsInRange(startKey, endKey):
       # Skip deleted entries
-      if entry.deleted:
+      if entry.isDeleted:
         continue
 
       # Read value from DataFile
       let recordInfo = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
 
       try:
-        let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+        let (_, value, timestamp) = barrel.dataFile.readRecord(recordInfo)
 
-        # Check expiration if enabled
-        if barrel.config.checkExpirationOnRead and isExpired(entry.timestamp):
+        # Check expiration if enabled (using timestamp from disk)
+        if barrel.config.checkExpirationOnRead and isExpired(timestamp):
           continue
 
         yield (key, value)
@@ -1031,22 +1053,22 @@ iterator itemsWithPrefix*(barrel: Barrel, prefix: string): (string, string) =
   if not barrel.closed and barrel.mode == bmCritBit:
     for key, entry in barrel.critBit.itemsWithPrefix(prefix):
       # Skip deleted entries
-      if entry.deleted:
+      if entry.isDeleted:
         continue
 
       # Read value from DataFile
       let recordInfo = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
 
       try:
-        let (_, value, _) = barrel.dataFile.readRecord(recordInfo)
+        let (_, value, timestamp) = barrel.dataFile.readRecord(recordInfo)
 
-        # Check expiration if enabled
-        if barrel.config.checkExpirationOnRead and isExpired(entry.timestamp):
+        # Check expiration if enabled (using timestamp from disk)
+        if barrel.config.checkExpirationOnRead and isExpired(timestamp):
           continue
 
         yield (key, value)
@@ -1086,8 +1108,6 @@ proc deleteBarrel*(path: string): bool =
   ## - Hint files (*.hint)
   ## - Other auxiliary files
   var deleted = true
-  let baseDir = parentDir(path)
-  let basePath = extractFilename(path)
 
   for ext in [".data", ".hint", ".compacted"]:
     let filePath = path & ext
@@ -1120,22 +1140,16 @@ proc generateHintFileForBarrel*(barrel: Barrel) =
       entries.add(HintEntry(
         key: key,
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        timestamp: entry.timestamp,
-        recordSize: entry.recordSize,
-        deleted: entry.deleted
+        recordSize: entry.recordSize
       ))
   of bmCritBit:
     for key, entry in barrel.critBit.pairs():
       entries.add(HintEntry(
         key: key,
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        timestamp: entry.timestamp,
-        recordSize: entry.recordSize,
-        deleted: entry.deleted
+        recordSize: entry.recordSize
       ))
   of bmHugeCritBit:
     return  # HugeBarrel has its own hint file handling
@@ -1161,7 +1175,7 @@ proc compactWorkerThread(args: CompactThreadArgs) {.thread.} =
     # stale size values when main thread writes during compaction.
     var newFilePtr = addr barrel.dataFiles[args.newFileId]
     let success = barrel.compactController.performCompactNonBlocking(
-      args.oldPath, args.oldFileId, newFilePtr[], args.compactionStart
+      args.oldPath, args.oldFileId, newFilePtr[]
     )
 
     {.gcsafe.}:

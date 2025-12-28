@@ -30,11 +30,9 @@ type
   RangeHintEntry* = object
     key*: string                # Key string
     recordPos*: uint64          # Position of record in data file
-    valuePos*: uint64           # Position of value within record
-    valueSize*: uint32          # Size of value
-    timestamp*: int64           # Record timestamp
+    valueSize*: uint32          # Size of value (0 = tombstone)
     recordSize*: uint32         # Total record size
-    deleted*: bool              # True if this is a tombstone
+    keyLen*: uint16             # Key length for valuePos calculation
 
 proc calculateHeaderChecksum(header: var RangeHintHeader): uint32 =
   ## Calculate checksum for header (excluding checksum field)
@@ -84,25 +82,17 @@ proc writeRangeHint*(path: string, rangeId: RangeId, entries: seq[RangeHintEntry
       var recordPos = entry.recordPos
       discard file.writeBuffer(addr recordPos, 8)
 
-      # Write valuePos (8 bytes)
-      var valuePos = entry.valuePos
-      discard file.writeBuffer(addr valuePos, 8)
-
       # Write valueSize (4 bytes)
       var valueSize = entry.valueSize
       discard file.writeBuffer(addr valueSize, 4)
-
-      # Write timestamp (8 bytes)
-      var timestamp = entry.timestamp
-      discard file.writeBuffer(addr timestamp, 8)
 
       # Write recordSize (4 bytes)
       var recordSize = entry.recordSize
       discard file.writeBuffer(addr recordSize, 4)
 
-      # Write deleted flag (1 byte)
-      var deletedByte: uint8 = if entry.deleted: 1 else: 0
-      discard file.writeBuffer(addr deletedByte, 1)
+      # Write keyLen field (2 bytes)
+      var entryKeyLen = entry.keyLen
+      discard file.writeBuffer(addr entryKeyLen, 2)
 
     file.flushFile()
 
@@ -175,19 +165,9 @@ proc readRangeHint*(path: string): tuple[header: RangeHintHeader, entries: seq[R
       if recordPosRead != 8:
         return
 
-      # Read valuePos (8 bytes)
-      let valuePosRead = file.readBuffer(addr entry.valuePos, 8)
-      if valuePosRead != 8:
-        return
-
       # Read valueSize (4 bytes)
       let valueSizeRead = file.readBuffer(addr entry.valueSize, 4)
       if valueSizeRead != 4:
-        return
-
-      # Read timestamp (8 bytes)
-      let timestampRead = file.readBuffer(addr entry.timestamp, 8)
-      if timestampRead != 8:
         return
 
       # Read recordSize (4 bytes)
@@ -195,12 +175,10 @@ proc readRangeHint*(path: string): tuple[header: RangeHintHeader, entries: seq[R
       if recordSizeRead != 4:
         return
 
-      # Read deleted flag (1 byte)
-      var deletedByte: uint8
-      let deletedRead = file.readBuffer(addr deletedByte, 1)
-      if deletedRead != 1:
+      # Read keyLen (2 bytes)
+      let entryKeyLenRead = file.readBuffer(addr entry.keyLen, 2)
+      if entryKeyLenRead != 2:
         return
-      entry.deleted = deletedByte != 0
 
       entries.add(entry)
 
@@ -257,18 +235,16 @@ proc loadKeyDirFromRangeHint*(path: string, keyDir: var KeyDir): int =
   var loaded = 0
   for entry in entries:
     let kdEntry = KeyDirEntry(
-      fileId: 0,  # Will be set by caller if needed
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
+      fileId: 0,  # Will be set by caller if needed
       valueSize: entry.valueSize,
-      timestamp: entry.timestamp,
       recordSize: entry.recordSize,
-      deleted: entry.deleted
+      keyLen: entry.keyLen
     )
 
-    # Only add if newer than existing
-    if keyDir.addIfNewer(entry.key, kdEntry):
-      inc loaded
+    # Always add (position ordering = correct ordering)
+    keyDir.add(entry.key, kdEntry)
+    inc loaded
 
   return loaded
 
@@ -282,11 +258,9 @@ proc saveKeyDirToRangeHint*(path: string, rangeId: RangeId, keyDir: var KeyDir):
     entries.add(RangeHintEntry(
       key: key,
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
       valueSize: entry.valueSize,
-      timestamp: entry.timestamp,
       recordSize: entry.recordSize,
-      deleted: entry.deleted
+      keyLen: entry.keyLen
     ))
 
   return writeRangeHint(path, rangeId, entries)

@@ -376,7 +376,7 @@ proc get*(hb: var HugeBarrel, key: string): string =
 
   # Find the entry
   let entry = rkd.find(key)
-  if entry.isNone() or entry.get().deleted:
+  if entry.isNone() or entry.get().isDeleted:
     return ""
 
   # Read from data file
@@ -386,9 +386,9 @@ proc get*(hb: var HugeBarrel, key: string): string =
   # Build RecordInfo
   var recordInfo: RecordInfo
   recordInfo.recordPos = entry.get().recordPos
-  recordInfo.valuePos = entry.get().valuePos
   recordInfo.valueSize = entry.get().valueSize
   recordInfo.recordSize = entry.get().recordSize
+  recordInfo.keyLen = entry.get().keyLen
 
   let (_, value, _) = dataFileRef[].readRecord(recordInfo)
   return value
@@ -524,13 +524,11 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   # Update RangeKeyDir
   let entry = RangeKeyDirEntry(
     key: key,
-    fileId: hb.currentFileId,
     recordPos: recordInfo.recordPos,
-    valuePos: recordInfo.valuePos,
+    fileId: hb.currentFileId,
     valueSize: recordInfo.valueSize,
-    timestamp: rawTimestamp,
     recordSize: recordInfo.recordSize,
-    deleted: false
+    keyLen: recordInfo.keyLen
   )
 
   rkd.insert(key, entry)
@@ -572,9 +570,9 @@ proc delete*(hb: var HugeBarrel, key: string): bool =
   if existing.isNone():
     return false
 
-  # Mark as deleted
+  # Mark as deleted (valueSize = 0 indicates tombstone)
   var entry = existing.get()
-  entry.deleted = true
+  entry.valueSize = 0
   rkd.insert(key, entry)
 
   # Save immediately
@@ -909,42 +907,27 @@ proc rebuildFromBarrel2*(hb: var HugeBarrel, options: Barrel2RecoveryOptions = B
         hb.addRangeMetadata(rangeKey, key, key)
         inc result.rangesCreated
 
-      # Check if this record is newer than what we have indexed
+      # Build entry for recovery (append-only means later records are always newer)
+      let entry = RangeKeyDirEntry(
+        key: key,
+        recordPos: offset.uint64 + 4,  # After CRC
+        fileId: fileId,
+        valueSize: valueSize,
+        recordSize: recordSize,
+        keyLen: key.len.uint16
+      )
+
+      if rangeKey notin recoveryMap:
+        recoveryMap[rangeKey] = initTable[string, RangeKeyDirEntry]()
+
+      # Check if key exists in index and is orphaned
       let rkd = hb.loadRangeKeyDir(rangeKey)
       let existing = rkd.find(key)
-
-      var shouldAdd = false
       if existing.isNone():
-        shouldAdd = true
-        inc result.orphanedRecords
-      elif existing.get().timestamp < timestamp:
-        # Record in Barrel2 is newer than what's indexed
-        shouldAdd = true
         inc result.orphanedRecords
 
-      if shouldAdd:
-        # Calculate valuePos: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + flags(1) + algo(1)
-        let valuePos = offset.uint64 + 4 + 8 + 4 + key.len.uint64 + 4 + 1 + 1
-
-        # Build entry for recovery
-        let entry = RangeKeyDirEntry(
-          key: key,
-          fileId: fileId,
-          recordPos: offset.uint64 + 4,  # After CRC
-          valuePos: valuePos,
-          valueSize: valueSize,
-          timestamp: timestamp,
-          recordSize: recordSize,
-          deleted: deleted
-        )
-
-        if rangeKey notin recoveryMap:
-          recoveryMap[rangeKey] = initTable[string, RangeKeyDirEntry]()
-
-        # Keep newest entry for each key
-        if key notin recoveryMap[rangeKey] or
-           recoveryMap[rangeKey][key].timestamp < timestamp:
-          recoveryMap[rangeKey][key] = entry
+      # Always overwrite - later records in scan order are newer
+      recoveryMap[rangeKey][key] = entry
 
       # Report progress
       if options.maxProgressInterval > 0 and result.totalRecords mod options.maxProgressInterval == 0:

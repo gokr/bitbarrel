@@ -47,11 +47,9 @@ proc keyDirEntryToRangeHintEntries(keyDir: KeyDir): seq[RangeHintEntry] =
     result.add(RangeHintEntry(
       key: key,
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
       valueSize: entry.valueSize,
-      timestamp: entry.timestamp,
       recordSize: entry.recordSize,
-      deleted: entry.deleted
+      keyLen: entry.keyLen
     ))
 
 proc getRangeDir(dataDir: string, accessModel: AccessModel): string =
