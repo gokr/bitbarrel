@@ -399,29 +399,54 @@ Always check for and remove compiler warnings:
 ### Known Issues
 **ORC Crash in Some Threading Tests**: Some network tests may show ORC crash during thread cleanup due to Nim issue #25253. This is NOT a BitBarrel code issue - it's a confirmed Nim compiler bug.
 
-**Note**: The compaction tests (`test_compact.nim`) have been fixed through proper thread lifecycle management - waiting for compaction to complete before closing the barrel. This same approach may help with other threading tests.
-
 **Potentially affected tests:**
 - `test_client.nim` - network client tests (may crash on cleanup)
 
 **Root Cause**: Nim's ORC garbage collector can crash when cleaning up objects with circular references across thread boundaries. The crash happens in `orc.nim:unregisterCycle()` during thread shutdown.
 
-**Workaround**: Ensure threads complete before parent objects are destroyed. See `barrel.nim:close()` for an example:
+### ORC Crash Prevention with {.acyclic.}
+
+The compaction system uses `{.acyclic.}` pragma on `BarrelObj` and `CompactControllerObj` to prevent ORC cycle detection crashes. This is necessary because:
+
+1. **Closures capture pointers**: `CompactController` has closures (`updateEntry`, `clearIndex`, `getEntry`) that capture `ptr KeyDir` or `ptr CritBitIndex`
+2. **ORC misinterprets pointers**: During cycle detection, ORC can misinterpret raw pointers in closure environments, causing SIGSEGV
+3. **Threading complicates cleanup**: When threads are involved, ORC's cycle detection can race with object destruction
+
+**The fix**: Mark types that participate in cross-thread references with `{.acyclic.}`:
 ```nim
-# Wait for any in-progress compaction to complete before closing
-while barrel.compactionState.inProgress:
-  sleep(10)
+BarrelObj {.acyclic.} = object
+  # ... fields including compactController: CompactController
+
+CompactControllerObj {.acyclic.} = object
+  # ... fields including closures that capture pointers
 ```
 
-**Status**: Actively being investigated by Nim team.
+**Additional safeguards**:
+1. **Cleanup order matters**: Shutdown `compactController` BEFORE deinitializing `keyDir`/`critBit`:
+```nim
+proc close*(barrel: Barrel) =
+  # Wait for compaction to complete
+  while barrel.compactionState.inProgress:
+    sleep(10)
+  barrel.joinCompactionThread()
 
-To run tests without potential issues:
-```bash
-nimble testStorage   # Storage layer tests - all pass
-nimble testKeydir    # KeyDir index tests - all pass
-nimble testIntegration # Integration tests - all pass
-nimble testRecovery  # Recovery tests including compaction - all pass
+  # Shutdown controller BEFORE deinit - closures reference these structures
+  if barrel.compactController != nil:
+    barrel.compactController.shutdown()
+    barrel.compactController = nil
+
+  # Now safe to deinit
+  barrel.keyDir.deinit()
 ```
+
+2. **Avoid storing barrel pointers in callbacks**: The compaction worker thread handles all state updates directly instead of using callbacks that store barrel pointers.
+
+**When to use `{.acyclic.}`**:
+- Types that contain closures capturing raw pointers
+- Types involved in cross-thread reference patterns
+- Types where cycle detection is causing crashes but you know there are no actual cycles
+
+**Status**: Compaction tests now pass. Network client tests may still be affected.
 
 ## Nim Coding Guidelines
 
