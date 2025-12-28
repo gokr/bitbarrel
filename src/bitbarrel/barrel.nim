@@ -292,36 +292,36 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     echo fmt"Recovered {recoveredCount} records from data file"
 
   # Initialize compaction
-  if config.autoCompact:
-    # Create CompactConfig from BarrelConfig settings
-    var compactConfig: CompactConfig
-    compactConfig.enabled = true
-    compactConfig.maxFileSize = 1024 * 1024 * 1024  # 1GB default
-    compactConfig.triggerThreshold = config.compactThreshold
-    compactConfig.compactInterval = config.compactInterval
-    compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
+  # Always create compactController for manual compaction, but only start
+  # the background worker if autoCompact is explicitly enabled
+  var compactConfig: CompactConfig
+  compactConfig.enabled = config.autoCompact  # Background worker only when explicitly enabled
+  compactConfig.maxFileSize = 1024 * 1024 * 1024  # 1GB default
+  compactConfig.triggerThreshold = config.compactThreshold
+  compactConfig.compactInterval = config.compactInterval
+  compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
 
-    # Initialize with appropriate index based on mode
-    case config.mode
-    of bmHash:
-      # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
-      result.compactController = newCompactController(compactConfig, addr(result.keyDir), onCompactionCompleteGlobal, cast[pointer](result))
-    of bmCritBit:
-      # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
-      result.compactController = newCompactController(compactConfig, addr(result.critBit), onCompactionCompleteGlobal, cast[pointer](result))
-    of bmHugeCritBit:
-      # TODO: HugeBarrel compaction (Phase 5)
-      result.compactController = nil
-
-    # Set barrel path for auto-compaction
-    if result.compactController != nil:
-      let dataDir = if parentDir(path) == "": "." else: parentDir(path)
-      result.compactController.setBarrelPath(dataDir)
-
-      # Start background worker
-      result.compactController.startCompactWorker()
-  else:
+  # Initialize with appropriate index based on mode
+  case config.mode
+  of bmHash:
+    # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
+    result.compactController = newCompactController(compactConfig, addr(result.keyDir), onCompactionCompleteGlobal, cast[pointer](result))
+  of bmCritBit:
+    # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
+    result.compactController = newCompactController(compactConfig, addr(result.critBit), onCompactionCompleteGlobal, cast[pointer](result))
+  of bmHugeCritBit:
+    # TODO: HugeBarrel compaction (Phase 5)
     result.compactController = nil
+
+  # Set barrel path for compaction
+  if result.compactController != nil:
+    let dataDir = if parentDir(path) == "": "." else: parentDir(path)
+    result.compactController.setBarrelPath(dataDir)
+
+    # Start background worker only if autoCompact is enabled
+    # Note: Background worker disabled due to ORC GC crash issues
+    if result.compactController.config.enabled:
+      result.compactController.startCompactWorker()
 
 proc openBarrel*(path: string, config: BarrelConfig): Barrel =
   ## Open a barrel with configuration (no fileId needed)
