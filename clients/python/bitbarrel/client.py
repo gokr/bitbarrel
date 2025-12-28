@@ -1,22 +1,18 @@
 """BitBarrel WebSocket client implementation."""
 
-import struct
 import threading
-from typing import List, Tuple, Optional, Callable, Dict, Any
+from typing import List, Tuple, Optional, Union
 from .protocol import (
     Command, Status,
-    encode_request, decode_response,
+    encode_request, decode_response, decode_response_raw,
     encode_range_request, decode_range_response,
     encode_prefix_request,
     encode_traverse_request, decode_traverse_response,
     status_to_error,
-    MAX_KEY_SIZE, MAX_VALUE_SIZE,
 )
 from .websocket import WebSocket
 from .errors import (
-    BitBarrelError, ConnectionError, TimeoutError,
-    NotFoundError, NoBarrelError, BarrelExistsError, BarrelNotFoundError,
-    ServerError,
+    ConnectionError, NotFoundError, NoBarrelError, ServerError,
 )
 
 
@@ -24,9 +20,9 @@ class RangeResult:
     """Result from range or prefix query."""
 
     def __init__(self, items: List[Tuple[str, str]], next_cursor: str, has_more: bool):
-        self.items = items  # List[Tuple[str, str]]
-        self.nextCursor = next_cursor
-        self.hasMore = has_more
+        self.items = items
+        self.next_cursor = next_cursor
+        self.has_more = has_more
 
 
 class TraverseResult:
@@ -36,7 +32,7 @@ class TraverseResult:
         self.path = path
         self.key = key
         self.value = value
-        self.extractedData = extracted_data
+        self.extracted_data = extracted_data
 
 
 class Client:
@@ -90,7 +86,7 @@ class Client:
         return self._connected
 
     @property
-    def currentBarrel(self) -> str:
+    def current_barrel(self) -> str:
         """Get the current barrel name."""
         return self._current_barrel
 
@@ -343,7 +339,7 @@ class Client:
         """
         self._ensure_barrel()
         params = encode_range_request(start_key, end_key, limit, cursor)
-        value = self._send_request(Command.RANGE_QUERY, "", params)
+        value = self._send_request_binary(Command.RANGE_QUERY, "", params)
         items, next_cursor, has_more = decode_range_response(value)
         return RangeResult(items, next_cursor, has_more)
 
@@ -367,7 +363,7 @@ class Client:
         """
         self._ensure_barrel()
         params = encode_prefix_request(prefix, limit, cursor)
-        value = self._send_request(Command.PREFIX_QUERY, "", params)
+        value = self._send_request_binary(Command.PREFIX_QUERY, "", params)
         items, next_cursor, has_more = decode_range_response(value)
         return RangeResult(items, next_cursor, has_more)
 
@@ -431,29 +427,30 @@ class Client:
         if first_only:
             options_byte |= 0x04
 
-        seq = self._next_seq()
-        params = encode_traverse_request(seq, key, path_spec, options_byte)
+        with self._lock:
+            seq = self._next_seq_unlocked()
+            params = encode_traverse_request(seq, key, path_spec, options_byte)
 
-        # Send traverse request
-        header = encode_request(Command.TRAVERSE, "", params)
-        self._send_binary(header)
+            # Send traverse request
+            header = encode_request(Command.TRAVERSE, "", params)
+            self._ws.send_binary(header)
 
-        # Receive special traversed response
-        response_data = self._ws.recv_binary()
-        status, seq_resp, results = decode_traverse_response(response_data)
+            # Receive special traversed response
+            response_data = self._ws.recv_binary()
+            status, seq_resp, results = decode_traverse_response(response_data)
 
-        if status != Status.OK:
-            raise ServerError(f"Traversal failed: status=0x{status:02x}")
+            if status != Status.OK:
+                raise ServerError(f"Traversal failed: status=0x{status:02x}")
 
-        return [
-            TraverseResult(
-                path=r["path"],
-                key=r["key"],
-                value=r["value"],
-                extracted_data=r.get("extractedData", ""),
-            )
-            for r in results
-        ]
+            return [
+                TraverseResult(
+                    path=r["path"],
+                    key=r["key"],
+                    value=r["value"],
+                    extracted_data=r.get("extractedData", ""),
+                )
+                for r in results
+            ]
 
     def traverse_path(self, key: str, path_spec: str) -> List[TraverseResult]:
         """Traverse with default options (include full data, no extraction).
@@ -487,12 +484,14 @@ class Client:
         if not self._current_barrel:
             raise NoBarrelError("No barrel selected. Call use_barrel() first.")
 
-    def _next_seq(self) -> int:
-        """Internal: get next sequence number."""
-        with self._lock:
-            seq = self._seq_counter
-            self._seq_counter += 1
-            return seq
+    def _next_seq_unlocked(self) -> int:
+        """Internal: get next sequence number.
+
+        IMPORTANT: Caller must hold self._lock before calling this method.
+        """
+        seq = self._seq_counter
+        self._seq_counter += 1
+        return seq
 
     def _send_request(self, cmd: int, key: str = "", value: str = "") -> Optional[str]:
         """Internal: send request and get response.
@@ -513,7 +512,9 @@ class Client:
         self._ensure_connected()
 
         with self._lock:
-            seq = self._next_seq()
+            # Get next sequence number (inline to avoid deadlock)
+            seq = self._seq_counter
+            self._seq_counter += 1
 
             # Encode request
             data = encode_request(cmd, seq, key, value)
@@ -548,17 +549,52 @@ class Client:
 
             return resp_value
 
-    def _send_binary(self, data: bytes) -> None:
-        """Internal: Send binary data to server.
+    def _send_request_binary(self, cmd: int, key: str = "", value: Union[str, bytes] = "") -> bytes:
+        """Internal: send request and get raw bytes response.
+
+        Same as _send_request but returns raw bytes for the value instead of string.
+        Used for range queries and other binary responses.
+
+        Returns:
+            Raw response value as bytes
 
         Raises:
-            ConnectionError: If not connected
+            ConnectionError: If connection issues
+            TimeoutError: If request timeout
+            NoBarrelError: If no barrel selected
+            ServerError: If server error
         """
-        if not self._ws or not self._ws.connected:
-            raise ConnectionError("Not connected to server")
+        self._ensure_connected()
 
-        try:
+        with self._lock:
+            # Get next sequence number (inline to avoid deadlock)
+            seq = self._seq_counter
+            self._seq_counter += 1
+
+            # Encode request
+            data = encode_request(cmd, seq, key, value)
+
+            # Send request
             self._ws.send_binary(data)
-        except ConnectionError as e:
-            self._connected = False
-            raise ConnectionError(f"Failed to send: {e}")
+
+            # Receive response
+            try:
+                response_data = self._ws.recv_binary()
+            except ConnectionError:
+                self._connected = False
+                raise
+
+            # Decode response (raw bytes)
+            status, resp_seq, resp_value = decode_response_raw(response_data)
+
+            # Verify sequence
+            if resp_seq != seq:
+                raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
+
+            # Handle status
+            if status != Status.OK:
+                err = status_to_error(status, resp_value.decode("utf-8", errors="replace"))
+                if err:
+                    raise err
+
+            return resp_value
