@@ -50,6 +50,62 @@ client.close()
 - Reference traversal for graph-like data
 - Thread-safe request handling
 
+## Concurrency Model
+
+**Important**: This client uses a **blocking/serialized** request model.
+
+- Requests are processed sequentially - only one request can be in-flight at a time
+- A `Lock` is held for the entire send-receive cycle (`sendAndWait`) to prevent interleaving
+- Multiple threads can use the client safely via the lock, but requests will be serialized
+- The sequence number is validated against responses but does not enable pipelining
+
+This design ensures correctness and simplicity for most use cases. If you need high-throughput parallel requests, use multiple client instances.
+
+**Example of concurrent-safe (but serialized) usage:**
+```nim
+import std/[locks, strformat]
+import ../src/bitbarrel_client
+
+var client = newClient()
+client.connect()
+discard client.createBarrel("mydb")
+discard client.useBarrel("mydb")
+
+var threads: seq[Thread[void]]
+var barrier: Barrier
+initBarrier(barrier, 4)
+
+proc setAndGet(n: int) =
+  discard client.set(fmt"key{n}", fmt"val{n}")
+  echo client.get(fmt"key{n}")
+
+# Threads will queue due to internal locking
+for i in 0..<4:
+  createThread(threads[i], setAndGet, i)
+for t in threads:
+  joinThread(t)
+```
+
+**For parallel throughput**, use separate clients:
+```nim
+import std/[locks, strformat]
+import ../src/bitbarrel_client
+
+proc worker(id: int) =
+  var client = newClient()
+  client.connect()
+  discard client.createBarrel("worker_db")
+  discard client.useBarrel("worker_db")
+  # ... do work ...
+  client.close()
+
+var threads: seq[Thread[int]]
+for i in 0..<4:
+  createThread(threads[i], worker, i)
+for t in threads:
+  joinThread(t)
+```
+
 ## API Reference
 
 ### Client Creation

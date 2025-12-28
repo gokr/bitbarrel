@@ -2,6 +2,55 @@
 
 Python client for BitBarrel key-value storage using WebSocket connection.
 
+## Concurrency Model
+
+**Important**: This client uses a **blocking/serialized** request model.
+
+- Requests are processed sequentially - only one request can be in-flight at a time
+- A `threading.Lock` is held for the entire send-receive cycle to prevent interleaving
+- Multiple threads can use the client safely via the lock, but requests will be serialized
+- The sequence number is validated against responses but does not enable pipelining
+
+This design ensures correctness and simplicity for most use cases. If you need high-throughput parallel requests, use multiple client instances.
+
+**Example of concurrent-safe (but serialized) usage:**
+```python
+from concurrent.futures import ThreadPoolExecutor
+from bitbarrel import Client
+
+client = Client()
+client.connect()
+client.use_barrel("mydb")
+
+def set_get(key, value):
+    client.set(key, value)
+    return client.get(key)
+
+# These will execute sequentially due to internal locking
+with ThreadPoolExecutor(max_workers=10) as executor:
+    futures = []
+    for i in range(10):
+        f = executor.submit(set_get, f"key{i}", f"value{i}")
+        futures.append(f)
+    results = [f.result() for f in futures]
+```
+
+**For parallel throughput**, use separate clients:
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+def worker():
+    client = Client()
+    client.connect()
+    client.use_barrel("mydb")
+    # ... do work ...
+    client.close()
+
+# Run multiple workers in parallel
+with ThreadPoolExecutor(max_workers=4) as executor:
+    executor.map(lambda _: worker(), range(4))
+```
+
 ## Installation
 
 The client requires Python >= 3.8 and the `websocket-client` library for WebSocket communication.

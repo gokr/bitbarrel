@@ -9,6 +9,46 @@ Go client library for BitBarrel key-value store with WebSocket protocol support.
 - Barrel management
 - Context support for timeouts and cancellation
 
+## Concurrency Model
+
+**Important**: This client uses a **blocking/serialized** request model.
+
+- Requests are processed sequentially - only one request can be in-flight at a time
+- A mutex lock is held for the entire send-receive cycle to prevent interleaving
+- Multiple goroutines can use the client safely, but requests will be serialized
+- The sequence number is validated against responses but does not enable pipelining
+
+This design ensures correctness and simplicity for most use cases. If you need high-throughput parallel requests, use multiple client instances (one per goroutine or connection pool).
+
+**Example of concurrent-safe (but serialized) usage:**
+```go
+var wg sync.WaitGroup
+for i := 0; i < 10; i++ {
+    wg.Add(1)
+    go func(n int) {
+        defer wg.Done()
+        // These calls will execute sequentially due to internal locking
+        client.Set(fmt.Sprintf("key%d", n), fmt.Sprintf("val%d", n))
+        client.Get(fmt.Sprintf("key%d", n))
+    }(i)
+}
+wg.Wait()
+```
+
+**For parallel throughput**, use separate clients:
+```go
+// Create a client pool
+clients := make([]*Client, 4)
+for i := range clients {
+    c := NewClient("localhost", 9876)
+    c.Connect()
+    clients[i] = c
+    defer c.Close()
+}
+
+// Use different clients for parallel requests
+```
+
 ## Installation
 
 ```bash

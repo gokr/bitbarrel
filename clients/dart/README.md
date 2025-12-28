@@ -11,6 +11,81 @@ A Dart/Flutter client library for [BitBarrel](../../), a high-performance Bitcas
 - Type-safe exception handling
 - Comprehensive test coverage
 
+## Concurrency Model
+
+**Important**: This client uses a **blocking/serialized async request model** without thread-safety.
+
+- Requests are blocked on `await` - each request waits for the response before returning
+- **Not thread-safe**: The client does not have internal locking. Concurrent calls can cause sequence number collisions
+- The sequence number is validated against responses but does not enable pipelining
+- Use in a single-threaded async context (Isolate in Dart/Flutter) or manage external synchronization
+
+This design works well for Flutter where UI runs on the main thread and async operations don't block UI. For concurrent access, use external locking or separate client instances.
+
+**Safe usage pattern:**
+
+```dart
+// Safe: Sequential async operations in a single async function
+Future<void> sequentialOperations() async {
+  final client = BitBarrelClient.localhost();
+  await client.connect();
+
+  await client.set('key1', 'value1');
+  await client.set('key2', 'value2');
+  await client.set('key3', 'value3');
+
+  final value1 = await client.get('key1');  // Returns 'value1'
+  final value2 = await client.get('key2');  // Returns 'value2'
+
+  await client.close();
+}
+```
+
+**Warning: Concurrent calls without external locking are unsafe:**
+
+```dart
+// UNSAFE: This can cause sequence number collisions
+final client = BitBarrelClient.localhost();
+await client.connect();
+
+// These race - _seq++ is not atomic
+Future.wait([
+  client.set('key1', 'value1'),
+  client.set('key2', 'value2'),
+  client.set('key3', 'value3'),
+]);
+```
+
+**For concurrent access, use separate clients or external locking:**
+
+```dart
+// Option 1: Separate clients for parallel operations
+final client1 = BitBarrelClient.localhost();
+final client2 = BitBarrelClient.localhost();
+await client1.connect();
+await client2.connect();
+
+// Options 2: External mutex
+import 'dart:async';
+
+class SafeClient {
+  final BitBarrelClient _client = BitBarrelClient.localhost();
+  final _lock = Lock();
+
+  Future<T> _request<T>(Future<T> Function() fn) async {
+    await _lock.acquire();
+    try {
+      return await fn();
+    } finally {
+      _lock.release();
+    }
+  }
+
+  Future<String> get(String key) => _request(() => _client.get(key));
+  Future<void> set(String key, String value) => _request(() => _client.set(key, value));
+}
+```
+
 ## Installation
 
 Add this package to your `pubspec.yaml`:
