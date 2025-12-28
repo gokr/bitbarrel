@@ -149,11 +149,17 @@ proc handleWebSocketMessage*(
     resp.value = barrels.join(",")
 
   of cmdCloseBarrel:
-    if server.registry.closeBarrel(req.key):
+    # If no key specified, close the session's current barrel
+    var barrelName = req.key
+    if barrelName == "":
+      withLock server.sessionsLock:
+        barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+
+    if barrelName != "" and server.registry.closeBarrel(barrelName):
       resp.status = statusOk
       # Clear current barrel if it was the one being closed
       withLock server.sessionsLock:
-        if server.sessions[ws.clientId].getCurrentBarrel() == req.key:
+        if server.sessions[ws.clientId].getCurrentBarrel() == barrelName:
           server.sessions[ws.clientId].clearCurrentBarrel()
     else:
       resp.status = statusBarrelNotFound
