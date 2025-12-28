@@ -6,9 +6,9 @@ Response Format: [status:1][seq:4][valLen:4][value:M]
 All multi-byte integers use big-endian encoding.
 """
 
-import base64
 import struct
-from typing import Tuple, Optional
+from enum import IntEnum
+from typing import Tuple, Optional, Union
 
 
 class ProtocolError(Exception):
@@ -16,8 +16,8 @@ class ProtocolError(Exception):
     pass
 
 
-# Command types (must match BitBarrel server)
-class Command:
+class Command(IntEnum):
+    """Command types (must match BitBarrel server)."""
     GET = 0x01
     SET = 0x02
     DELETE = 0x03
@@ -39,8 +39,8 @@ class Command:
     SET_BARREL_CONFIG = 0x17
 
 
-# Status codes
-class Status:
+class Status(IntEnum):
+    """Response status codes."""
     OK = 0x00
     NOT_FOUND = 0x01
     ERROR = 0x02
@@ -55,15 +55,26 @@ MAX_KEY_SIZE = 65535      # 64KB
 MAX_VALUE_SIZE = 33554432  # 32MB (from updated protocol.go)
 
 
-def encode_request(cmd: int, seq: int, key: str = "", value: str = "") -> bytes:
-    """Encode a request to binary format."""
+def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] = "") -> bytes:
+    """Encode a request to binary format.
+
+    Args:
+        cmd: Command byte
+        seq: Sequence number
+        key: Key string
+        value: Value as string or bytes (for binary payloads like range queries)
+    """
     if len(key) > MAX_KEY_SIZE:
         raise ProtocolError(f"Key too large: {len(key)} bytes")
     if len(value) > MAX_VALUE_SIZE:
         raise ProtocolError(f"Value too large: {len(value)} bytes")
 
+    # Encode value to bytes if it's a string
+    value_bytes = value if isinstance(value, bytes) else value.encode("utf-8")
+    key_bytes = key.encode("utf-8")
+
     # Calculate total size: 1 + 4 + 2 + key + 4 + value
-    total_size = 1 + 4 + 2 + len(key) + 4 + len(value)
+    total_size = 1 + 4 + 2 + len(key_bytes) + 4 + len(value_bytes)
     buf = bytearray(total_size)
 
     offset = 0
@@ -77,19 +88,19 @@ def encode_request(cmd: int, seq: int, key: str = "", value: str = "") -> bytes:
     offset += 4
 
     # Key length (2 bytes, big-endian)
-    buf[offset:offset+2] = struct.pack(">H", len(key))
+    buf[offset:offset+2] = struct.pack(">H", len(key_bytes))
     offset += 2
 
     # Key
-    buf[offset:offset+len(key)] = key.encode("utf-8")
-    offset += len(key)
+    buf[offset:offset+len(key_bytes)] = key_bytes
+    offset += len(key_bytes)
 
     # Value length (4 bytes, big-endian)
-    buf[offset:offset+4] = struct.pack(">I", len(value))
+    buf[offset:offset+4] = struct.pack(">I", len(value_bytes))
     offset += 4
 
     # Value
-    buf[offset:offset+len(value)] = value.encode("utf-8")
+    buf[offset:offset+len(value_bytes)] = value_bytes
 
     return bytes(buf)
 
@@ -215,16 +226,49 @@ def decode_response(data: bytes) -> Tuple[int, int, str]:
     return status, seq, value
 
 
+def decode_response_raw(data: bytes) -> Tuple[int, int, bytes]:
+    """Decode a response from binary format, returning raw bytes for value.
+
+    Used for range queries and other binary responses.
+    """
+    if len(data) < 9:  # Minimum: 1+4+4+0
+        raise ProtocolError("Response too short")
+
+    offset = 0
+
+    # Status (1 byte)
+    status = data[offset]
+    offset += 1
+
+    # Validate status
+    if status > Status.BARREL_NOT_FOUND:
+        raise ProtocolError(f"Invalid status: 0x{status:02x}")
+
+    # Sequence (4 bytes, big-endian)
+    seq = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    # Value length (4 bytes, big-endian)
+    value_len = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    if value_len > MAX_VALUE_SIZE:
+        raise ProtocolError(f"Value too large: {value_len}")
+
+    if len(data) < offset + value_len:
+        raise ProtocolError("Truncated response")
+
+    # Value (raw bytes)
+    value = data[offset:offset+value_len]
+
+    return status, seq, value
+
+
 # Range query encoding
 
 def encode_range_request(start_key: str, end_key: str, limit: int, cursor: str) -> bytes:
     """Encode a range query request."""
-    buf = bytearray(
-        2 + len(start_key) +
-        2 + len(end_key) +
-        4 +
-        2 + len(cursor)
-    )
+    buf = bytearray()
 
     # Start key
     buf.extend(struct.pack(">H", len(start_key)))
@@ -246,11 +290,7 @@ def encode_range_request(start_key: str, end_key: str, limit: int, cursor: str) 
 
 def encode_prefix_request(prefix: str, limit: int, cursor: str) -> bytes:
     """Encode a prefix query request."""
-    buf = bytearray(
-        2 + len(prefix) +
-        4 +
-        2 + len(cursor)
-    )
+    buf = bytearray()
 
     # Prefix
     buf.extend(struct.pack(">H", len(prefix)))
@@ -318,12 +358,7 @@ def decode_range_response(data: bytes) -> Tuple[list, str, bool]:
 
 def encode_traverse_request(seq: int, key: str, path_spec: str, options_byte: int) -> bytes:
     """Encode a traversal request."""
-    buf = bytearray(
-        4 +
-        2 + len(key) +
-        2 + len(path_spec) +
-        1
-    )
+    buf = bytearray()
 
     # Sequence
     buf.extend(struct.pack(">I", seq))
@@ -412,7 +447,7 @@ def status_to_error(status: int, message: str = "") -> Optional[Exception]:
     """Convert status code to appropriate error."""
     from .errors import (
         NotFoundError, NoBarrelError, BarrelExistsError,
-        BarrelNotFoundError, InvalidRequestError, ServerError, ProtocolError
+        BarrelNotFoundError, InvalidRequestError, ServerError,
     )
 
     if status == Status.OK:
