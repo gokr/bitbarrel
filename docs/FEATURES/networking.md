@@ -58,7 +58,7 @@ BitBarrel provides client libraries in multiple languages:
 | Prefix queries | ✅ | ✅ | ✅ | - |
 | Reference traversal | ✅ | ✅ | ✅ | - |
 | Cursor pagination | ✅ | ✅ | ✅ | - |
-| Thread-safe | ✅ | ✅ | ✅ | - |
+| Thread-safe | ✅ | ✅ | ✅ | ✅ |
 | Mobile support | - | - | ✅ | - |
 | Web support | - | - | ✅ | - |
 

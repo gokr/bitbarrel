@@ -16,7 +16,7 @@ A Dart/Flutter client library for [BitBarrel](../../), a high-performance Bitcas
 **Important**: This client uses a **blocking/serialized async request model** with internal locking.
 
 - Requests are serialized - only one request can be in-flight at a time
-- A `Mutex` is held for the entire send-receive cycle via `synchronized()` to prevent interleaving
+- A `Mutex` is held for the entire send-receive cycle via `protect()` to prevent interleaving
 - Thread-safe for concurrent access: multiple Isolates/Dart `Future` chains can use the client safely
 - The sequence number is validated against responses but does not enable pipelining
 
