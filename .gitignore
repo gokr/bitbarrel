@@ -38,3 +38,24 @@ Thumbs.db
 
 # Claude
 .claude
+
+# Dart/Flutter
+.dart_tool/
+.pub-cache/
+.build/
+.packages.pubspec.lock
+clients/dart/pubspec.lock
+clients/dart/.dart_tool/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+clients/python/.pytest_cache/
+clients/python/.ruff_cache/
+clients/python/bitbarrel.egg-info/
+clients/python/venv/
