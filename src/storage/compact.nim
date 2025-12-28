@@ -44,22 +44,10 @@ type
 
   CompactController* = ref CompactControllerObj
 
-proc `=destroy`*(controller: var CompactControllerObj) =
-  ## Destructor for CompactController
-  ## Properly clean up locks and condition variables
-  ## This is called by ORC when the object is being garbage collected
-  if controller.hasWorker:
-    # Signal shutdown to worker thread
-    controller.shutdownFlag.store(true)
-    withLock(controller.compactLock):
-      controller.compactCondition.signal()
-    # Don't join here - it can cause deadlocks during GC
-    controller.hasWorker = false
-
-  # Deinitialize lock and condition variable
-  # These are designed to be safe to call multiple times
-  deinitLock(controller.compactLock)
-  deinitCond(controller.compactCondition)
+# Note: No `=destroy` for CompactControllerObj
+# The locks and condition variables are cleaned up explicitly by shutdown()
+# and must be cleaned up BEFORE GC touches the object to avoid ORC crashes
+# when resolving circular references (Barrel <-> CompactController)
 
 # Compaction marker file functions for crash recovery
 
@@ -334,13 +322,11 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
       # Update index with new position using callback
       if controller.updateEntry != nil:
         controller.updateEntry(key, KeyDirEntry(
-          fileId: newFileId,
           recordPos: newPos.recordPos,
-          valuePos: newPos.valuePos,
+          fileId: newFileId,
           valueSize: newPos.valueSize,
-          timestamp: info.timestamp,
           recordSize: newPos.recordSize,
-          deleted: false
+          keyLen: key.len.uint16
         ))
       inc(controller.stats.recordsKept)
 
@@ -485,19 +471,18 @@ proc shutdown*(controller: CompactController) =
 # Non-blocking compaction support
 
 proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
-                                 fileId: uint32, newFile: var DataFile,
-                                 compactionStart: int64): bool =
+                                 fileId: uint32, newFile: var DataFile): bool =
   ## Perform non-blocking compaction: compact oldFile → newFile
   ## The newFile is already open and may contain new writes during compaction.
-  ## This proc checks for shadowing: if a record was written during compaction
-  ## (timestamp >= compactionStart and KeyDir has newer version), skip writing it.
+  ## This proc checks for shadowing: if KeyDir points to a different file,
+  ## the record was shadowed by a newer write and should be skipped.
   ##
   ## Returns true if successful, false if failed
 
   if not controller.config.enabled:
     return false
 
-  echo fmt("Starting non-blocking compaction: file={fileId}, compactionStart={compactionStart}")
+  echo fmt("Starting non-blocking compaction: file={fileId}")
 
   controller.compactInProgress = true
   controller.stats.timeStarted = getTime()
@@ -549,15 +534,13 @@ proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
         continue
 
       # Check if this record was shadowed by a write during compaction
-      # A record is shadowed if:
-      # 1. Its timestamp is less than compactionStart (it predates compaction)
-      # 2. AND the current KeyDir has a newer version
-      if info.timestamp < compactionStart and controller.getEntry != nil:
+      # A record is shadowed if KeyDir points to a different file (the new file)
+      if controller.getEntry != nil:
         let currentEntry = controller.getEntry(key)
         if currentEntry.isSome():
           let entry = currentEntry.get()
-          # If KeyDir has a newer timestamp, this record was shadowed - skip it
-          if entry.timestamp > info.timestamp:
+          # If KeyDir points to a different file, this record was shadowed - skip it
+          if entry.fileId != fileId:
             inc(controller.stats.recordsDropped)
             continue
 
@@ -571,13 +554,11 @@ proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
       # Update index with new position using callback
       if controller.updateEntry != nil:
         controller.updateEntry(key, KeyDirEntry(
-          fileId: newFile.fileId,
           recordPos: newPos.recordPos,
-          valuePos: newPos.valuePos,
+          fileId: newFile.fileId,
           valueSize: newPos.valueSize,
-          timestamp: readTimestamp,
           recordSize: newPos.recordSize,
-          deleted: false
+          keyLen: readKey.len.uint16
         ))
       inc(controller.stats.recordsKept)
 

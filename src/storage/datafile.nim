@@ -23,9 +23,9 @@ type
 
   RecordInfo* = object
     recordPos*: uint64   # Position of the record (after CRC32)
-    valuePos*: uint64    # Position of value within file
     valueSize*: uint32   # Size of value
     recordSize*: uint32  # Total record size
+    keyLen*: uint16      # Key length (for valuePos calculation)
 
 proc open*(path: string, fileId: uint32): DataFile =
   ## Open a data file, creating it if it doesn't exist
@@ -200,14 +200,12 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     withLock(df.lock):
       let recordPos = df.size
       let recordDataPos = recordPos + 4  # After CRC32
-      # New format: timestamp:8 + keyLen:4 + key + valLen:4 + flags:1 + algorithm:1
-      let valuePos = recordDataPos + 8 + 4 + key.len.uint64 + 4 + 1 + 1
 
       recordInfo = RecordInfo(
         recordPos: recordDataPos,
-        valuePos: valuePos,
         valueSize: value.len.uint32,
-        recordSize: (4 + encoded.len).uint32
+        recordSize: (4 + encoded.len).uint32,
+        keyLen: key.len.uint16
       )
 
       # Write CRC32
@@ -266,16 +264,14 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
         when defined(posix):
           discard fsync(df.file.getFileHandle())
 
-      # Calculate where the actual value starts (new format includes flags and algorithm bytes)
+      # Calculate record position (after CRC32)
       let recordDataPos = recordPos + 4  # After CRC32
-      # New format: timestamp:8 + keyLen:4 + key + valLen:4 + flags:1 + algorithm:1
-      let valuePos = recordDataPos + 8 + 4 + key.len.uint64 + 4 + 1 + 1
 
       result = RecordInfo(
         recordPos: recordDataPos,
-        valuePos: valuePos,
         valueSize: value.len.uint32,
-        recordSize: (4 + encoded.len).uint32
+        recordSize: (4 + encoded.len).uint32,
+        keyLen: key.len.uint16
       )
 
 proc readRecord*(df: var DataFile, recordInfo: RecordInfo): (string, string, int64) =

@@ -59,26 +59,6 @@ proc keys*(keyDir: var KeyDir): seq[string] =
     for key in keyDir.table.keys:
       result.add(key)
 
-proc newerEntry*(keyDir: var KeyDir, key: string, entry: KeyDirEntry): bool =
-  ## Check if the new entry is newer than the existing one
-  ## Returns true if the entry should be added (either key doesn't exist or is newer)
-  withLock(keyDir.lock):
-    if not keyDir.table.contains(key):
-      return true
-
-    let existing = keyDir.table[key]
-    return entry.timestamp > existing.timestamp
-
-proc addIfNewer*(keyDir: var KeyDir, key: string, entry: KeyDirEntry): bool =
-  ## Add entry only if it's newer than existing entry
-  ## Returns true if entry was added
-  withLock(keyDir.lock):
-    if not keyDir.table.contains(key) or entry.timestamp > keyDir.table[key].timestamp:
-      keyDir.table[key] = entry
-      result = true
-    else:
-      result = false
-
 proc deinit*(keyDir: var KeyDir) =
   ## Cleanup resources
   deinitLock(keyDir.lock)

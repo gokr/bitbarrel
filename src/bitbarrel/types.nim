@@ -18,14 +18,26 @@ type
     reserved*: array[8, byte]
 
   KeyDirEntry* = object
-    fileId*: uint32      # Which data file contains the record
-    recordPos*: uint64   # Position of record in file (after CRC)
-    valuePos*: uint64    # Position of value within file
-    valueSize*: uint32   # Size of value
-    timestamp*: int64    # For conflict resolution and TTL
-    recordSize*: uint32  # Total record size for merge decisions
-    deleted*: bool       # True if this entry is a tombstone (deleted)
+    ## Optimized in-memory index entry (24 bytes)
+    ## - Removed timestamp: append-only ordering means position = ordering
+    ## - Removed deleted: use valueSize == 0 as tombstone marker
+    ## - Removed valuePos: calculate from recordPos + keyLen
+    recordPos*: uint64   # 8 bytes - Position of record in file (after CRC)
+    fileId*: uint32      # 4 bytes - Which data file contains the record
+    valueSize*: uint32   # 4 bytes - Size of value (0 = tombstone/deleted)
+    recordSize*: uint32  # 4 bytes - Total record size for compaction
+    keyLen*: uint16      # 2 bytes - Key length for valuePos calculation
 
+proc isDeleted*(entry: KeyDirEntry): bool =
+  ## Check if entry is a tombstone (deleted record)
+  entry.valueSize == 0
+
+proc calcValuePos*(entry: KeyDirEntry): uint64 =
+  ## Calculate value position from record position and key length
+  ## Record format: [ts:8][keyLen:4][key:N][valLen:4][flags:1][algo:1][value]
+  entry.recordPos + 8 + 4 + entry.keyLen.uint64 + 4 + 1 + 1
+
+type
   # Write buffering configuration
   SyncMode* = enum
     syncImmediate    # Sync on every write (current behavior)
@@ -184,15 +196,22 @@ type
 
   # RangeKeyDir entry for bmHugeCritBit mode
   RangeKeyDirEntry* = object
-    key*: string
-    fileId*: uint32
-    recordPos*: uint64
-    valuePos*: uint64
-    valueSize*: uint32
-    timestamp*: int64
-    recordSize*: uint32
-    deleted*: bool
+    key*: string           # The key (stored in range entries)
+    recordPos*: uint64     # Position of record in file
+    fileId*: uint32        # Which data file contains the record
+    valueSize*: uint32     # Size of value (0 = tombstone/deleted)
+    recordSize*: uint32    # Total record size for compaction
+    keyLen*: uint16        # Key length for valuePos calculation
 
+proc isDeleted*(entry: RangeKeyDirEntry): bool =
+  ## Check if entry is a tombstone (deleted record)
+  entry.valueSize == 0
+
+proc calcValuePos*(entry: RangeKeyDirEntry): uint64 =
+  ## Calculate value position from record position and key length
+  entry.recordPos + 8 + 4 + entry.keyLen.uint64 + 4 + 1 + 1
+
+type
   # Barrel2 recovery configuration (for HugeBarrel)
   Barrel2RecoveryOptions* = object
     validateChecksums*: bool      # Validate CRC32 on each record (default: true)

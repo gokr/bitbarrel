@@ -268,16 +268,14 @@ proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
     var loaded = 0
     for entry in entries:
       let kdEntry = KeyDirEntry(
-        fileId: header.dataFileId,
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
+        fileId: header.dataFileId,
         valueSize: entry.valueSize,
-        timestamp: entry.timestamp,
         recordSize: entry.recordSize,
-        deleted: entry.deleted
+        keyLen: entry.key.len.uint16
       )
-      if engine.keyDir.addIfNewer(entry.key, kdEntry):
-        inc loaded
+      engine.keyDir.add(entry.key, kdEntry)
+      inc loaded
 
     if engine.options.enableVerboseLogging:
       echo &"Successfully loaded {loaded} entries from hint file: {hintPath.extractFilename()}"
@@ -311,20 +309,18 @@ proc recoverFromHintFile*(engine: RecoveryEngine, filePath: string): bool =
               break
 
           # Create KeyDir entry from record
-          let recordSize = uint32(16 + record.key.len + record.value.len)
-          let valuePos = offset - record.value.len.int64
+          # Record format: [crc:4][ts:8][keyLen:4][key:N][valLen:4][flags:1][algo:1][value:M]
+          let recordSize = uint32(4 + 8 + 4 + record.key.len + 4 + 1 + 1 + record.value.len)
           let kdEntry = KeyDirEntry(
+            recordPos: uint64(offset),  # Position after CRC
             fileId: header.dataFileId,
-            recordPos: uint64(offset - record.key.len.int64 - record.value.len.int64 - 16),
-            valuePos: uint64(valuePos),
             valueSize: record.value.len.uint32,
-            timestamp: record.timestamp,
             recordSize: recordSize,
-            deleted: record.value.len == 0
+            keyLen: record.key.len.uint16
           )
 
-          if engine.keyDir.addIfNewer(record.key, kdEntry):
-            newRecords += 1
+          engine.keyDir.add(record.key, kdEntry)
+          newRecords += 1
 
           offset += int64(bytesRead)
           engine.stats.totalRecords += 1
@@ -389,21 +385,17 @@ proc recoverFromFile*(engine: RecoveryEngine, filePath: string): bool =
       let fileIdStr = filename[0..5]
       let fileId = uint32(parseInt(fileIdStr))
 
-      # Calculate value position within file
-      let valuePos = offset - int64(record.value.len)
-
       # Create KeyDir entry
+      # Record format: [crc:4][ts:8][keyLen:4][key:N][valLen:4][flags:1][algo:1][value:M]
       let entry = KeyDirEntry(
+        recordPos: uint64(offset - int64(record.key.len + record.value.len + 18)),  # Position after CRC
         fileId: fileId,
-        recordPos: uint64(offset - int64(record.key.len + record.value.len + 16)),  # Position of record (after CRC)
-        valuePos: uint64(valuePos),
         valueSize: record.value.len.uint32,
-        timestamp: record.timestamp,
-        recordSize: uint32(16 + record.key.len + record.value.len),
-        deleted: record.value.len == 0  # Empty value = tombstone
+        recordSize: uint32(4 + 8 + 4 + record.key.len + 4 + 1 + 1 + record.value.len),
+        keyLen: record.key.len.uint16
       )
 
-      # Update KeyDir (this automatically handles timestamp conflicts)
+      # Update KeyDir
       engine.keyDir.add(record.key, entry)
       engine.stats.validRecords += 1
 

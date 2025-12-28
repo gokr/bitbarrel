@@ -62,24 +62,6 @@ proc keys*(index: var CritBitIndex): seq[string] =
     for key in index.tree.keys:
       result.add(key)
 
-proc newerEntry*(index: var CritBitIndex, key: string, entry: KeyDirEntry): bool =
-  ## Check if the new entry is newer than the existing one
-  ## Returns true if the entry should be added
-  withLock(index.lock):
-    if not index.tree.contains(key):
-      return true
-    return entry.timestamp > index.tree[key].timestamp
-
-proc addIfNewer*(index: var CritBitIndex, key: string, entry: KeyDirEntry): bool =
-  ## Add entry only if it's newer than existing entry
-  ## Returns true if entry was added
-  withLock(index.lock):
-    if not index.tree.contains(key) or entry.timestamp > index.tree[key].timestamp:
-      index.tree[key] = entry
-      result = true
-    else:
-      result = false
-
 proc deinit*(index: var CritBitIndex) =
   ## Cleanup resources
   deinitLock(index.lock)
@@ -118,7 +100,7 @@ proc itemsWithPrefix*(index: var CritBitIndex, prefix: string, limit: int, curso
 
       # Skip deleted entries
       let entry = index.tree[key]
-      if entry.deleted:
+      if entry.isDeleted:
         continue
 
       # Check limit
@@ -207,7 +189,7 @@ proc itemsInRange*(index: var CritBitIndex, startKey: string, endKey: string, li
 
         # Skip deleted entries
         let entry = index.tree[key]
-        if entry.deleted:
+        if entry.isDeleted:
           continue
 
         # Check limit
@@ -230,7 +212,7 @@ proc itemsInRange*(index: var CritBitIndex, startKey: string, endKey: string, li
 
         # Skip deleted entries
         let entry = index.tree[key]
-        if entry.deleted:
+        if entry.isDeleted:
           continue
 
         # Check limit

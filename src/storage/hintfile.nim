@@ -3,9 +3,15 @@
 ## Hint files are companion files to data files that contain only key metadata,
 ## enabling fast recovery without scanning full data files.
 ##
-## Format:
-## - Header (32 bytes): magic, version, timestamp, entryCount, dataFileId, reserved
-## - Entries (variable): keyLen(2) + key + recordPos(8) + valuePos(8) + valueSize(4) + timestamp(8) + recordSize(4) + deleted(1)
+## Format v3 (current):
+## - Header (48 bytes): magic, version, timestamp, entryCount, dataFileId, lastScanPos, dataFileSize, crc32, reserved
+## - Entries (variable): keyLen(2) + key + recordPos(8) + valueSize(4) + recordSize(4) = 18 + keyLen bytes
+##
+## Removed from v2: timestamp (8 bytes), valuePos (8 bytes), deleted (1 byte)
+## - valuePos calculated from recordPos + keyLen
+## - deleted derived from valueSize == 0
+## - timestamp not needed (position ordering in append-only log)
+## - fileId from header (same for all entries in a hint file)
 
 import std/[os, times]
 import ../bitbarrel/types
@@ -16,9 +22,10 @@ const
   HINT_MAGIC* = ['H', 'I', 'N', 'T']
   HINT_VERSION_V1* = 1'u32
   HINT_VERSION_V2* = 2'u32
-  HINT_VERSION* = HINT_VERSION_V2  # Current version
+  HINT_VERSION_V3* = 3'u32
+  HINT_VERSION* = HINT_VERSION_V3  # Current version
   HINT_HEADER_SIZE_V1* = 32
-  HINT_HEADER_SIZE* = 48  # Version 2 header size
+  HINT_HEADER_SIZE* = 48  # Version 2+ header size
 
 type
   HintHeader* = object
@@ -35,11 +42,8 @@ type
   HintEntry* = object
     key*: string                # Key string
     recordPos*: uint64          # Position of record in data file (CRC position)
-    valuePos*: uint64           # Position of value within record
-    valueSize*: uint32          # Size of value
-    timestamp*: int64           # Record timestamp
+    valueSize*: uint32          # Size of value (0 = tombstone/deleted)
     recordSize*: uint32         # Total record size
-    deleted*: bool              # True if this is a tombstone
 
   HintFile* = ref object
     path*: string
@@ -84,7 +88,7 @@ proc writeHintFile*(path: string, dataFileId: uint32, entries: seq[HintEntry],
     if headerWritten != HINT_HEADER_SIZE:
       return false
 
-    # Write entries
+    # Write entries (v3 format: keyLen + key + recordPos + valueSize + recordSize)
     for entry in entries:
       # Write key length (2 bytes)
       var keyLen = entry.key.len.uint16
@@ -98,25 +102,13 @@ proc writeHintFile*(path: string, dataFileId: uint32, entries: seq[HintEntry],
       var recordPos = entry.recordPos
       discard file.writeBuffer(addr recordPos, 8)
 
-      # Write valuePos (8 bytes)
-      var valuePos = entry.valuePos
-      discard file.writeBuffer(addr valuePos, 8)
-
       # Write valueSize (4 bytes)
       var valueSize = entry.valueSize
       discard file.writeBuffer(addr valueSize, 4)
 
-      # Write timestamp (8 bytes)
-      var timestamp = entry.timestamp
-      discard file.writeBuffer(addr timestamp, 8)
-
       # Write recordSize (4 bytes)
       var recordSize = entry.recordSize
       discard file.writeBuffer(addr recordSize, 4)
-
-      # Write deleted flag (1 byte)
-      var deletedByte: uint8 = if entry.deleted: 1 else: 0
-      discard file.writeBuffer(addr deletedByte, 1)
 
     file.flushFile()
 
@@ -133,7 +125,7 @@ proc writeHintFile*(path: string, dataFileId: uint32, entries: seq[HintEntry],
 proc readHintFile*(path: string): tuple[header: HintHeader, entries: seq[HintEntry], success: bool] =
   ## Read a hint file and return its contents
   ## Returns (header, entries, success)
-  ## Supports both version 1 (32-byte header) and version 2 (48-byte header)
+  ## Only supports version 3 format
 
   result.success = false
 
@@ -144,121 +136,56 @@ proc readHintFile*(path: string): tuple[header: HintHeader, entries: seq[HintEnt
     let file = open(path, fmRead)
     defer: file.close()
 
-    # Read first 4 bytes to check magic and get version
-    var magic: array[4, char]
-    if file.readBuffer(addr magic, 4) != 4:
-      return
-
-    if magic != HINT_MAGIC:
-      return
-
-    # Read version (4 bytes)
-    var version: uint32
-    if file.readBuffer(addr version, 4) != 4:
-      return
-
-    # Seek back to start
-    file.setFilePos(0)
-
+    # Read header
     var header: HintHeader
+    if file.readBuffer(addr header, HINT_HEADER_SIZE) != HINT_HEADER_SIZE:
+      return
 
-    # Read based on version
-    if version == HINT_VERSION_V1:
-      # Read v1 header (32 bytes)
-      let v1HeaderSize = 32'u32
-      var v1Data: array[32, byte]
-      if file.readBuffer(addr v1Data[0], v1HeaderSize.int) != v1HeaderSize.int:
-        return
+    # Validate magic
+    if header.magic != HINT_MAGIC:
+      return
 
-      # Parse v1 fields directly into header
-      copyMem(addr header.magic, addr v1Data[0], 4)    # magic
-      copyMem(addr header.version, addr v1Data[4], 4) # version
-      copyMem(addr header.timestamp, addr v1Data[8], 8)  # timestamp
-      copyMem(addr header.entryCount, addr v1Data[16], 4)  # entryCount
-      copyMem(addr header.dataFileId, addr v1Data[20], 4)  # dataFileId
-      copyMem(addr header.crc32, addr v1Data[24], 4)    # crc32 at offset 24 for v1
+    # Only support v3
+    if header.version != HINT_VERSION_V3:
+      return  # Old versions not supported
 
-      # v1 specific: crc32 and reserved are in different positions
-      # v1 layout: magic(4) + version(4) + timestamp(8) + entryCount(4) + dataFileId(4) + crc32(4) + reserved(4) = 32
-      header.lastScanPos = 0
-      header.dataFileSize = 0
-
-      # Validate v1 CRC (only first 28 bytes before crc32)
-      var crcData = newString(28)
-      copyMem(addr crcData[0], addr v1Data[0], 28)
-      let storedCrc = header.crc32
-      let computedCrc = crc32(crcData)
-      if storedCrc != computedCrc:
-        return
-
-    elif version == HINT_VERSION_V2:
-      # Read v2 header (48 bytes)
-      let v2HeaderSize = HINT_HEADER_SIZE.uint32
-      if file.readBuffer(addr header, v2HeaderSize.int) != v2HeaderSize.int:
-        return
-
-      # Validate v2 CRC (first 40 bytes)
-      let storedCrc = header.crc32
-      let computedCrc = calculateHeaderCrc(header)
-      if storedCrc != computedCrc:
-        return
-
-    else:
-      return  # Unknown version
+    # Validate CRC (first 40 bytes)
+    let storedCrc = header.crc32
+    let computedCrc = calculateHeaderCrc(header)
+    if storedCrc != computedCrc:
+      return
 
     result.header = header
 
-    # Read entries
+    # Read entries (v3 format: keyLen + key + recordPos + valueSize + recordSize)
     var entries: seq[HintEntry] = @[]
     for i in 0..<header.entryCount.int:
       var entry: HintEntry
 
       # Read key length (2 bytes)
       var keyLen: uint16
-      let keyLenRead = file.readBuffer(addr keyLen, 2)
-      if keyLenRead != 2:
+      if file.readBuffer(addr keyLen, 2) != 2:
         return
 
       # Read key
       if keyLen > 0:
         entry.key = newString(keyLen.int)
-        let keyRead = file.readBuffer(addr entry.key[0], keyLen.int)
-        if keyRead != keyLen.int:
+        if file.readBuffer(addr entry.key[0], keyLen.int) != keyLen.int:
           return
       else:
         entry.key = ""
 
       # Read recordPos (8 bytes)
-      let recordPosRead = file.readBuffer(addr entry.recordPos, 8)
-      if recordPosRead != 8:
-        return
-
-      # Read valuePos (8 bytes)
-      let valuePosRead = file.readBuffer(addr entry.valuePos, 8)
-      if valuePosRead != 8:
+      if file.readBuffer(addr entry.recordPos, 8) != 8:
         return
 
       # Read valueSize (4 bytes)
-      let valueSizeRead = file.readBuffer(addr entry.valueSize, 4)
-      if valueSizeRead != 4:
-        return
-
-      # Read timestamp (8 bytes)
-      let timestampRead = file.readBuffer(addr entry.timestamp, 8)
-      if timestampRead != 8:
+      if file.readBuffer(addr entry.valueSize, 4) != 4:
         return
 
       # Read recordSize (4 bytes)
-      let recordSizeRead = file.readBuffer(addr entry.recordSize, 4)
-      if recordSizeRead != 4:
+      if file.readBuffer(addr entry.recordSize, 4) != 4:
         return
-
-      # Read deleted flag (1 byte)
-      var deletedByte: uint8
-      let deletedRead = file.readBuffer(addr deletedByte, 1)
-      if deletedRead != 1:
-        return
-      entry.deleted = deletedByte != 0
 
       entries.add(entry)
 
@@ -270,8 +197,7 @@ proc readHintFile*(path: string): tuple[header: HintHeader, entries: seq[HintEnt
 
 proc validateHintFile*(path: string): bool =
   ## Validate a hint file without loading all entries
-  ## Returns true if the file is valid
-  ## Supports both version 1 and version 2 hint files
+  ## Returns true if the file is valid (v3 format only)
 
   if not fileExists(path):
     return false
@@ -280,61 +206,23 @@ proc validateHintFile*(path: string): bool =
     let file = open(path, fmRead)
     defer: file.close()
 
-    # Read first 4 bytes to check magic
-    var magic: array[4, char]
-    if file.readBuffer(addr magic, 4) != 4:
+    # Read header
+    var header: HintHeader
+    if file.readBuffer(addr header, HINT_HEADER_SIZE) != HINT_HEADER_SIZE:
       return false
 
-    if magic != HINT_MAGIC:
+    # Validate magic
+    if header.magic != HINT_MAGIC:
       return false
 
-    # Read version
-    var version: uint32
-    if file.readBuffer(addr version, 4) != 4:
+    # Only support v3
+    if header.version != HINT_VERSION_V3:
       return false
 
-    # Seek back to start
-    file.setFilePos(0)
-
-    # Validate and read based on version
-    if version == HINT_VERSION_V1:
-      # Read v1 header (32 bytes)
-      var v1Data: array[32, byte]
-      if file.readBuffer(addr v1Data[0], 32) != 32:
-        return false
-
-      # Validate v1 CRC (first 28 bytes)
-      var crcData = newString(28)
-      copyMem(addr crcData[0], addr v1Data[0], 28)
-
-      # Read crc32 from offset 24
-      var storedCrc: uint32
-      copyMem(addr storedCrc, addr v1Data[24], 4)
-
-      let computedCrc = crc32(crcData)
-      if storedCrc != computedCrc:
-        return false
-
-    elif version == HINT_VERSION_V2:
-      # Read v2 header (48 bytes)
-      var v2Data: array[48, byte]
-      if file.readBuffer(addr v2Data[0], 48) != 48:
-        return false
-
-      # Validate v2 CRC (first 40 bytes)
-      var crcData = newString(40)
-      copyMem(addr crcData[0], addr v2Data[0], 40)
-
-      # Read crc32 from offset 40
-      var storedCrc: uint32
-      copyMem(addr storedCrc, addr v2Data[40], 4)
-
-      # Calculate CRC of first 40 bytes
-      let computedCrc = crc32(crcData)
-      if storedCrc != computedCrc:
-        return false
-
-    else:
+    # Validate CRC (first 40 bytes)
+    let storedCrc = header.crc32
+    let computedCrc = calculateHeaderCrc(header)
+    if storedCrc != computedCrc:
       return false
 
     return true
@@ -362,17 +250,15 @@ proc loadKeyDirFromHint*(path: string, keyDir: var KeyDir): int =
   var loaded = 0
   for entry in entries:
     let kdEntry = KeyDirEntry(
-      fileId: header.dataFileId,
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
+      fileId: header.dataFileId,  # fileId from header (same for all entries)
       valueSize: entry.valueSize,
-      timestamp: entry.timestamp,
       recordSize: entry.recordSize,
-      deleted: entry.deleted
+      keyLen: entry.key.len.uint16
     )
 
-    # Only add if newer than existing
-    if keyDir.addIfNewer(entry.key, kdEntry):
-      inc loaded
+    # Always add (position ordering in hint file = correct ordering)
+    keyDir.add(entry.key, kdEntry)
+    inc loaded
 
   return loaded
