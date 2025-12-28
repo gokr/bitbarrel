@@ -30,7 +30,9 @@ type
     newFileId*: uint32
     compactionStart*: int64
 
-  BarrelObj = object
+  BarrelObj {.acyclic.} = object
+    ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes
+    ## when using threaded compaction. CompactController also marked acyclic.
     path*: string
     dataFile: DataFile
     dataFiles: Table[uint32, DataFile]  # All open files by ID (for multi-file compaction)
@@ -209,30 +211,6 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
 
   return recordCount
 
-# Global compaction callback - defined outside openBarrel to prevent circular reference
-# between Barrel and CompactController via closure capture
-proc onCompactionCompleteGlobal(barrelPtr: pointer, newFileId: uint32) {.gcsafe.} =
-  let barrel = cast[Barrel](barrelPtr)
-  # Close old data file (it may have been deleted)
-  barrel.dataFile.close()
-  # Calculate new path - replace old file ID with new one
-  let oldPath = barrel.path
-  let newPath = oldPath.replace(format("$1.data", format("$1", barrel.fileId)), format("$1.data", format("$1", newFileId)))
-  # Update file ID and path
-  barrel.fileId = newFileId
-  barrel.path = newPath
-  # Calculate sync mode based on config
-  # Note: Fsync is handled by shouldFsync parameter
-  var storageSyncMode = syncImmediate
-  case barrel.config.syncMode
-  of UserSyncMode.None: storageSyncMode = syncBuffered
-  of UserSyncMode.Sync: storageSyncMode = syncImmediate
-  of UserSyncMode.Fsync: storageSyncMode = syncImmediate
-  barrel.dataFile = open(barrel.path, barrel.fileId, storageSyncMode,
-                         shouldFsync = (barrel.config.syncMode == UserSyncMode.Fsync),
-                         bufferSize = barrel.config.writeBufferSize,
-                         validateCrc = barrel.config.validateCrc)
-
 proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
   ## Open a barrel with optional configuration
   ##
@@ -302,13 +280,14 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
   compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
 
   # Initialize with appropriate index based on mode
+  # Note: We don't pass a callback because the non-blocking compaction path
+  # (used by triggerCompact) handles all state updates in compactWorkerThread.
+  # This avoids ORC issues with proc references.
   case config.mode
   of bmHash:
-    # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
-    result.compactController = newCompactController(compactConfig, addr(result.keyDir), onCompactionCompleteGlobal, cast[pointer](result))
+    result.compactController = newCompactController(compactConfig, addr(result.keyDir))
   of bmCritBit:
-    # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
-    result.compactController = newCompactController(compactConfig, addr(result.critBit), onCompactionCompleteGlobal, cast[pointer](result))
+    result.compactController = newCompactController(compactConfig, addr(result.critBit))
   of bmHugeCritBit:
     # TODO: HugeBarrel compaction (Phase 5)
     result.compactController = nil
@@ -319,7 +298,6 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     result.compactController.setBarrelPath(dataDir)
 
     # Start background worker only if autoCompact is enabled
-    # Note: Background worker disabled due to ORC GC crash issues
     if result.compactController.config.enabled:
       result.compactController.startCompactWorker()
 
@@ -348,6 +326,12 @@ proc close*(barrel: Barrel) =
     # Join the compaction thread to ensure clean shutdown
     barrel.joinCompactionThread()
 
+    # IMPORTANT: Shutdown compactController BEFORE deinitializing keyDir/critBit
+    # The controller's closures capture pointers to these structures
+    if barrel.compactController != nil:
+      barrel.compactController.shutdown()
+      barrel.compactController = nil
+
     barrel.dataFile.close()
 
     # Close any additional open files
@@ -364,12 +348,6 @@ proc close*(barrel: Barrel) =
     of bmHugeCritBit:
       # TODO: Close HugeBarrel (Phase 3)
       discard
-
-    # Stop compaction worker
-    if barrel.compactController != nil:
-      barrel.compactController.shutdown()
-      # Break circular reference (Barrel <-> CompactController via compactCallback)
-      barrel.compactController = nil
 
     barrel.closed = true
 
