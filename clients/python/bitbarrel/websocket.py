@@ -1,15 +1,18 @@
 """WebSocket wrapper using websocket-client library."""
 
 import threading
-select_available = False
+from typing import Optional
+
+import websocket as ws_lib
+
+from .errors import ConnectionError, TimeoutError
+
+# Check if select is available (not on all platforms)
 try:
     import select
     select_available = True
 except ImportError:
-    pass
-from typing import Optional
-import websocket as ws_lib
-from .errors import ConnectionError, TimeoutError
+    select_available = False
 
 
 class WebSocket:
@@ -56,6 +59,41 @@ class WebSocket:
 
             self._connected = True
 
+            # Consume welcome message immediately during connect
+            self._consume_welcome_message()
+
+    def _consume_welcome_message(self) -> None:
+        """Consume the welcome message sent by server after connection.
+
+        Called during connect() to ensure the welcome message doesn't interfere
+        with request/response cycles.
+        """
+        if self._welcome_consumed:
+            return
+
+        try:
+            # Wait for welcome message with a short timeout
+            if select_available:
+                sock = self._ws.sock
+                if sock:
+                    # Wait up to 1 second for welcome message
+                    readable, _, _ = select.select([sock], [], [], 1.0)
+                    if readable:
+                        result = self._ws.recv()
+                        # Verify it's the welcome message
+                        if isinstance(result, str) and "Connected" in result:
+                            self._welcome_consumed = True
+                        # If it's not a welcome message, we have a problem -
+                        # but this shouldn't happen during connect
+            else:
+                # No select available, just try a recv
+                result = self._ws.recv()
+                if isinstance(result, str) and "Connected" in result:
+                    self._welcome_consumed = True
+        except Exception:
+            # If anything goes wrong, mark as consumed to avoid blocking later
+            self._welcome_consumed = True
+
     def _skip_welcome_messages(self) -> None:
         """Skip any welcome messages from the server - called non-blocking."""
         # Try to consume welcome messages without blocking
@@ -89,7 +127,7 @@ class WebSocket:
                     # The next recv_binary call will get this message
                     break
             self._welcome_consumed = True
-        except:
+        except Exception:
             # Any error during welcome skip, just mark as consumed
             self._welcome_consumed = True
 
@@ -151,7 +189,7 @@ class WebSocket:
             if self._ws:
                 try:
                     self._ws.close()
-                except:
+                except Exception:
                     pass
                 self._ws = None
             self._connected = False
