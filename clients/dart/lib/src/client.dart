@@ -22,11 +22,15 @@ import 'errors.dart';
 /// final value = await client.get('key');
 /// await client.close();
 /// ```
+///
+/// **Thread-safety**: The client has internal locking and is safe for concurrent access.
+/// Requests are serialized - only one operation can be in-flight at a time.
 class BitBarrelClient {
   final BitBarrelConfig _config;
   BitBarrelWebSocket? _ws;
   int _seq = 0;
   String? _currentBarrel;
+  final _lock = _Mutex(); // Internal lock for thread-safe operations
 
   BitBarrelClient(this._config);
 
@@ -36,24 +40,29 @@ class BitBarrelClient {
 
   /// Connect to the BitBarrel server
   Future<void> connect() async {
-    if (_ws != null) {
-      throw ConnectionException('Already connected', operation: 'connect');
-    }
+    await _lock.synchronized(() async {
+      if (_ws != null) {
+        throw ConnectionException('Already connected',
+            operation: 'connect');
+      }
 
-    _ws = await BitBarrelWebSocket.connect(
-      _config.host,
-      _config.port,
-      _config.path,
-    );
+      _ws = await BitBarrelWebSocket.connect(
+        _config.host,
+        _config.port,
+        _config.path,
+      );
+    });
   }
 
   /// Close the connection to the server
   Future<void> close() async {
-    _currentBarrel = null;
-    if (_ws != null) {
-      await _ws!.close();
-      _ws = null;
-    }
+    await _lock.synchronized(() async {
+      _currentBarrel = null;
+      if (_ws != null) {
+        await _ws!.close();
+        _ws = null;
+      }
+    });
   }
 
   /// Check if connected to the server
@@ -77,61 +86,66 @@ class BitBarrelClient {
   }
 
   /// Send a request and receive a response
+  ///
+  /// Thread-safe: holds lock for entire send-receive cycle to prevent
+  /// interleaving from concurrent calls and sequence number collisions.
   Future<String> _sendRequest({
     required int command,
     required String key,
     String value = '',
   }) async {
-    await _ensureConnected();
+    return await _lock.synchronized(() async {
+      await _ensureConnected();
 
-    final ws = _ws;
-    if (ws == null) {
-      throw ConnectionClosedException();
-    }
+      final ws = _ws;
+      if (ws == null) {
+        throw ConnectionClosedException();
+      }
 
-    // Get next sequence number
-    final seq = _seq++;
+      // Get next sequence number (atomic within lock)
+      final seq = _seq++;
 
-    // Encode request
-    final requestData = ProtocolEncoder.encodeRequest(
-      command: command,
-      seq: seq,
-      key: key,
-      value: value,
-    );
+      // Encode request
+      final requestData = ProtocolEncoder.encodeRequest(
+        command: command,
+        seq: seq,
+        key: key,
+        value: value,
+      );
 
-    // Apply timeout to send
-    await ws.send(requestData).timeout(
-      _config.requestTimeout,
-      onTimeout: () {
-        _ws = null;
-        throw TimeoutException(_config.requestTimeout, operation: 'send');
-      },
-    );
+      // Apply timeout to send
+      await ws.send(requestData).timeout(
+        _config.requestTimeout,
+        onTimeout: () {
+          _ws = null;
+          throw TimeoutException(_config.requestTimeout, operation: 'send');
+        },
+      );
 
-    // Receive response with timeout
-    final responseData = await ws.receive().timeout(
-      _config.requestTimeout,
-      onTimeout: () {
-        _ws = null;
-        throw TimeoutException(_config.requestTimeout, operation: 'receive');
-      },
-    );
+      // Receive response with timeout
+      final responseData = await ws.receive().timeout(
+        _config.requestTimeout,
+        onTimeout: () {
+          _ws = null;
+          throw TimeoutException(_config.requestTimeout, operation: 'receive');
+        },
+      );
 
-    final response = ProtocolDecoder.decodeResponse(responseData);
+      final response = ProtocolDecoder.decodeResponse(responseData);
 
-    // Verify sequence
-    if (response.seq != seq) {
-      throw SequenceMismatchException(seq, response.seq);
-    }
+      // Verify sequence
+      if (response.seq != seq) {
+        throw SequenceMismatchException(seq, response.seq);
+      }
 
-    // Handle errors
-    final exception = Status.toException(response.status, response.value);
-    if (exception != null) {
-      throw exception;
-    }
+      // Handle errors
+      final exception = Status.toException(response.status, response.value);
+      if (exception != null) {
+        throw exception;
+      }
 
-    return response.value;
+      return response.value;
+    });
   }
 
   // ============ Barrel Operations ============
