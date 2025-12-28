@@ -217,27 +217,33 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts se
     if [ -d "clients/python" ]; then
       echo ""
       echo "=== Testing Python client ==="
+      ORIG_DIR=$(pwd)
       if [ -f "clients/python/venv/bin/activate" ]; then
         cd clients/python
-        source venv/bin/activate
-        if pytest tests/test_client.py -v; then
+        # Use . instead of source for sh compatibility
+        . venv/bin/activate
+        # Add the package to Python path
+        PYTHONPATH=.:$PYTHONPATH pytest tests/test_client.py -v
+        TEST_RESULT=$?
+        deactivate
+        cd "$ORIG_DIR"
+        if [ $TEST_RESULT -eq 0 ]; then
           echo "✓ Python client tests passed"
         else
           echo "✗ Python client tests failed"
           ALL_PASSED=false
         fi
-        deactivate
-        cd ../..
       else
         echo "⚠ Python client has no venv, trying system Python..."
         cd clients/python
-        if pytest tests/test_client.py -v; then
+        PYTHONPATH=.:$PYTHONPATH pytest tests/test_client.py -v
+        if [ $? -eq 0 ]; then
           echo "✓ Python client tests passed"
         else
           echo "✗ Python client tests failed"
           ALL_PASSED=false
         fi
-        cd ../..
+        cd "$ORIG_DIR"
       fi
     fi
 
@@ -291,182 +297,3 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts se
     echo "Server log (last 20 lines):"
     tail -20 /tmp/bitbarrel_server.log
   """
-    # Start BitBarrel server in background
-    echo "Starting BitBarrel server on port 9876..."
-    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
-    SERVER_PID=$!
-
-    # Give server time to start
-    sleep 2
-
-    # Check if server started successfully
-    if ! kill -0 $SERVER_PID 2>/dev/null; then
-      echo "ERROR: Failed to start BitBarrel server"
-      cat /tmp/bitbarrel_server.log
-      exit 1
-    fi
-
-    echo "✓ Server started (PID: $SERVER_PID)"
-
-    # Function to stop server on exit
-    cleanup() {
-      echo "Stopping BitBarrel server..."
-      kill $SERVER_PID 2>/dev/null
-      wait $SERVER_PID 2>/dev/null
-      echo "✓ Server stopped"
-    }
-    trap cleanup EXIT
-
-    # Test Go client
-    if [ -d "clients/go" ]; then
-      echo ""
-      echo "=== Testing Go client ==="
-      if [ -f "clients/go/go.mod" ]; then
-        cd clients/go
-        # Run only package tests (not examples), with server environment
-        export BITBARREL_TEST_SERVER=true
-        if go test -v $(go list ./... | grep -v examples); then
-          echo "✓ Go client tests passed"
-        else
-          echo "✗ Go client tests failed"
-          cd ../..
-          exit 1
-        fi
-        cd ../..
-      else
-        echo "⚠ Go client has no go.mod, skipping"
-      fi
-    fi
-
-    # Test Python client
-    if [ -d "clients/python" ]; then
-      echo ""
-      echo "=== Testing Python client ==="
-      if [ -f "clients/python/venv/bin/activate" ]; then
-        cd clients/python
-        source venv/bin/activate
-        if pytest tests/test_client.py -v; then
-          echo "✓ Python client tests passed"
-        else
-          echo "✗ Python client tests failed"
-          cd ../..
-          exit 1
-        fi
-        deactivate
-        cd ../..
-      else
-        echo "⚠ Python client has no venv, trying system Python..."
-        cd clients/python
-        if pytest tests/test_client.py -v; then
-          echo "✓ Python client tests passed"
-        else
-          echo "✗ Python client tests failed"
-          cd ../..
-          exit 1
-        fi
-        cd ../..
-      fi
-    fi
-
-    # Test Dart client
-    if [ -d "clients/dart" ]; then
-      echo ""
-      echo "=== Testing Dart client ==="
-      if [ -f "clients/dart/pubspec.yaml" ]; then
-        cd clients/dart
-        if which dart >/dev/null 2>&1; then
-          if dart test; then
-            echo "✓ Dart client tests passed"
-          else
-            echo "✗ Dart client tests failed"
-            cd ../..
-            exit 1
-          fi
-        else
-          echo "⚠ Dart not installed, skipping"
-        fi
-        cd ../..
-      else
-        echo "⚠ Dart client has no pubspec.yaml, skipping"
-      fi
-    fi
-
-    # Test Nim client
-    if [ -d "clients/nim" ]; then
-      echo ""
-      echo "=== Testing Nim client ==="
-      if [ -f "clients/nim/bitbarrel.nimble" ]; then
-        cd clients/nim
-        if nimble test 2>/dev/null; then
-          echo "✓ Nim client tests passed"
-        else
-          echo "⚠ Nim client tests not configured or failed"
-        fi
-        cd ../..
-      else
-        echo "⚠ Nim client has no nimble file, skipping"
-      fi
-    fi
-
-    echo ""
-    echo "=== Summary ==="
-    echo "✓ All available client libraries tested successfully"
-    echo ""
-    echo "Server log (last 20 lines):"
-    tail -20 /tmp/bitbarrel_server.log
-  """
-
-# Clean task - remove generated data files only (not source code)
-
-task clean, "Clean up generated data files":
-  exec "rm -f test_*.data"
-  exec "rm -f tests/*.data"
-  exec "rm -f bench/*.data"
-  exec "rm -f bench_*.data"
-  exec "rm -f examples/*.data"
-  # Remove compiled test binaries
-  exec "rm -f tests/test_storage tests/test_keydir tests/test_integration tests/test_recovery"
-  exec "rm -f bench/simple_bench bench/stress_test bench/compaction_stress"
-  exec "rm -f examples/basic_demo"
-  echo "Cleaned up generated data files and binaries"
-
-# Build with compression support
-
-task build, "Build with LZ4 compression (default)":
-  echo "Building BitBarrel with LZ4 compression (default)..."
-  exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
-
-task buildDefault, "Build with LZ4 compression (default)":
-  echo "Building BitBarrel with LZ4 compression (default)..."
-  exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
-
-task buildLz4, "Build with LZ4 compression support":
-  echo "Building BitBarrel with LZ4 compression..."
-  exec "nim c -d:lz4Compression -d:release src/bitbarrel.nim"
-
-task buildSnappy, "Build with Snappy compression support":
-  echo "Building BitBarrel with Snappy compression..."
-  exec "nim c -d:snappyCompression -d:release src/bitbarrel.nim"
-
-task buildNoCompression, "Build without compression":
-  echo "Building BitBarrel without compression..."
-  exec "nim c -d:release src/bitbarrel.nim"
-
-# Documentation generation tasks
-
-task genDocs, "Generate HTML documentation using nim doc":
-  exec "mkdir -p docs/html"
-  exec "rm -rf docs/html/*.html"
-  exec "nim doc --out:docs/html/bitbarrel.html --project src/bitbarrel.nim"
-  exec "nim doc --out:docs/html/client.html --project src/network/client.nim"
-  echo "Documentation generated in docs/html/"
-
-task docServer, "Serve documentation locally (assumes Python is installed)":
-  try:
-    exec "cd docs/html && python3 -m http.server 8000"
-  except:
-    try:
-      exec "cd docs/html && python -m SimpleHTTPServer 8000"
-    except:
-      echo "Please manually serve docs/html/ folder with your web server"
-      echo "Or open docs/html/index.html in your browser"
