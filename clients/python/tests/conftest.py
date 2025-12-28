@@ -39,11 +39,11 @@ def temp_barrel(client):
 
 @pytest.fixture
 def ordered_barrel(client):
-    """Provide a barrel with bmCritBit mode for range queries."""
+    """Provide a barrel with critbit mode for range queries."""
     import time
 
     barrel_name = f"test_ordered_{int(time.time() * 1000)}"
-    client.create_barrel(barrel_name, '{"mode": "bmCritBit"}')
+    client.create_barrel(barrel_name, '{"mode": "critbit"}')
     client.use_barrel(barrel_name)
     yield barrel_name
 
