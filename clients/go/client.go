@@ -92,7 +92,12 @@ func (c *Client) Connect() error {
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.closeUnlocked()
+}
 
+// closeUnlocked closes the connection without acquiring the lock
+// Caller must hold c.mu
+func (c *Client) closeUnlocked() error {
 	if c.ws == nil {
 		return nil
 	}
@@ -115,17 +120,25 @@ func (c *Client) ensureConnected() error {
 }
 
 // sendRequest sends a request and waits for a response
+// Thread-safe: holds lock for entire send-receive cycle to prevent interleaving
 func (c *Client) sendRequest(req *Request) (*Response, error) {
 	if err := c.ensureConnected(); err != nil {
 		return nil, err
 	}
 
+	// Hold lock for entire send-receive cycle to prevent concurrent goroutines
+	// from interleaving their requests and responses
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	ws := c.ws
+	if ws == nil {
+		return nil, NewError("connection", fmt.Errorf("not connected"))
+	}
+
 	// Increment sequence number
 	seq := atomic.AddUint32(&c.seq, 1) - 1
 	req.Seq = seq
-	c.mu.Unlock()
 
 	// Encode request
 	data, err := req.Encode()
@@ -135,25 +148,25 @@ func (c *Client) sendRequest(req *Request) (*Response, error) {
 
 	// Set request deadline
 	if err := ws.SetWriteDeadline(time.Now().Add(c.requestTimeout)); err != nil {
-		c.Close()
+		c.closeUnlocked()
 		return nil, NewError("timeout", err)
 	}
 
 	// Send request
 	if err := ws.WriteMessage(BinaryMessage, data); err != nil {
-		c.Close()
+		c.closeUnlocked()
 		return nil, NewError("write", err)
 	}
 
 	// Read response
 	if err := ws.SetReadDeadline(time.Now().Add(c.requestTimeout)); err != nil {
-		c.Close()
+		c.closeUnlocked()
 		return nil, NewError("timeout", err)
 	}
 
 	_, respData, err := ws.ReadMessage()
 	if err != nil {
-		c.Close()
+		c.closeUnlocked()
 		return nil, NewError("read", err)
 	}
 
