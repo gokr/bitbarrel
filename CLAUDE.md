@@ -404,33 +404,61 @@ Always check for and remove compiler warnings:
 
 **Root Cause**: Nim's ORC garbage collector can crash when cleaning up objects with circular references across thread boundaries. The crash happens in `orc.nim:unregisterCycle()` during thread shutdown.
 
-### ORC Crash Prevention with {.acyclic.}
+### ORC Crash Prevention with {.acyclic.} and Closure Elimination
 
-The compaction system uses `{.acyclic.}` pragma on `BarrelObj` and `CompactControllerObj` to prevent ORC cycle detection crashes. This is necessary because:
+The compaction system uses two approaches to prevent ORC cycle detection crashes:
 
-1. **Closures capture pointers**: `CompactController` has closures (`updateEntry`, `clearIndex`, `getEntry`) that capture `ptr KeyDir` or `ptr CritBitIndex`
-2. **ORC misinterprets pointers**: During cycle detection, ORC can misinterpret raw pointers in closure environments, causing SIGSEGV
-3. **Threading complicates cleanup**: When threads are involved, ORC's cycle detection can race with object destruction
+#### 1. Mark types as {.acyclic.}
 
-**The fix**: Mark types that participate in cross-thread references with `{.acyclic.}`:
+Use `{.acyclic.}` on types that participate in cross-thread references:
 ```nim
 BarrelObj {.acyclic.} = object
   # ... fields including compactController: CompactController
 
 CompactControllerObj {.acyclic.} = object
-  # ... fields including closures that capture pointers
+  # ... raw pointers instead of closures
 ```
 
-**Additional safeguards**:
-1. **Cleanup order matters**: Shutdown `compactController` BEFORE deinitializing `keyDir`/`critBit`:
+#### 2. Eliminate closures in cross-thread code (critical!)
+
+**Problem**: Closures create GC-managed environments that ORC tracks. When objects are destroyed across thread boundaries (e.g., in Mummy's WebSocket worker pool), ORC can crash during cycle detection.
+
+**Solution**: Store raw pointers directly instead of closures:
+```nim
+# BAD - closures cause ORC crashes in threaded code
+proc newCompactController(keyDir: ptr KeyDir): CompactController =
+  proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
+    keyDir[].add(key, entry)  # Closure captures keyDir
+  result.updateEntry = updateCallback  # ORC tracks closure environment
+
+# GOOD - direct pointer storage, no closures
+type
+  IndexMode = enum
+    imNone, imKeyDir, imCritBit
+
+  CompactControllerObj = object
+    indexMode: IndexMode
+    keyDirPtr: pointer    # Raw pointer, not tracked by ORC
+    critBitPtr: pointer
+
+proc updateIndex(controller: CompactController, key: string, entry: KeyDirEntry) =
+  case controller.indexMode
+  of imKeyDir:
+    cast[ptr KeyDir](controller.keyDirPtr)[].add(key, entry)
+  # ...
+```
+
+#### Additional safeguards
+
+**Cleanup order matters**: Shutdown controllers BEFORE deinitializing resources:
 ```nim
 proc close*(barrel: Barrel) =
-  # Wait for compaction to complete
+  # Wait for threads to complete
   while barrel.compactionState.inProgress:
     sleep(10)
   barrel.joinCompactionThread()
 
-  # Shutdown controller BEFORE deinit - closures reference these structures
+  # Shutdown controller BEFORE deinit - it holds pointers to these
   if barrel.compactController != nil:
     barrel.compactController.shutdown()
     barrel.compactController = nil
@@ -439,14 +467,13 @@ proc close*(barrel: Barrel) =
   barrel.keyDir.deinit()
 ```
 
-2. **Avoid storing barrel pointers in callbacks**: The compaction worker thread handles all state updates directly instead of using callbacks that store barrel pointers.
+#### When to apply these patterns
 
-**When to use `{.acyclic.}`**:
-- Types that contain closures capturing raw pointers
-- Types involved in cross-thread reference patterns
-- Types where cycle detection is causing crashes but you know there are no actual cycles
+- **Use {.acyclic.}**: On ref object types involved in cross-thread patterns
+- **Eliminate closures**: When callbacks/procs need to access data across threads
+- **Use raw pointers**: Instead of closures that capture references
 
-**Status**: Compaction tests now pass. Network client tests may still be affected.
+**Status**: All compaction and network tests pass with these fixes.
 
 ## Nim Coding Guidelines
 
