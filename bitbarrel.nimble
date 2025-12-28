@@ -272,7 +272,7 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts se
     if [ -d "clients/nim" ]; then
       echo ""
       echo "=== Testing Nim client ==="
-      if [ -f "clients/nim/bitbarrel.nimble" ]; then
+      if [ -f "clients/nim/bitbarrel_client.nimble" ]; then
         cd clients/nim
         if nimble test 2>/dev/null; then
           echo "✓ Nim client tests passed"
