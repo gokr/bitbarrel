@@ -1,8 +1,8 @@
 # Package
 
 version       = "0.1.0"
-author        = "BitBarrel Authors"
-description   = "BitBarrel client library for Nim"
+author        = "Göran Krampe"
+description   = "BitBarrel network client library for Nim"
 license       = "MIT"
 srcDir        = "src"
 
