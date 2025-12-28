@@ -1,6 +1,9 @@
 """Convenience helpers for BitBarrel Python client."""
 
-from typing import Tuple, List, Iterator, Optional, Callable
+from typing import TYPE_CHECKING, Tuple, List, Iterator, Optional, Callable
+
+if TYPE_CHECKING:
+    from .client import RangeResult
 
 
 def paginate_range_result(
@@ -18,8 +21,6 @@ def paginate_range_result(
     Returns:
         List of all key-value pairs from all pages
     """
-    from .client import RangeResult
-
     all_items = []
     cursor = start_cursor
 
@@ -31,10 +32,10 @@ def paginate_range_result(
                 callback(key, value)
             all_items.append((key, value))
 
-        if not result.hasMore or not result.nextCursor:
+        if not result.has_more or not result.next_cursor:
             break
 
-        cursor = result.nextCursor
+        cursor = result.next_cursor
 
     return all_items
 
@@ -72,10 +73,10 @@ def iterate_range(
         for key, value in result.items:
             yield key, value
 
-        if not result.hasMore:
+        if not result.has_more:
             break
 
-        cursor = result.nextCursor
+        cursor = result.next_cursor
 
 
 def get_all_with_prefix(client, prefix: str) -> List[Tuple[str, str]]:
