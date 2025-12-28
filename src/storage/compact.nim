@@ -9,6 +9,7 @@ import ../bitbarrel/types, datafile, keydir, record, critbitindex
 const
   COMPACTION_MARKER* = ".compacting"  # Marker file name for crash recovery
 
+
 type
   # Callback type for updating index entries after compaction
   IndexUpdateProc* = proc(key: string, entry: KeyDirEntry) {.gcsafe.}
@@ -16,32 +17,36 @@ type
   # Callback type for clearing all index entries before compaction
   IndexClearProc* = proc() {.gcsafe.}
 
-  # Callback type for notifying compaction completion - takes barrel and new file ID
-  CompactCallbackProc* = proc(barrel: pointer, newFileId: uint32) {.gcsafe.}
+  # Callback type for notifying compaction completion - takes only barrel path and new file ID
+  # This eliminates the circular reference by not passing the barrel pointer
+  CompactCallbackProc* = proc(barrelPath: string, newFileId: uint32) {.gcsafe.}
 
   # Callback type for getting current entry (for shadowing check in non-blocking compaction)
   IndexGetProc* = proc(key: string): Option[KeyDirEntry] {.gcsafe.}
 
-  CompactControllerObj* = object
+  CompactControllerObj* {.acyclic.} = object
+    ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes
+    ## The closures (updateEntry, clearIndex, getEntry) capture pointers that
+    ## ORC can misinterpret during cycle detection, causing SIGSEGV.
     config*: types.CompactConfig
     updateEntry*: IndexUpdateProc     # Callback to update index (KeyDir or CritBit)
     clearIndex*: IndexClearProc       # Callback to clear index before compaction
     getEntry*: IndexGetProc           # Callback to get current entry (for shadowing check)
     compactCallback*: CompactCallbackProc  # Callback after compaction completes
-    compactCallbackData*: pointer     # User data for callback (e.g., pointer to Barrel)
+    barrelPath*: string            # Barrel data file path (for callback registry lookup)
     # Auto-compaction support
-    barrelPath*: string               # Store data directory path
-    currentFileId*: uint32            # Track current file ID
+    dataDir*: string                # Store data directory path
+    currentFileId*: uint32           # Track current file ID
     # Background compact support
-    shutdownFlag*: Atomic[bool]       # Signal to stop background thread
+    shutdownFlag*: Atomic[bool]      # Signal to stop background thread
     compactThread*: ref Thread[ptr CompactControllerObj]  # Background worker thread
-    hasWorker*: bool                  # Whether background thread is running
-    pendingCompact*: bool               # Whether a compact is pending
-    compactCondition*: Cond             # Condition for signaling compact
-    compactInProgress*: bool           # Whether a compact is currently running
-    compactLock*: Lock                 # Lock for thread safety
-    stats*: types.CompactStats          # Statistics for the last compact
-    isShutdown*: bool                  # Explicit shutdown flag (set before GC touches object)
+    hasWorker*: bool                 # Whether background thread is running
+    pendingCompact*: bool              # Whether a compact is pending
+    compactCondition*: Cond            # Condition for signaling compact
+    compactInProgress*: bool        # Whether a compact is currently running
+    compactLock*: Lock                # Lock for thread safety
+    stats*: types.CompactStats         # Statistics for the last compact
+    isShutdown*: bool                # Explicit shutdown flag (set before GC touches object)
 
   CompactController* = ref CompactControllerObj
 
@@ -87,22 +92,21 @@ proc removeCompactionMarker*(barrelPath: string) =
     removeFile(markerPath)
 
 # Forward declarations
-proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
+proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil): CompactController
 proc newCompactController*(config: types.CompactConfig): CompactController
-proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
-proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController
+proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir, compactCallback: CompactCallbackProc = nil): CompactController
+proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex, compactCallback: CompactCallbackProc = nil): CompactController
 proc performCompact*(controller: CompactController, dataPath: string, fileId: uint32): bool
 
 # Implementation
 
-proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
+proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil): CompactController =
   ## Create a new compact controller with callback for index updates
   result = CompactController()
   result.config = config
   result.updateEntry = updateEntry
   result.clearIndex = clearIndex
   result.compactCallback = compactCallback
-  result.compactCallbackData = callbackData
   result.barrelPath = ""  # Will be set later
   result.currentFileId = 0'u32  # Will be updated by worker
   result.shutdownFlag.store(false)
@@ -125,33 +129,33 @@ proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdate
 proc newCompactController*(config: types.CompactConfig): CompactController =
   ## Create a new compact controller with no index update callback
   ## Used for ranged modes where index updates are handled separately
-  result = newCompactController(config, nil, nil, nil, nil)
+  result = newCompactController(config, nil, nil, nil)
 
-proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
-  ## Create a new compact controller for KeyDir (backward compatible)
+proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir, compactCallback: CompactCallbackProc = nil): CompactController =
+  ## Create a new compact controller for KeyDir
   ## Creates callbacks for updating and clearing the KeyDir
   proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
     keyDir[].add(key, entry)
   proc clearCallback() {.gcsafe.} =
     keyDir[].clear()
-  result = newCompactController(config, updateCallback, clearCallback, compactCallback, callbackData)
+  result = newCompactController(config, updateCallback, clearCallback, compactCallback)
 
-proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
-  ## Create a new compact controller for KeyDir (backward compatible)
-  result = newCompactController(config, addr(keyDir), compactCallback, callbackData)
+proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir, compactCallback: CompactCallbackProc = nil): CompactController =
+  ## Create a new compact controller for KeyDir
+  result = newCompactController(config, addr(keyDir), compactCallback)
 
-proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
+proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex, compactCallback: CompactCallbackProc = nil): CompactController =
   ## Create a new compact controller for CritBit index
   ## Creates callbacks for updating and clearing the CritBit index
   proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
     critBit[].add(key, entry)
   proc clearCallback() {.gcsafe.} =
     critBit[].clear()
-  result = newCompactController(config, updateCallback, clearCallback, compactCallback, callbackData)
+  result = newCompactController(config, updateCallback, clearCallback, compactCallback)
 
-proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex, compactCallback: CompactCallbackProc = nil, callbackData: pointer = nil): CompactController =
+proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex, compactCallback: CompactCallbackProc = nil): CompactController =
   ## Create a new compact controller for CritBit index
-  result = newCompactController(config, addr(critBit), compactCallback, callbackData)
+  result = newCompactController(config, addr(critBit), compactCallback)
 
 proc calculateFragmentation*(dataPath: string, validateCrc: bool = false): tuple[live: int, total: int, ratio: float] =
   ## Calculate fragmentation ratio of a data file
@@ -357,7 +361,7 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
 
     # Notify barrel that compaction completed with new file ID
     if controller.compactCallback != nil:
-      controller.compactCallback(controller.compactCallbackData, newFileId)
+      controller.compactCallback(controller.barrelPath, newFileId)
 
     return true
 
@@ -473,9 +477,8 @@ proc shutdown*(controller: CompactController) =
     controller.isShutdown = true  # Mark as shut down first
     if controller.hasWorker:
       controller.stopCompactWorker()
-    # Clear callback data to help break cycles
+    # Clear callback to help break cycles
     controller.compactCallback = nil
-    controller.compactCallbackData = nil
     deinitLock(controller.compactLock)
     deinitCond(controller.compactCondition)
 
@@ -490,8 +493,8 @@ proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
   ##
   ## Returns true if successful, false if failed
 
-  if not controller.config.enabled:
-    return false
+  # Note: config.enabled controls background worker, not manual compaction
+  # Manual compaction (triggerCompact) can still work with enabled=false
 
   echo fmt("Starting non-blocking compaction: file={fileId}")
 
