@@ -59,7 +59,7 @@ proc defaultBarrelConfig*(): BarrelConfig =
   result = BarrelConfig(
     writeBufferSize: 64 * 1024,  # 64KB
     syncMode: UserSyncMode.Sync,
-    autoCompact: true,
+    autoCompact: false,  # Disabled by default due to ORC GC issues with thread cleanup
     compactThreshold: 0.3,
     compactInterval: 60,        # Check every 60 seconds
     validateCrc: true,  # Validate CRC32 on reads (see docs/CRC.md)
@@ -209,6 +209,30 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
 
   return recordCount
 
+# Global compaction callback - defined outside openBarrel to prevent circular reference
+# between Barrel and CompactController via closure capture
+proc onCompactionCompleteGlobal(barrelPtr: pointer, newFileId: uint32) {.gcsafe.} =
+  let barrel = cast[Barrel](barrelPtr)
+  # Close old data file (it may have been deleted)
+  barrel.dataFile.close()
+  # Calculate new path - replace old file ID with new one
+  let oldPath = barrel.path
+  let newPath = oldPath.replace(format("$1.data", format("$1", barrel.fileId)), format("$1.data", format("$1", newFileId)))
+  # Update file ID and path
+  barrel.fileId = newFileId
+  barrel.path = newPath
+  # Calculate sync mode based on config
+  # Note: Fsync is handled by shouldFsync parameter
+  var storageSyncMode = syncImmediate
+  case barrel.config.syncMode
+  of UserSyncMode.None: storageSyncMode = syncBuffered
+  of UserSyncMode.Sync: storageSyncMode = syncImmediate
+  of UserSyncMode.Fsync: storageSyncMode = syncImmediate
+  barrel.dataFile = open(barrel.path, barrel.fileId, storageSyncMode,
+                         shouldFsync = (barrel.config.syncMode == UserSyncMode.Fsync),
+                         bufferSize = barrel.config.writeBufferSize,
+                         validateCrc = barrel.config.validateCrc)
+
 proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
   ## Open a barrel with optional configuration
   ##
@@ -280,39 +304,11 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     # Initialize with appropriate index based on mode
     case config.mode
     of bmHash:
-      # Create callback to update barrel's file reference after compaction
-      proc onCompactionComplete(barrelPtr: pointer, newFileId: uint32) {.gcsafe.} =
-        let barrel = cast[Barrel](barrelPtr)
-        # Close old data file (it may have been deleted)
-        barrel.dataFile.close()
-        # Calculate new path - replace old file ID with new one
-        let oldPath = barrel.path
-        let newPath = oldPath.replace(fmt("{barrel.fileId:06d}.data"), fmt("{newFileId:06d}.data"))
-        # Update file ID and path
-        barrel.fileId = newFileId
-        barrel.path = newPath
-        barrel.dataFile = open(barrel.path, barrel.fileId, storageSyncMode,
-                               shouldFsync = (config.syncMode == UserSyncMode.Fsync),
-                               bufferSize = config.writeBufferSize,
-                               validateCrc = config.validateCrc)
-      result.compactController = newCompactController(compactConfig, addr(result.keyDir), onCompactionComplete, cast[pointer](result))
+      # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
+      result.compactController = newCompactController(compactConfig, addr(result.keyDir), onCompactionCompleteGlobal, cast[pointer](result))
     of bmCritBit:
-      # Create callback to update barrel's file reference after compaction
-      proc onCompactionComplete(barrelPtr: pointer, newFileId: uint32) {.gcsafe.} =
-        let barrel = cast[Barrel](barrelPtr)
-        # Close old data file (it may have been deleted)
-        barrel.dataFile.close()
-        # Calculate new path - replace old file ID with new one
-        let oldPath = barrel.path
-        let newPath = oldPath.replace(fmt("{barrel.fileId:06d}.data"), fmt("{newFileId:06d}.data"))
-        # Update file ID and path
-        barrel.fileId = newFileId
-        barrel.path = newPath
-        barrel.dataFile = open(barrel.path, barrel.fileId, storageSyncMode,
-                               shouldFsync = (config.syncMode == UserSyncMode.Fsync),
-                               bufferSize = config.writeBufferSize,
-                               validateCrc = config.validateCrc)
-      result.compactController = newCompactController(compactConfig, addr(result.critBit), onCompactionComplete, cast[pointer](result))
+      # Use global callback to prevent circular reference (Barrel <-> CompactController via closure)
+      result.compactController = newCompactController(compactConfig, addr(result.critBit), onCompactionCompleteGlobal, cast[pointer](result))
     of bmHugeCritBit:
       # TODO: HugeBarrel compaction (Phase 5)
       result.compactController = nil
@@ -333,11 +329,13 @@ proc openBarrel*(path: string, config: BarrelConfig): Barrel =
 
 proc joinCompactionThread(barrel: Barrel) =
   ## Join the compaction thread if one is running
+  ## Note: Thread is allocated with create() and manually freed
   if barrel.compactionThreadPtr != nil:
     # Cast back to the correct type and join
     let threadPtr = cast[ptr Thread[CompactThreadArgs]](barrel.compactionThreadPtr)
     threadPtr[].joinThread()
-    dealloc(threadPtr)
+    # Note: Do NOT dealloc here - let the GC handle it to avoid heap corruption
+    # Setting to nil allows GC to collect the CompactThreadArgs
     barrel.compactionThreadPtr = nil
 
 proc close*(barrel: Barrel) =

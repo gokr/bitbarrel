@@ -34,17 +34,18 @@ type
     currentFileId*: uint32            # Track current file ID
     # Background compact support
     shutdownFlag*: Atomic[bool]       # Signal to stop background thread
-    compactThread*: Thread[ptr CompactControllerObj]  # Background worker thread
+    compactThread*: ref Thread[ptr CompactControllerObj]  # Background worker thread
     hasWorker*: bool                  # Whether background thread is running
     pendingCompact*: bool               # Whether a compact is pending
     compactCondition*: Cond             # Condition for signaling compact
     compactInProgress*: bool           # Whether a compact is currently running
     compactLock*: Lock                 # Lock for thread safety
     stats*: types.CompactStats          # Statistics for the last compact
+    isShutdown*: bool                  # Explicit shutdown flag (set before GC touches object)
 
   CompactController* = ref CompactControllerObj
 
-# Note: No `=destroy` for CompactControllerObj
+# Note: No `=copy`, `=wasMoved`, or `=destroy` for CompactControllerObj
 # The locks and condition variables are cleaned up explicitly by shutdown()
 # and must be cleaned up BEFORE GC touches the object to avoid ORC crashes
 # when resolving circular references (Barrel <-> CompactController)
@@ -108,6 +109,7 @@ proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdate
   result.hasWorker = false
   result.pendingCompact = false
   result.compactInProgress = false
+  result.isShutdown = false  # Initialize shutdown flag
   initLock(result.compactLock)
   initCond(result.compactCondition)
   result.stats = types.CompactStats(
@@ -443,8 +445,10 @@ proc compactWorker*(controllerPtr: ptr CompactControllerObj) {.thread.} =
 proc startCompactWorker*(controller: CompactController) =
   ## Start the background compact worker thread
   if not controller.hasWorker and controller.config.enabled:
+    if controller.compactThread == nil:
+      controller.compactThread = new(Thread[ptr CompactControllerObj])
     controller.shutdownFlag.store(false)
-    controller.compactThread.createThread(compactWorker, cast[ptr CompactControllerObj](controller))
+    controller.compactThread[].createThread(compactWorker, cast[ptr CompactControllerObj](controller))
     controller.hasWorker = true
 
 proc stopCompactWorker*(controller: CompactController) =
@@ -453,7 +457,9 @@ proc stopCompactWorker*(controller: CompactController) =
     controller.shutdownFlag.store(true)
     withLock(controller.compactLock):
       controller.compactCondition.signal()
-    controller.compactThread.joinThread()
+    if controller.compactThread != nil:
+      controller.compactThread[].joinThread()
+      controller.compactThread = nil
     controller.hasWorker = false
 
 proc isCompactInProgress*(controller: CompactController): bool =
@@ -463,8 +469,13 @@ proc isCompactInProgress*(controller: CompactController): bool =
 
 proc shutdown*(controller: CompactController) =
   ## Clean shutdown - stop worker and clean up resources
-  if controller != nil:
-    controller.stopCompactWorker()
+  if controller != nil and not controller.isShutdown:
+    controller.isShutdown = true  # Mark as shut down first
+    if controller.hasWorker:
+      controller.stopCompactWorker()
+    # Clear callback data to help break cycles
+    controller.compactCallback = nil
+    controller.compactCallbackData = nil
     deinitLock(controller.compactLock)
     deinitCond(controller.compactCondition)
 
