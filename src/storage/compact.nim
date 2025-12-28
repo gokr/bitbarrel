@@ -11,29 +11,24 @@ const
 
 
 type
-  # Callback type for updating index entries after compaction
-  IndexUpdateProc* = proc(key: string, entry: KeyDirEntry) {.gcsafe.}
-
-  # Callback type for clearing all index entries before compaction
-  IndexClearProc* = proc() {.gcsafe.}
-
-  # Callback type for notifying compaction completion - takes only barrel path and new file ID
-  # This eliminates the circular reference by not passing the barrel pointer
+  # Callback type for notifying compaction completion (rarely used)
   CompactCallbackProc* = proc(barrelPath: string, newFileId: uint32) {.gcsafe.}
 
-  # Callback type for getting current entry (for shadowing check in non-blocking compaction)
-  IndexGetProc* = proc(key: string): Option[KeyDirEntry] {.gcsafe.}
+  IndexMode* = enum
+    imNone,      # No index (callbacks will be nil)
+    imKeyDir,    # Using KeyDir
+    imCritBit    # Using CritBitIndex
 
   CompactControllerObj* {.acyclic.} = object
-    ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes
-    ## The closures (updateEntry, clearIndex, getEntry) capture pointers that
-    ## ORC can misinterpret during cycle detection, causing SIGSEGV.
+    ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes.
+    ## We avoid closures entirely by storing raw pointers to indexes.
     config*: types.CompactConfig
-    updateEntry*: IndexUpdateProc     # Callback to update index (KeyDir or CritBit)
-    clearIndex*: IndexClearProc       # Callback to clear index before compaction
-    getEntry*: IndexGetProc           # Callback to get current entry (for shadowing check)
-    compactCallback*: CompactCallbackProc  # Callback after compaction completes
-    barrelPath*: string            # Barrel data file path (for callback registry lookup)
+    # Direct pointer storage instead of closures (avoids ORC issues with closure environments)
+    indexMode*: IndexMode
+    keyDirPtr*: pointer              # ptr KeyDir when indexMode == imKeyDir
+    critBitPtr*: pointer             # ptr CritBitIndex when indexMode == imCritBit
+    compactCallback*: CompactCallbackProc  # Callback after compaction completes (rarely used)
+    barrelPath*: string            # Barrel data file path
     # Auto-compaction support
     dataDir*: string                # Store data directory path
     currentFileId*: uint32           # Track current file ID
@@ -92,28 +87,56 @@ proc removeCompactionMarker*(barrelPath: string) =
     removeFile(markerPath)
 
 # Forward declarations
-proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil): CompactController
 proc newCompactController*(config: types.CompactConfig): CompactController
-proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir, compactCallback: CompactCallbackProc = nil): CompactController
-proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex, compactCallback: CompactCallbackProc = nil): CompactController
+proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir): CompactController
+proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex): CompactController
 proc performCompact*(controller: CompactController, dataPath: string, fileId: uint32): bool
 
-# Implementation
+# Helper procs to access index without closures (avoids ORC issues)
+proc updateIndex*(controller: CompactController, key: string, entry: KeyDirEntry) =
+  ## Update index entry using stored pointer (no closure needed)
+  case controller.indexMode
+  of imKeyDir:
+    cast[ptr KeyDir](controller.keyDirPtr)[].add(key, entry)
+  of imCritBit:
+    cast[ptr CritBitIndex](controller.critBitPtr)[].add(key, entry)
+  of imNone:
+    discard
 
-proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdateProc, clearIndex: IndexClearProc = nil, compactCallback: CompactCallbackProc = nil): CompactController =
-  ## Create a new compact controller with callback for index updates
-  result = CompactController()
+proc clearIndex*(controller: CompactController) =
+  ## Clear index using stored pointer (no closure needed)
+  case controller.indexMode
+  of imKeyDir:
+    cast[ptr KeyDir](controller.keyDirPtr)[].clear()
+  of imCritBit:
+    cast[ptr CritBitIndex](controller.critBitPtr)[].clear()
+  of imNone:
+    discard
+
+proc getIndexEntry*(controller: CompactController, key: string): Option[KeyDirEntry] =
+  ## Get entry from index using stored pointer (no closure needed)
+  case controller.indexMode
+  of imKeyDir:
+    result = cast[ptr KeyDir](controller.keyDirPtr)[].get(key)
+  of imCritBit:
+    result = cast[ptr CritBitIndex](controller.critBitPtr)[].get(key)
+  of imNone:
+    result = none(KeyDirEntry)
+
+# Base initialization helper
+proc initCompactController(result: CompactController, config: types.CompactConfig) =
   result.config = config
-  result.updateEntry = updateEntry
-  result.clearIndex = clearIndex
-  result.compactCallback = compactCallback
-  result.barrelPath = ""  # Will be set later
-  result.currentFileId = 0'u32  # Will be updated by worker
+  result.indexMode = imNone
+  result.keyDirPtr = nil
+  result.critBitPtr = nil
+  result.compactCallback = nil
+  result.barrelPath = ""
+  result.currentFileId = 0'u32
   result.shutdownFlag.store(false)
   result.hasWorker = false
   result.pendingCompact = false
   result.compactInProgress = false
-  result.isShutdown = false  # Initialize shutdown flag
+  result.isShutdown = false
   initLock(result.compactLock)
   initCond(result.compactCondition)
   result.stats = types.CompactStats(
@@ -126,36 +149,34 @@ proc newCompactController*(config: types.CompactConfig, updateEntry: IndexUpdate
     timeCompleted: getTime()
   )
 
+# Implementation
+
 proc newCompactController*(config: types.CompactConfig): CompactController =
-  ## Create a new compact controller with no index update callback
-  ## Used for ranged modes where index updates are handled separately
-  result = newCompactController(config, nil, nil, nil)
+  ## Create a new compact controller with no index
+  result = CompactController()
+  initCompactController(result, config)
 
-proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir, compactCallback: CompactCallbackProc = nil): CompactController =
+proc newCompactController*(config: types.CompactConfig, keyDir: ptr KeyDir): CompactController =
+  ## Create a new compact controller for KeyDir (stores pointer directly, no closure)
+  result = CompactController()
+  initCompactController(result, config)
+  result.indexMode = imKeyDir
+  result.keyDirPtr = keyDir
+
+proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir): CompactController =
   ## Create a new compact controller for KeyDir
-  ## Creates callbacks for updating and clearing the KeyDir
-  proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
-    keyDir[].add(key, entry)
-  proc clearCallback() {.gcsafe.} =
-    keyDir[].clear()
-  result = newCompactController(config, updateCallback, clearCallback, compactCallback)
+  result = newCompactController(config, addr(keyDir))
 
-proc newCompactController*(config: types.CompactConfig, keyDir: var KeyDir, compactCallback: CompactCallbackProc = nil): CompactController =
-  ## Create a new compact controller for KeyDir
-  result = newCompactController(config, addr(keyDir), compactCallback)
+proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex): CompactController =
+  ## Create a new compact controller for CritBit index (stores pointer directly, no closure)
+  result = CompactController()
+  initCompactController(result, config)
+  result.indexMode = imCritBit
+  result.critBitPtr = critBit
 
-proc newCompactController*(config: types.CompactConfig, critBit: ptr CritBitIndex, compactCallback: CompactCallbackProc = nil): CompactController =
+proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex): CompactController =
   ## Create a new compact controller for CritBit index
-  ## Creates callbacks for updating and clearing the CritBit index
-  proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
-    critBit[].add(key, entry)
-  proc clearCallback() {.gcsafe.} =
-    critBit[].clear()
-  result = newCompactController(config, updateCallback, clearCallback, compactCallback)
-
-proc newCompactController*(config: types.CompactConfig, critBit: var CritBitIndex, compactCallback: CompactCallbackProc = nil): CompactController =
-  ## Create a new compact controller for CritBit index
-  result = newCompactController(config, addr(critBit), compactCallback)
+  result = newCompactController(config, addr(critBit))
 
 proc calculateFragmentation*(dataPath: string, validateCrc: bool = false): tuple[live: int, total: int, ratio: float] =
   ## Calculate fragmentation ratio of a data file
@@ -239,7 +260,7 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
   controller.stats.bytesWritten = 0
 
   # Clear the index before repopulating with compacted records
-  if controller.clearIndex != nil:
+  if controller.indexMode != imNone:
     controller.clearIndex()
 
   let newFileId = fileId + 1  # Use next ID for compacted file
@@ -325,9 +346,9 @@ proc performCompact*(controller: CompactController, dataPath: string, fileId: ui
       let newPos = newDataFile.appendRecord(key, info.value, info.timestamp)
       controller.stats.bytesWritten += info.recordSize.int64
 
-      # Update index with new position using callback
-      if controller.updateEntry != nil:
-        controller.updateEntry(key, KeyDirEntry(
+      # Update index with new position
+      if controller.indexMode != imNone:
+        controller.updateIndex(key, KeyDirEntry(
           recordPos: newPos.recordPos,
           fileId: newFileId,
           valueSize: newPos.valueSize,
@@ -477,8 +498,11 @@ proc shutdown*(controller: CompactController) =
     controller.isShutdown = true  # Mark as shut down first
     if controller.hasWorker:
       controller.stopCompactWorker()
-    # Clear callback to help break cycles
+    # Clear pointers and callback to prevent any dangling references
+    controller.keyDirPtr = nil
+    controller.critBitPtr = nil
     controller.compactCallback = nil
+    controller.indexMode = imNone
     deinitLock(controller.compactLock)
     deinitCond(controller.compactCondition)
 
@@ -549,8 +573,8 @@ proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
 
       # Check if this record was shadowed by a write during compaction
       # A record is shadowed if KeyDir points to a different file (the new file)
-      if controller.getEntry != nil:
-        let currentEntry = controller.getEntry(key)
+      if controller.indexMode != imNone:
+        let currentEntry = controller.getIndexEntry(key)
         if currentEntry.isSome():
           let entry = currentEntry.get()
           # If KeyDir points to a different file, this record was shadowed - skip it
@@ -565,9 +589,9 @@ proc performCompactNonBlocking*(controller: CompactController, dataPath: string,
       let newPos = newFile.appendRecord(readKey, readValue, readTimestamp)
       controller.stats.bytesWritten += info.recordSize.int64
 
-      # Update index with new position using callback
-      if controller.updateEntry != nil:
-        controller.updateEntry(key, KeyDirEntry(
+      # Update index with new position
+      if controller.indexMode != imNone:
+        controller.updateIndex(key, KeyDirEntry(
           recordPos: newPos.recordPos,
           fileId: newFile.fileId,
           valueSize: newPos.valueSize,
