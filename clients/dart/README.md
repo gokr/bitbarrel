@@ -13,19 +13,19 @@ A Dart/Flutter client library for [BitBarrel](../../), a high-performance Bitcas
 
 ## Concurrency Model
 
-**Important**: This client uses a **blocking/serialized async request model** without thread-safety.
+**Important**: This client uses a **blocking/serialized async request model** with internal locking.
 
-- Requests are blocked on `await` - each request waits for the response before returning
-- **Not thread-safe**: The client does not have internal locking. Concurrent calls can cause sequence number collisions
+- Requests are serialized - only one request can be in-flight at a time
+- A `Mutex` is held for the entire send-receive cycle via `synchronized()` to prevent interleaving
+- Thread-safe for concurrent access: multiple Isolates/Dart `Future` chains can use the client safely
 - The sequence number is validated against responses but does not enable pipelining
-- Use in a single-threaded async context (Isolate in Dart/Flutter) or manage external synchronization
 
-This design works well for Flutter where UI runs on the main thread and async operations don't block UI. For concurrent access, use external locking or separate client instances.
+This design ensures correctness and simplicity. Sequential async operations on the main Flutter UI thread are the common use case. For concurrent access from multiple Isolates, the internal mutex provides thread-safety.
 
 **Safe usage pattern:**
 
 ```dart
-// Safe: Sequential async operations in a single async function
+// Safe: Sequential async operations
 Future<void> sequentialOperations() async {
   final client = BitBarrelClient.localhost();
   await client.connect();
@@ -41,49 +41,39 @@ Future<void> sequentialOperations() async {
 }
 ```
 
-**Warning: Concurrent calls without external locking are unsafe:**
+**Safe concurrent usage:**
 
 ```dart
-// UNSAFE: This can cause sequence number collisions
+// Safe: Concurrent operations are serialized by internal lock
 final client = BitBarrelClient.localhost();
 await client.connect();
 
-// These race - _seq++ is not atomic
-Future.wait([
+final futures = <Future>[
   client.set('key1', 'value1'),
   client.set('key2', 'value2'),
   client.set('key3', 'value3'),
-]);
+  client.get('key1'),
+  client.get('key2'),
+];
+
+await Future.wait(futures);
+// All operations complete, responses are correct
 ```
 
-**For concurrent access, use separate clients or external locking:**
+**For parallel throughput**, use separate clients:
 
 ```dart
-// Option 1: Separate clients for parallel operations
+// Create a client pool
 final client1 = BitBarrelClient.localhost();
 final client2 = BitBarrelClient.localhost();
 await client1.connect();
 await client2.connect();
 
-// Options 2: External mutex
-import 'dart:async';
-
-class SafeClient {
-  final BitBarrelClient _client = BitBarrelClient.localhost();
-  final _lock = Lock();
-
-  Future<T> _request<T>(Future<T> Function() fn) async {
-    await _lock.acquire();
-    try {
-      return await fn();
-    } finally {
-      _lock.release();
-    }
-  }
-
-  Future<String> get(String key) => _request(() => _client.get(key));
-  Future<void> set(String key, String value) => _request(() => _client.set(key, value));
-}
+// Use different clients for parallel requests
+final results = await Future.wait([
+  client1.get('key1'),
+  client2.get('key2'),
+]);
 ```
 
 ## Installation

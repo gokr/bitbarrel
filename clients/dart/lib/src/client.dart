@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:mutex/mutex.dart';
 
 import 'config.dart';
 import 'web_socket.dart';
@@ -30,7 +31,7 @@ class BitBarrelClient {
   BitBarrelWebSocket? _ws;
   int _seq = 0;
   String? _currentBarrel;
-  final _lock = _Mutex(); // Internal lock for thread-safe operations
+  final _lock = Mutex(); // Internal lock for thread-safe operations
 
   BitBarrelClient(this._config);
 
@@ -40,7 +41,7 @@ class BitBarrelClient {
 
   /// Connect to the BitBarrel server
   Future<void> connect() async {
-    await _lock.synchronized(() async {
+    await _lock.protect(() async {
       if (_ws != null) {
         throw ConnectionException('Already connected',
             operation: 'connect');
@@ -56,7 +57,7 @@ class BitBarrelClient {
 
   /// Close the connection to the server
   Future<void> close() async {
-    await _lock.synchronized(() async {
+    await _lock.protect(() async {
       _currentBarrel = null;
       if (_ws != null) {
         await _ws!.close();
@@ -94,7 +95,7 @@ class BitBarrelClient {
     required String key,
     String value = '',
   }) async {
-    return await _lock.synchronized(() async {
+    return await _lock.protect(() async {
       await _ensureConnected();
 
       final ws = _ws;
