@@ -30,12 +30,11 @@ suite "Integration Tests - BitBarrel Operations":
 
     # Update KeyDir
     let keyDirEntry1 = KeyDirEntry(
-      fileId: 1,
       recordPos: recordInfo1.recordPos,
-      valuePos: recordInfo1.valuePos,
+      fileId: 1,
       valueSize: recordInfo1.valueSize,
-      timestamp: timestamp1,
-      recordSize: recordInfo1.recordSize
+      recordSize: recordInfo1.recordSize,
+      keyLen: recordInfo1.keyLen
     )
     keyDir.add(key1, keyDirEntry1)
 
@@ -45,14 +44,13 @@ suite "Integration Tests - BitBarrel Operations":
     if found1.isSome():
       let entry = found1.get()
       check entry.fileId == 1
-      check entry.timestamp == timestamp1
 
       # Read the actual record from disk
       let recordInfoFromEntry = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
       let (readKey1, readValue1, readTimestamp1) = dataFile.readRecord(recordInfoFromEntry)
       check readKey1 == key1
@@ -66,12 +64,11 @@ suite "Integration Tests - BitBarrel Operations":
     let recordInfo1_updated = dataFile.appendRecord(key1, value1_updated, timestamp1_updated)
 
     let keyDirEntry1_updated = KeyDirEntry(
-      fileId: 1,
       recordPos: recordInfo1_updated.recordPos,
-      valuePos: recordInfo1_updated.valuePos,
+      fileId: 1,
       valueSize: recordInfo1_updated.valueSize,
-      timestamp: timestamp1_updated,
-      recordSize: recordInfo1_updated.recordSize
+      recordSize: recordInfo1_updated.recordSize,
+      keyLen: recordInfo1_updated.keyLen
     )
     keyDir.add(key1, keyDirEntry1_updated)  # Should update existing entry
 
@@ -79,13 +76,12 @@ suite "Integration Tests - BitBarrel Operations":
     let found1_updated = keyDir.get(key1)
     if found1_updated.isSome():
       let entry = found1_updated.get()
-      check entry.timestamp == timestamp1_updated
 
       let recordInfoFromEntry = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
       let (readKey1_updated, readValue1_updated, readTimestamp1_updated) = dataFile.readRecord(recordInfoFromEntry)
       check readValue1_updated == value1_updated
@@ -97,12 +93,11 @@ suite "Integration Tests - BitBarrel Operations":
 
     let recordInfo2 = dataFile.appendRecord(key2, value2, timestamp2)
     keyDir.add(key2, KeyDirEntry(
-      fileId: 1,
       recordPos: recordInfo2.recordPos,
-      valuePos: recordInfo2.valuePos,
+      fileId: 1,
       valueSize: recordInfo2.valueSize,
-      timestamp: timestamp2,
-      recordSize: recordInfo2.recordSize
+      recordSize: recordInfo2.recordSize,
+      keyLen: recordInfo2.keyLen
     ))
 
     # Verify both keys exist
@@ -116,12 +111,11 @@ suite "Integration Tests - BitBarrel Operations":
 
     let recordInfoDelete = dataFile.appendRecord(deleteKey, deleteValue, timestampDelete)
     keyDir.add(deleteKey, KeyDirEntry(
-      fileId: 1,
       recordPos: recordInfoDelete.recordPos,
-      valuePos: recordInfoDelete.valuePos,
+      fileId: 1,
       valueSize: recordInfoDelete.valueSize,  # 0 for tombstone
-      timestamp: timestampDelete,
-      recordSize: recordInfoDelete.recordSize
+      recordSize: recordInfoDelete.recordSize,
+      keyLen: recordInfoDelete.keyLen
     ))
 
     # After delete, reading should give empty value
@@ -130,9 +124,9 @@ suite "Integration Tests - BitBarrel Operations":
       let entry = foundDeleted.get()
       let recordInfoFromEntry = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
       let (readKeyDeleted, readValueDeleted, _) = dataFile.readRecord(recordInfoFromEntry)
       check readKeyDeleted == deleteKey
@@ -157,12 +151,11 @@ suite "Integration Tests - BitBarrel Operations":
       # Write a record
       let recordInfo = dataFile.appendRecord("persist_key", "persist_value", getTime().toUnix())
       keyDir.add("persist_key", KeyDirEntry(
-        fileId: 1,
         recordPos: recordInfo.recordPos,
-        valuePos: recordInfo.valuePos,
+        fileId: 1,
         valueSize: recordInfo.valueSize,
-        timestamp: getTime().toUnix(),
-        recordSize: recordInfo.recordSize
+        recordSize: recordInfo.recordSize,
+        keyLen: recordInfo.keyLen
       ))
 
       dataFile.close()
@@ -198,12 +191,11 @@ suite "Integration Tests - BitBarrel Operations":
 
       let recordInfo = dataFile.appendRecord(key, value, getTime().toUnix())
       keyDir.add(key, KeyDirEntry(
-        fileId: 1,
         recordPos: recordInfo.recordPos,
-        valuePos: recordInfo.valuePos,
+        fileId: 1,
         valueSize: recordInfo.valueSize,
-        timestamp: getTime().toUnix(),
-        recordSize: recordInfo.recordSize
+        recordSize: recordInfo.recordSize,
+        keyLen: recordInfo.keyLen
       ))
 
     let writeTime = cpuTime() - startTime
@@ -221,9 +213,9 @@ suite "Integration Tests - BitBarrel Operations":
         let entry = found.get()
         let recordInfoFromEntry = RecordInfo(
           recordPos: entry.recordPos,
-          valuePos: entry.valuePos,
           valueSize: entry.valueSize,
-          recordSize: entry.recordSize
+          recordSize: entry.recordSize,
+          keyLen: entry.keyLen
         )
         let (readKey, readValue, _) = dataFile.readRecord(recordInfoFromEntry)
         check readKey == key

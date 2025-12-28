@@ -26,11 +26,11 @@ suite "CritBitIndex - Range Queries with Cursor Pagination":
   test "itemsInRange with simple range":
     var index = critbitindex.init()
 
-    index.add("user:aaa", KeyDirEntry(fileId: 1'u32, recordPos: 100'u64, valuePos: 120'u64, valueSize: 10'u32, timestamp: 1000'i64, recordSize: 50'u32, deleted: false))
-    index.add("user:bbb", KeyDirEntry(fileId: 1'u32, recordPos: 150'u64, valuePos: 170'u64, valueSize: 10'u32, timestamp: 1001'i64, recordSize: 50'u32, deleted: false))
-    index.add("user:ccc", KeyDirEntry(fileId: 1'u32, recordPos: 200'u64, valuePos: 220'u64, valueSize: 10'u32, timestamp: 1002'i64, recordSize: 50'u32, deleted: false))
-    index.add("user:ddd", KeyDirEntry(fileId: 1'u32, recordPos: 250'u64, valuePos: 270'u64, valueSize: 10'u32, timestamp: 1003'i64, recordSize: 50'u32, deleted: false))
-    index.add("user:eee", KeyDirEntry(fileId: 1'u32, recordPos: 300'u64, valuePos: 320'u64, valueSize: 10'u32, timestamp: 1004'i64, recordSize: 50'u32, deleted: false))
+    index.add("user:aaa", KeyDirEntry(recordPos: 100'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
+    index.add("user:bbb", KeyDirEntry(recordPos: 150'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
+    index.add("user:ccc", KeyDirEntry(recordPos: 200'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
+    index.add("user:ddd", KeyDirEntry(recordPos: 250'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
+    index.add("user:eee", KeyDirEntry(recordPos: 300'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
 
     let items = index.itemsInRange("user:bbb", "user:fff", 10, "")
     check items.len == 4
@@ -45,7 +45,7 @@ suite "CritBitIndex - Range Queries with Cursor Pagination":
     # Add keys in sorted order
     for i in 0..<20:
       let key = "user:" & chr(ord('a') + i)
-      index.add(key, KeyDirEntry(fileId: 1'u32, recordPos: uint64(100 + i * 50), valuePos: uint64(120 + i * 50), valueSize: 10'u32, timestamp: int64(1000 + i), recordSize: 50'u32, deleted: false))
+      index.add(key, KeyDirEntry(recordPos: uint64(100 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
     let page1 = index.itemsInRange("user:a", "user:z", 5, "")
     check page1.len == 5
@@ -64,8 +64,8 @@ suite "CritBitIndex - Range Queries with Cursor Pagination":
     for i in 0..<10:
       let userKey = "user:" & chr(ord('a') + i)
       let postKey = "post:" & chr(ord('a') + i)
-      index.add(userKey, KeyDirEntry(fileId: 1'u32, recordPos: uint64(100 + i * 50), valuePos: uint64(120 + i * 50), valueSize: 10'u32, timestamp: int64(1000 + i), recordSize: 50'u32, deleted: false))
-      index.add(postKey, KeyDirEntry(fileId: 1'u32, recordPos: uint64(500 + i * 50), valuePos: uint64(520 + i * 50), valueSize: 10'u32, timestamp: int64(1000 + i), recordSize: 50'u32, deleted: false))
+      index.add(userKey, KeyDirEntry(recordPos: uint64(100 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
+      index.add(postKey, KeyDirEntry(recordPos: uint64(500 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
     let users = index.itemsWithPrefix("user:", 3, "")
     check users.len == 3
@@ -82,9 +82,9 @@ suite "CritBitIndex - Range Queries with Cursor Pagination":
   test "itemsWithPrefix filters deleted entries":
     var index = critbitindex.init()
 
-    index.add("user:a", KeyDirEntry(fileId: 1'u32, recordPos: 100'u64, valuePos: 120'u64, valueSize: 10'u32, timestamp: 1000'i64, recordSize: 50'u32, deleted: false))
-    index.add("user:b", KeyDirEntry(fileId: 1'u32, recordPos: 150'u64, valuePos: 170'u64, valueSize: 10'u32, timestamp: 1001'i64, recordSize: 50'u32, deleted: true))
-    index.add("user:c", KeyDirEntry(fileId: 1'u32, recordPos: 200'u64, valuePos: 220'u64, valueSize: 10'u32, timestamp: 1002'i64, recordSize: 50'u32, deleted: false))
+    index.add("user:a", KeyDirEntry(recordPos: 100'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
+    index.add("user:b", KeyDirEntry(recordPos: 150'u64, fileId: 1'u32, valueSize: 0'u32, recordSize: 50'u32, keyLen: 6))  # valueSize=0 means deleted
+    index.add("user:c", KeyDirEntry(recordPos: 200'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
     let items = index.itemsWithPrefix("user:", 10, "")
     check items.len == 2
@@ -94,7 +94,7 @@ suite "CritBitIndex - Range Queries with Cursor Pagination":
   test "empty range returns nothing":
     var index = critbitindex.init()
 
-    index.add("user:a", KeyDirEntry(fileId: 1'u32, recordPos: 100'u64, valuePos: 120'u64, valueSize: 10'u32, timestamp: 1000'i64, recordSize: 50'u32, deleted: false))
+    index.add("user:a", KeyDirEntry(recordPos: 100'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
     let items = index.itemsInRange("user:c", "user:f", 10, "")
     check items.len == 0
@@ -104,7 +104,7 @@ suite "CritBitIndex - Range Queries with Cursor Pagination":
 
     for i in 0..<10:
       let key = "user:" & chr(ord('a') + i)
-      index.add(key, KeyDirEntry(fileId: 1'u32, recordPos: uint64(100 + i * 50), valuePos: uint64(120 + i * 50), valueSize: 10'u32, timestamp: int64(1000 + i), recordSize: 50'u32, deleted: false))
+      index.add(key, KeyDirEntry(recordPos: uint64(100 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
     let page1 = index.itemsInRange("user:a", "user:z", 10, "")
     check page1.len == 10

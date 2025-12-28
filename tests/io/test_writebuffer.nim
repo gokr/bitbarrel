@@ -63,8 +63,9 @@ suite "Write Buffer Tests":
 
     let info = df.appendRecord("test_key", "test_value", 123456789)
 
-    check info.valuePos > 0
+    check info.recordPos > 0
     check info.valueSize == "test_value".len.uint32
+    check info.keyLen == "test_key".len.uint16
 
   test "performance comparison - simple test":
     let testDataFile = "test_perf.data"

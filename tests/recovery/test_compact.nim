@@ -82,9 +82,9 @@ suite "Compaction Tests":
     discard df.appendRecord("key3", "value3", now)
 
     # Add to KeyDir
-    kd.add("key1", KeyDirEntry(fileId: 1, recordPos: 0, valuePos: 0, valueSize: 6, timestamp: now, recordSize: 30))
-    kd.add("key2", KeyDirEntry(fileId: 1, recordPos: 30, valuePos: 0, valueSize: 6, timestamp: now, recordSize: 30))
-    kd.add("key3", KeyDirEntry(fileId: 1, recordPos: 60, valuePos: 0, valueSize: 6, timestamp: now, recordSize: 30))
+    kd.add("key1", KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 6, recordSize: 30, keyLen: 4))
+    kd.add("key2", KeyDirEntry(recordPos: 30, fileId: 1, valueSize: 6, recordSize: 30, keyLen: 4))
+    kd.add("key3", KeyDirEntry(recordPos: 60, fileId: 1, valueSize: 6, recordSize: 30, keyLen: 4))
 
     df.close()
 

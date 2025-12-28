@@ -138,20 +138,17 @@ suite "Recovery System Tests":
     # Check KeyDir content
     var recoveredKeyDir = engine.getKeyDir()
 
-    # key1 should have the latest value from file2
+    # key1 should have the latest value from file2 (last written wins)
     var entry = recoveredKeyDir.get("key1").get()
     check entry.fileId == 2'u32
-    check entry.timestamp == 3000
 
     # key2 should be from file1
     entry = recoveredKeyDir.get("key2").get()
     check entry.fileId == 1'u32
-    check entry.timestamp == 2000
 
     # key3 should be from file2
     entry = recoveredKeyDir.get("key3").get()
     check entry.fileId == 2'u32
-    check entry.timestamp == 2500
 
   test "Recovery with corrupt records":
     let engine = initRecoveryEngine(testDir, RecoveryOptions(
@@ -247,10 +244,10 @@ suite "Integration Tests":
     check stats.keyCount == 2
     check stats.totalFiles == 1
 
-    # Verify data integrity
+    # Verify data integrity - check keys exist
     var recoveredKeyDir = engine.getKeyDir()
-    check recoveredKeyDir.get("key1").get().timestamp == 1000
-    check recoveredKeyDir.get("key2").get().timestamp == 2000
+    check recoveredKeyDir.get("key1").isSome
+    check recoveredKeyDir.get("key2").isSome
 
   test "Recovery with hint files - valid hint file":
     let engine = initRecoveryEngine(testDir)
@@ -259,7 +256,7 @@ suite "Integration Tests":
     let records = @[
       Record(timestamp: 1000, key: "key1", value: "value1"),
       Record(timestamp: 2000, key: "key2", value: "value2"),
-      Record(timestamp: 1500, key: "key3", value: "value3")  # Out of order, tests timestamp ordering
+      Record(timestamp: 1500, key: "key3", value: "value3")
     ]
 
     # Create data file
@@ -275,9 +272,7 @@ suite "Integration Tests":
       let entry = HintEntry(
         key: record.key,
         recordPos: 100,  # Dummy position
-        valuePos: 120,   # Dummy position
         valueSize: record.value.len.uint32,
-        timestamp: record.timestamp,
         recordSize: (record.key.len + record.value.len + 16).uint32
       )
       hintEntries.add(entry)
@@ -357,15 +352,17 @@ suite "Integration Tests":
       let entry = HintEntry(
         key: record.key,
         recordPos: 100,
-        valuePos: 120,
         valueSize: record.value.len.uint32,
-        timestamp: record.timestamp,
         recordSize: (record.key.len + record.value.len + 16).uint32
       )
       hintEntries.add(entry)
 
+    # Get data file size for hint file
+    let dataFilePath = testDir / "000001.data"
+    let dataSize = if fileExists(dataFilePath): getFileSize(dataFilePath).uint64 else: 0'u64
+
     let hintPath = testDir / "000001.hint"
-    check writeHintFile(hintPath, 1'u32, hintEntries) == true
+    check writeHintFile(hintPath, 1'u32, hintEntries, dataSize) == true
 
     # Run recovery with hint files disabled
     let stats = engine.recover()

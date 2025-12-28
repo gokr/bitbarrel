@@ -40,9 +40,10 @@ suite "Data File Format":
 
     # Append record
     let recordInfo = df.appendRecord(key, value, timestamp)
-    check recordInfo.valuePos > HEADER_SIZE
+    check recordInfo.recordPos >= HEADER_SIZE
     check recordInfo.valueSize == value.len.uint32
     check recordInfo.recordSize > 0
+    check recordInfo.keyLen == key.len.uint16
 
     # Read record back
     let (readKey, readValue, readTimestamp) = df.readRecord(recordInfo)

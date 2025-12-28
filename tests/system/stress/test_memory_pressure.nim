@@ -18,12 +18,11 @@ suite "Memory Pressure Tests":
     const numKeys = 1000
     for i in 0..<numKeys:
       let entry = KeyDirEntry(
-        fileId: 1,
         recordPos: uint64(i * 100),
-        valuePos: uint64(i * 100 + 50),
+        fileId: 1,
         valueSize: 10,
-        timestamp: now(),
-        recordSize: 25
+        recordSize: 25,
+        keyLen: uint16(len(fmt("key_{i}")))
       )
       keyDir.add(fmt("key_{i}"), entry)
 
@@ -91,12 +90,11 @@ suite "Memory Pressure Tests":
     for i in 0..<numKeys:
       let longKey = repeat("k", keyLength - 10) & fmt("_{i:06d}")
       let entry = KeyDirEntry(
-        fileId: 1,
         recordPos: uint64(i * 100),
-        valuePos: uint64(i * 100 + 50),
+        fileId: 1,
         valueSize: 10,
-        timestamp: now(),
-        recordSize: 25
+        recordSize: 25,
+        keyLen: uint16(longKey.len)
       )
       keyDir.add(longKey, entry)
 

@@ -29,9 +29,9 @@ suite "Hint File Tests":
     withTestDir("hintfile_entries"):
       let path = testDir / "test.hint"
       let entries = @[
-        HintEntry(key: "key1", recordPos: 100, valuePos: 120, valueSize: 10, timestamp: 1000, recordSize: 30),
-        HintEntry(key: "key2", recordPos: 200, valuePos: 220, valueSize: 20, timestamp: 2000, recordSize: 40),
-        HintEntry(key: "key3", recordPos: 300, valuePos: 320, valueSize: 30, timestamp: 3000, recordSize: 50)
+        HintEntry(key: "key1", recordPos: 100, valueSize: 10, recordSize: 30),
+        HintEntry(key: "key2", recordPos: 200, valueSize: 20, recordSize: 40),
+        HintEntry(key: "key3", recordPos: 300, valueSize: 30, recordSize: 50)
       ]
 
       let writeSuccess = writeHintFile(path, 42, entries)
@@ -45,9 +45,7 @@ suite "Hint File Tests":
 
       check readEntries[0].key == "key1"
       check readEntries[0].recordPos == 100
-      check readEntries[0].valuePos == 120
       check readEntries[0].valueSize == 10
-      check readEntries[0].timestamp == 1000
       check readEntries[0].recordSize == 30
 
       check readEntries[1].key == "key2"
@@ -57,7 +55,7 @@ suite "Hint File Tests":
     withTestDir("hintfile_validation"):
       let path = testDir / "test.hint"
       let entries = @[
-        HintEntry(key: "test", recordPos: 50, valuePos: 60, valueSize: 5, timestamp: 100, recordSize: 20)
+        HintEntry(key: "test", recordPos: 50, valueSize: 5, recordSize: 20)
       ]
 
       discard writeHintFile(path, 1, entries)
@@ -106,8 +104,8 @@ suite "Hint File Tests":
 
     let path = testDir / "test.hint"
     let entries = @[
-      HintEntry(key: "key1", recordPos: 100, valuePos: 120, valueSize: 10, timestamp: 1000, recordSize: 30),
-      HintEntry(key: "key2", recordPos: 200, valuePos: 220, valueSize: 20, timestamp: 2000, recordSize: 40)
+      HintEntry(key: "key1", recordPos: 100, valueSize: 10, recordSize: 30),
+      HintEntry(key: "key2", recordPos: 200, valueSize: 20, recordSize: 40)
     ]
 
     discard writeHintFile(path, 5, entries)
@@ -122,69 +120,37 @@ suite "Hint File Tests":
     check entry1.isSome
     check entry1.get().fileId == 5
     check entry1.get().recordPos == 100
-    check entry1.get().valuePos == 120
     check entry1.get().valueSize == 10
-    check entry1.get().timestamp == 1000
 
-  test "loadKeyDirFromHint - newer entries win":
+  test "loadKeyDirFromHint - overwrites existing entries":
     let testDir = setupTestDir("hintfile")
     defer: cleanupTestDir(testDir)
 
     let path = testDir / "test.hint"
     let entries = @[
-      HintEntry(key: "key1", recordPos: 200, valuePos: 220, valueSize: 20, timestamp: 2000, recordSize: 40)
+      HintEntry(key: "key1", recordPos: 200, valueSize: 20, recordSize: 40)
     ]
 
     discard writeHintFile(path, 5, entries)
 
     var keyDir = keydir.init()
-    # Pre-populate with older entry
+    # Pre-populate with an entry
     keyDir.add("key1", KeyDirEntry(
-      fileId: 1,
       recordPos: 100,
-      valuePos: 120,
-      valueSize: 10,
-      timestamp: 1000,
-      recordSize: 30
-    ))
-
-    let loaded = loadKeyDirFromHint(path, keyDir)
-
-    check loaded == 1  # Entry was updated
-
-    let entry = keyDir.get("key1")
-    check entry.isSome
-    check entry.get().timestamp == 2000  # Newer timestamp
-
-  test "loadKeyDirFromHint - older entries ignored":
-    let testDir = setupTestDir("hintfile")
-    defer: cleanupTestDir(testDir)
-
-    let path = testDir / "test.hint"
-    let entries = @[
-      HintEntry(key: "key1", recordPos: 100, valuePos: 120, valueSize: 10, timestamp: 1000, recordSize: 30)
-    ]
-
-    discard writeHintFile(path, 5, entries)
-
-    var keyDir = keydir.init()
-    # Pre-populate with newer entry
-    keyDir.add("key1", KeyDirEntry(
       fileId: 1,
-      recordPos: 200,
-      valuePos: 220,
-      valueSize: 20,
-      timestamp: 2000,
-      recordSize: 40
+      valueSize: 10,
+      recordSize: 30,
+      keyLen: 4
     ))
 
     let loaded = loadKeyDirFromHint(path, keyDir)
 
-    check loaded == 0  # No entries updated (hint was older)
+    check loaded == 1  # Entry was loaded (always overwrites)
 
     let entry = keyDir.get("key1")
     check entry.isSome
-    check entry.get().timestamp == 2000  # Original timestamp preserved
+    check entry.get().recordPos == 200  # New position
+    check entry.get().fileId == 5  # New fileId
 
   test "Large hint file":
     let testDir = setupTestDir("hintfile")
@@ -198,9 +164,7 @@ suite "Hint File Tests":
       entries.add(HintEntry(
         key: &"key_{i:05d}",
         recordPos: (i * 100).uint64,
-        valuePos: (i * 100 + 20).uint64,
         valueSize: 50,
-        timestamp: i.int64,
         recordSize: 80
       ))
 

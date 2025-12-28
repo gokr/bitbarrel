@@ -208,12 +208,11 @@ suite "CritBit Index Unit Tests":
   test "add and get":
     var index = critbitindex.init()
     let entry = KeyDirEntry(
-      fileId: 1,
       recordPos: 100,
-      valuePos: 120,
+      fileId: 1,
       valueSize: 10,
-      timestamp: 12345,
-      recordSize: 50
+      recordSize: 50,
+      keyLen: 4
     )
 
     index.add("key1", entry)
@@ -222,14 +221,14 @@ suite "CritBit Index Unit Tests":
     let found = index.get("key1")
     check found.isSome()
     check found.get().fileId == 1
-    check found.get().valuePos == 120
+    check found.get().recordPos == 100
 
     check index.get("nonexistent").isNone()
     index.deinit()
 
   test "delete":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(fileId: 1, recordPos: 0, valuePos: 0, valueSize: 0, timestamp: 0, recordSize: 0)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 4)
 
     index.add("key1", entry)
     check index.contains("key1")
@@ -242,7 +241,7 @@ suite "CritBit Index Unit Tests":
 
   test "clear":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(fileId: 1, recordPos: 0, valuePos: 0, valueSize: 0, timestamp: 0, recordSize: 0)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 4)
 
     index.add("key1", entry)
     index.add("key2", entry)
@@ -256,7 +255,7 @@ suite "CritBit Index Unit Tests":
 
   test "keys are sorted":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(fileId: 1, recordPos: 0, valuePos: 0, valueSize: 0, timestamp: 0, recordSize: 0)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 5)
 
     index.add("zebra", entry)
     index.add("apple", entry)
@@ -268,28 +267,24 @@ suite "CritBit Index Unit Tests":
 
     index.deinit()
 
-  test "addIfNewer":
+  test "add always overwrites":
     var index = critbitindex.init()
 
-    let oldEntry = KeyDirEntry(fileId: 1, recordPos: 100, valuePos: 0, valueSize: 0, timestamp: 100, recordSize: 0)
-    let newEntry = KeyDirEntry(fileId: 2, recordPos: 200, valuePos: 0, valueSize: 0, timestamp: 200, recordSize: 0)
+    let oldEntry = KeyDirEntry(recordPos: 100, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 4)
+    let newEntry = KeyDirEntry(recordPos: 200, fileId: 2, valueSize: 0, recordSize: 0, keyLen: 4)
 
-    check index.addIfNewer("key1", oldEntry)
-    check index.get("key1").get().timestamp == 100
+    index.add("key1", oldEntry)
+    check index.get("key1").get().recordPos == 100
 
-    check index.addIfNewer("key1", newEntry)
-    check index.get("key1").get().timestamp == 200
+    index.add("key1", newEntry)
+    check index.get("key1").get().recordPos == 200
     check index.get("key1").get().fileId == 2
-
-    # Older entry should not replace
-    check not index.addIfNewer("key1", oldEntry)
-    check index.get("key1").get().timestamp == 200
 
     index.deinit()
 
   test "keysWithPrefix":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(fileId: 1, recordPos: 0, valuePos: 0, valueSize: 0, timestamp: 0, recordSize: 0)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 8)
 
     index.add("prefix:a", entry)
     index.add("prefix:b", entry)
@@ -308,7 +303,7 @@ suite "CritBit Index Unit Tests":
 
   test "keysInRange":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(fileId: 1, recordPos: 0, valuePos: 0, valueSize: 0, timestamp: 0, recordSize: 0)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 1)
 
     index.add("a", entry)
     index.add("b", entry)

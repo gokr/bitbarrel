@@ -152,54 +152,60 @@ suite "Error Handling Tests":
     expect ValueError:
       discard decode(data)
 
-  test "keydir addIfNewer with older timestamp":
+  test "keydir add always overwrites":
     var keyDir = init()
     defer: keyDir.deinit()
 
     let entry1 = KeyDirEntry(
-      fileId: 1,
       recordPos: 100,
-      valuePos: 200,
+      fileId: 1,
       valueSize: 10,
-      timestamp: 100,
-      recordSize: 20
+      recordSize: 20,
+      keyLen: 3
     )
 
     let entry2 = KeyDirEntry(
-      fileId: 2,
       recordPos: 300,
-      valuePos: 400,
+      fileId: 2,
       valueSize: 15,
-      timestamp: 50,  # Older timestamp
-      recordSize: 25
+      recordSize: 25,
+      keyLen: 3
     )
 
     # Add first entry
-    check keyDir.addIfNewer("key", entry1) == true
+    keyDir.add("key", entry1)
 
-    # Try to add older entry - should be rejected
-    check keyDir.addIfNewer("key", entry2) == false
+    # Verify first entry
+    let stored1 = keyDir.get("key")
+    check stored1.isSome()
+    check stored1.get().fileId == 1
 
-    # Verify we still have the newer entry
-    let stored = keyDir.get("key")
-    check stored.isSome()
-    check stored.get().timestamp == 100
+    # Add second entry - always overwrites
+    keyDir.add("key", entry2)
 
-  test "newerEntry comparison with no existing key":
+    # Verify we have the second entry (overwrote)
+    let stored2 = keyDir.get("key")
+    check stored2.isSome()
+    check stored2.get().fileId == 2
+
+  test "keydir add works with non-existent key":
     var keyDir = init()
     defer: keyDir.deinit()
 
     let entry = KeyDirEntry(
-      fileId: 1,
       recordPos: 100,
-      valuePos: 200,
+      fileId: 1,
       valueSize: 10,
-      timestamp: 100,
-      recordSize: 20
+      recordSize: 20,
+      keyLen: 11
     )
 
-    # Should return true for non-existent key
-    check keyDir.newerEntry("nonexistent", entry) == true
+    # Adding to non-existent key should work
+    keyDir.add("nonexistent", entry)
+
+    let stored = keyDir.get("nonexistent")
+    check stored.isSome()
+    check stored.get().fileId == 1
 
   # test "multiple CRC32 mismatches in same file":
   #   # This test is commented out due to fragility in different environments

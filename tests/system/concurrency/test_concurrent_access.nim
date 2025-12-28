@@ -19,12 +19,11 @@ suite "Concurrent Access Tests":
     # Add some entries
     for i in 0..<100:
       let entry = KeyDirEntry(
-        fileId: 1,
         recordPos: uint64(i * 100),
-        valuePos: uint64(i * 100 + 50),
+        fileId: 1,
         valueSize: 10,
-        timestamp: now(),
-        recordSize: 25
+        recordSize: 25,
+        keyLen: uint16(len(fmt("key_{i}")))
       )
       keyDir.add(fmt("key_{i}"), entry)
 
@@ -39,12 +38,11 @@ suite "Concurrent Access Tests":
     # Update same key multiple times
     for i in 0..<50:
       let entry = KeyDirEntry(
-        fileId: 1,
         recordPos: uint64(i),
-        valuePos: uint64(i + 50),
+        fileId: 1,
         valueSize: 10,
-        timestamp: now() + int64(i),
-        recordSize: 25
+        recordSize: 25,
+        keyLen: 10  # "shared_key".len
       )
       keyDir.add("shared_key", entry)
 
@@ -57,12 +55,11 @@ suite "Concurrent Access Tests":
     # Add entries
     for i in 0..<50:
       let entry = KeyDirEntry(
-        fileId: 1,
         recordPos: uint64(i * 10),
-        valuePos: uint64(i * 10 + 5),
+        fileId: 1,
         valueSize: 5,
-        timestamp: now(),
-        recordSize: 20
+        recordSize: 20,
+        keyLen: uint16(len(fmt("key_{i}")))
       )
       keyDir.add(fmt("key_{i}"), entry)
 
