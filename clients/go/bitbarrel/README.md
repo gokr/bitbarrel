@@ -7,7 +7,6 @@ Go client library for BitBarrel key-value store with WebSocket protocol support.
 - Full WebSocket protocol implementation (RFC 6455)
 - All BitBarrel operations (GET, SET, DELETE, etc.)
 - Barrel management
-- Connection pooling (planned)
 - Context support for timeouts and cancellation
 
 ## Installation
@@ -60,11 +59,75 @@ func main() {
 }
 ```
 
+## Testing
+
+The Go client includes comprehensive test suites for unit and integration testing.
+
+### Run All Tests (Unit Tests Only)
+
+Unit tests do not require a running server and can be run at any time:
+
+```bash
+cd clients/go/bitbarrel
+go test -v
+```
+
+### Run Specific Tests
+
+Run a specific test by name:
+
+```bash
+go test -v -run TestIsValidCommand
+go test -v -run TestRequestEncodeDecode
+go test -v -run TestRangeQuery
+```
+
+### Run Integration Tests
+
+Integration tests require a running BitBarrel server. Start the server first:
+
+```bash
+# From the bitbarrel root directory (using the nim binary)
+./bitbarrel server --port 9876
+
+# Or if using nim directly
+nim c -r src/cli/main.nim server --port 9876
+```
+
+Then run the integration tests with the `BITBARREL_TEST_SERVER` environment variable:
+
+```bash
+cd clients/go/bitbarrel
+BITBARREL_TEST_SERVER=true go test -v
+```
+
+### Run Benchmarks
+
+Run performance benchmarks:
+
+```bash
+go test -bench=. -benchmem
+```
+
+Specific benchmarks available:
+- `BenchmarkRequestEncode` - request encoding performance
+- `BenchmarkRequestDecode` - request decoding performance
+- `BenchmarkResponseEncode` - response encoding performance
+- `BenchmarkResponseDecode` - response decoding performance
+
+### Test Coverage
+
+Get code coverage report:
+
+```bash
+go test -cover -coverprofile=coverage.out
+go tool cover -html=coverage.out
+```
+
 ## Documentation
 
 - [API Reference](https://pkg.go.dev/github.com/yourusername/bitbarrel-go)
 - [Protocol Specification](../../../docs/PROTOCOL.md)
-- [Usage Guide](../../../docs/networking-guide.md)
 
 ## Examples
 

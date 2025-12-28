@@ -645,21 +645,3 @@ func DecodeTraverseResults(data string) (byte, uint32, []TraverseResult, error) 
 
 	return status, seq, results, nil
 }
-
-// Helper function to split strings (simple replacement for strings.Split with custom behavior)
-func split(s, sep string) []string {
-	var parts []string
-	start := 0
-	for i := 0; i <= len(s)-len(sep); i++ {
-		if s[i:i+len(sep)] == sep {
-			if i > start {
-				parts = append(parts, s[start:i])
-			}
-			start = i + len(sep)
-		}
-	}
-	if start < len(s) {
-		parts = append(parts, s[start:])
-	}
-	return parts
-}

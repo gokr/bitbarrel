@@ -158,7 +158,7 @@ func (c *Client) sendRequest(req *Request) (*Response, error) {
 	}
 
 	// Decode response
-	resp, err := DecodeResponse(string(respData))
+	resp, err := DecodeResponse(respData)
 	if err != nil {
 		return nil, NewError("decode", err)
 	}
