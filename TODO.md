@@ -55,14 +55,36 @@ This document consolidates all planned and potential future enhancements for Bit
 ## Client Libraries
 
 ### Go Client ✅ COMPLETED
-- ✅ Located in `/clients/go/bitbarrel/`
+- ✅ Located in `/clients/go/`
 - ✅ Full feature parity with Nim client
-- ✅ ~1,649 lines of Go code
+- ✅ Examples with fixes (fmt import, unused variable removal)
+- ✅ ~1,600+ lines of Go code
 - ✅ Examples: basic, barrels, concurrent access
 - ✅ Range queries and cursor pagination support
 
-### Planned Client Libraries
-- Python client library
+### Nim Client ✅ COMPLETED
+- ✅ Located in `/clients/nim/`
+- ✅ Full feature parity with server
+- ✅ Standalone nimble package
+- ✅ Complete WebSocket protocol implementation
+- ✅ Documentation and examples
+
+### Dart/Flutter Client ✅ COMPLETED
+- ✅ Located in `/clients/dart/`
+- ✅ Cross-platform: Android, iOS, Flutter Web
+- ✅ Full WebSocket protocol (19 commands)
+- ✅ 28 passing unit tests
+- ✅ Comprehensive README with examples
+- ✅ Uses web_socket_channel for platform compatibility
+
+### Python Client ✅ COMPLETED
+- ✅ Located in `/clients/python/`
+- ✅ WebSocket client implementation
+- ✅ Test suite and examples
+- ✅ Full CRUD and barrel operations
+
+### Planned Client Libraries (Already Complete)
+- ✅ Python client library
 - JavaScript/Node.js client
 - Java client
 
@@ -343,7 +365,7 @@ For documentation on current features:
   - Plus: testutils.nim, test_cli_integration.nim
 - Demo files: 5+ examples
 - Documentation: Comprehensive (reorganized into USER_GUIDE, DEVELOPER_GUIDE, FEATURES, research)
-- Client libraries: Nim (✅), Go (✅), Python (planned), JavaScript (planned)
+- Client libraries: Nim (✅), Go (✅), Dart/Flutter (✅), Python (✅)
 
 **Storage Modules:**
 - Core: keydir.nim, critbitindex.nim, datafile.nim, record.nim, compact.nim

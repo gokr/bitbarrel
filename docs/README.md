@@ -41,6 +41,27 @@ Detailed documentation for specific BitBarrel features:
   - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
   - [Read-Ahead LRU Buffering](FEATURES/read-buffering.md) - Caching with LRU eviction
 
+### Client Libraries
+BitBarrel provides client libraries for multiple programming languages:
+
+- **[Nim Client](../clients/nim/README.md)** - Full WebSocket protocol implementation
+- **[Go Client](../clients/go/README.md)** - Full WebSocket protocol implementation
+- **[Dart/Flutter Client](../clients/dart/README.md)** - Mobile + Web compatible client
+- **[Python Client](../clients/python/README.md)** - WebSocket client
+
+| Feature | Nim | Go | Dart/Flutter | Python |
+|---------|-----|----|--------------|--------|
+| WebSocket protocol | ✅ | ✅ | ✅ | ✅ |
+| CRUD operations | ✅ | ✅ | ✅ | ✅ |
+| Barrel management | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ |
+| Prefix queries | ✅ | ✅ | ✅ | - |
+| Reference traversal | ✅ | ✅ | ✅ | - |
+| Cursor pagination | ✅ | ✅ | ✅ | - |
+| Mobile support | - | - | ✅ | - |
+| Web support | - | - | ✅ | - |
+
+
 ### Historical and Research
 Background information and experimental features:
 

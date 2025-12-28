@@ -71,6 +71,53 @@ nimble buildDefault
 
 ### Using as a Library
 
+## Client Libraries
+
+BitBarrel provides client libraries in multiple languages for remote access via WebSocket:
+
+| Language | Location | Status |
+|----------|----------|--------|
+| Nim | `clients/nim/` | Full WebSocket protocol |
+| Go | `clients/go/` | Full WebSocket protocol |
+| Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
+| Python | `clients/python/` | WebSocket client |
+
+### Dart/Flutter Example
+
+```dart
+import 'package:bitbarrel/bitbarrel.dart';
+
+final client = BitBarrelClient.localhost();
+await client.connect();
+await client.createBarrel('mydb');
+await client.useBarrel('mydb');
+await client.set('key', 'value');
+final value = await client.get('key');
+await client.close();
+```
+
+See [`clients/dart/README.md`](clients/dart/README.md) for full documentation.
+
+### Go Example
+
+```go
+package main
+
+import "github.com/tankfeed/bitbarrel-go"
+
+client := bitbarrel.NewClient("localhost", 9876)
+client.Connect()
+client.CreateBarrel("mydb", "")
+client.UseBarrel("mydb")
+client.Set("key", "value")
+value := client.Get("key")
+client.Close()
+```
+
+See [`clients/go/README.md`](clients/go/README.md) for full documentation.
+
+### Using as a Nim Library
+
 BitBarrel can be installed via nimble and used as a library in your projects:
 
 ```nim.compilable
@@ -101,6 +148,58 @@ db.close()
 
 See the [tutorial](docs/USER_GUIDE/tutorial.md) for comprehensive examples.
 
+## Client Libraries
+
+BitBarrel provides client libraries in multiple languages for remote access via WebSocket:
+
+| Language | Location | Status |
+|----------|----------|--------|
+| Nim | `clients/nim/` | Full WebSocket protocol |
+| Go | `clients/go/` | Full WebSocket protocol |
+| Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
+| Python | `clients/python/` | WebSocket client |
+
+### Dart/Flutter Example
+
+```dart
+import 'package:bitbarrel/bitbarrel.dart';
+
+final client = BitBarrelClient.localhost();
+await client.connect();
+await client.createBarrel('mydb');
+await client.useBarrel('mydb');
+await client.set('key', 'value');
+final value = await client.get('key');
+await client.close();
+```
+
+See [`clients/dart/README.md`](clients/dart/README.md) for full documentation.
+
+### Go Example
+
+```go
+package main
+
+import "github.com/tankfeed/bitbarrel-go"
+
+client := bitbarrel.NewClient("localhost", 9876)
+client.Connect()
+client.CreateBarrel("mydb", "")
+client.UseBarrel("mydb")
+client.Set("key", "value")
+value := client.Get("key")
+client.Close()
+```
+
+See [`clients/go/README.md`](clients/go/README.md) for full documentation.
+
+### Testing All Clients
+
+```bash
+# Test all client libraries (starts server on port 9876, runs tests, stops server)
+nimble testClients
+```
+
 ## Features at a Glance
 
 BitBarrel packs a comprehensive set of features into a lightweight package:
@@ -110,7 +209,8 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Storage | Append‑only log, three index modes, compression (LZ4/Snappy), binary record encoding |
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
-| Network | WebSocket binary protocol (15 commands), REST API, session management, thread‑safe operations |
+| Network | WebSocket binary protocol (19 commands), REST API, session management, thread‑safe operations |
+| Clients | Nim, Go, Dart/Flutter (mobile + web), Python client libraries |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
 
 **Comprehensive test suite**: 27 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, and network resilience.
@@ -244,6 +344,12 @@ var criticalDb = openBarrel("critical.db", criticalCfg)
 ```
 
 ## Documentation & Next Steps
+
+### Client Libraries
+- **[clients/dart/README.md](clients/dart/README.md)** - Dart/Flutter client (mobile + web)
+- **[clients/go/README.md](clients/go/README.md)** - Go client documentation
+- **[clients/nim/README.md](clients/nim/README.md)** - Nim client documentation
+- **[clients/python/README.md](clients/python/README.md)** - Python client documentation
 
 ### Getting Started
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples

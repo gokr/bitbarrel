@@ -32,6 +32,39 @@ nimble demoBasic
 # Result: Should show key creation, retrieval, and deletion ✓
 ```
 
+## Client Libraries
+
+BitBarrel provides client libraries for multiple languages:
+
+| Language | Location | Status |
+|----------|----------|--------|
+| Nim | `clients/nim/` | Full WebSocket protocol |
+| Go | `clients/go/` | Full WebSocket protocol |
+| Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
+| Python | `clients/python/` | WebSocket client |
+
+### Quick Start - Dart/Flutter
+
+```bash
+cd clients/dart
+dart pub get
+dart run example/basic_example.dart
+```
+
+### Quick Start - Go
+
+```bash
+cd clients/go
+go run examples/basic/main.go
+```
+
+### Testing All Clients
+
+```bash
+# Test all client libraries (starts server on port 9876, runs tests, stops server)
+nimble testClients
+```
+
 ## Your First BitBarrel
 
 ```nim.compilable
@@ -75,6 +108,7 @@ nimble bench
 - [Configuration](USER_GUIDE/configuration.md) - All options
 - [API Reference](USER_GUIDE/api-reference.md) - Full API
 - [Features](FEATURES/) - Compression, networking, data integrity
+- [Client Libraries](../clients/) - Nim, Go, Dart/Flutter, Python clients
 
 ## Need Help?
 
