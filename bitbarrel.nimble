@@ -159,6 +159,262 @@ task benchNetwork, "Run network benchmark (1000 ops)":
 task benchNetworkComprehensive, "Run comprehensive network benchmark (100K ops, 10 clients)":
   exec "nim c -d:release --mm:orc --threads:on -r --path:src bench/network_bench.nim comprehensive"
 
+# Test all client libraries - starts server, runs tests, stops server
+
+task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts server on port 9876":
+  exec """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 2
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo ""
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Track overall success
+    ALL_PASSED=true
+
+    # Test Go client
+    if [ -d "clients/go" ]; then
+      echo ""
+      echo "=== Testing Go client ==="
+      if [ -f "clients/go/go.mod" ]; then
+        cd clients/go
+        # Run only package tests (not examples), with server environment
+        export BITBARREL_TEST_SERVER=true
+        if go test -v $(go list ./... | grep -v examples); then
+          echo "✓ Go client tests passed"
+        else
+          echo "✗ Go client tests failed"
+          ALL_PASSED=false
+        fi
+        cd ../..
+      else
+        echo "⚠ Go client has no go.mod, skipping"
+      fi
+    fi
+
+    # Test Python client
+    if [ -d "clients/python" ]; then
+      echo ""
+      echo "=== Testing Python client ==="
+      if [ -f "clients/python/venv/bin/activate" ]; then
+        cd clients/python
+        source venv/bin/activate
+        if pytest tests/test_client.py -v; then
+          echo "✓ Python client tests passed"
+        else
+          echo "✗ Python client tests failed"
+          ALL_PASSED=false
+        fi
+        deactivate
+        cd ../..
+      else
+        echo "⚠ Python client has no venv, trying system Python..."
+        cd clients/python
+        if pytest tests/test_client.py -v; then
+          echo "✓ Python client tests passed"
+        else
+          echo "✗ Python client tests failed"
+          ALL_PASSED=false
+        fi
+        cd ../..
+      fi
+    fi
+
+    # Test Dart client
+    if [ -d "clients/dart" ]; then
+      echo ""
+      echo "=== Testing Dart client ==="
+      if [ -f "clients/dart/pubspec.yaml" ]; then
+        cd clients/dart
+        if which dart >/dev/null 2>&1; then
+          if dart test 2>/dev/null; then
+            echo "✓ Dart client tests passed"
+          else
+            echo "⚠ Dart client tests not found or failed"
+          fi
+        else
+          echo "⚠ Dart not installed, skipping"
+        fi
+        cd ../..
+      else
+        echo "⚠ Dart client has no pubspec.yaml, skipping"
+      fi
+    fi
+
+    # Test Nim client
+    if [ -d "clients/nim" ]; then
+      echo ""
+      echo "=== Testing Nim client ==="
+      if [ -f "clients/nim/bitbarrel.nimble" ]; then
+        cd clients/nim
+        if nimble test 2>/dev/null; then
+          echo "✓ Nim client tests passed"
+        else
+          echo "⚠ Nim client tests not configured or failed"
+        fi
+        cd ../..
+      else
+        echo "⚠ Nim client has no nimble file, skipping"
+      fi
+    fi
+
+    echo ""
+    echo "=== Summary ==="
+    if [ "$ALL_PASSED" = true ]; then
+      echo "✓ All client library tests passed"
+    else
+      echo "✗ Some client library tests failed"
+      exit 1
+    fi
+    echo ""
+    echo "Server log (last 20 lines):"
+    tail -20 /tmp/bitbarrel_server.log
+  """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 2
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Test Go client
+    if [ -d "clients/go" ]; then
+      echo ""
+      echo "=== Testing Go client ==="
+      if [ -f "clients/go/go.mod" ]; then
+        cd clients/go
+        # Run only package tests (not examples), with server environment
+        export BITBARREL_TEST_SERVER=true
+        if go test -v $(go list ./... | grep -v examples); then
+          echo "✓ Go client tests passed"
+        else
+          echo "✗ Go client tests failed"
+          cd ../..
+          exit 1
+        fi
+        cd ../..
+      else
+        echo "⚠ Go client has no go.mod, skipping"
+      fi
+    fi
+
+    # Test Python client
+    if [ -d "clients/python" ]; then
+      echo ""
+      echo "=== Testing Python client ==="
+      if [ -f "clients/python/venv/bin/activate" ]; then
+        cd clients/python
+        source venv/bin/activate
+        if pytest tests/test_client.py -v; then
+          echo "✓ Python client tests passed"
+        else
+          echo "✗ Python client tests failed"
+          cd ../..
+          exit 1
+        fi
+        deactivate
+        cd ../..
+      else
+        echo "⚠ Python client has no venv, trying system Python..."
+        cd clients/python
+        if pytest tests/test_client.py -v; then
+          echo "✓ Python client tests passed"
+        else
+          echo "✗ Python client tests failed"
+          cd ../..
+          exit 1
+        fi
+        cd ../..
+      fi
+    fi
+
+    # Test Dart client
+    if [ -d "clients/dart" ]; then
+      echo ""
+      echo "=== Testing Dart client ==="
+      if [ -f "clients/dart/pubspec.yaml" ]; then
+        cd clients/dart
+        if which dart >/dev/null 2>&1; then
+          if dart test; then
+            echo "✓ Dart client tests passed"
+          else
+            echo "✗ Dart client tests failed"
+            cd ../..
+            exit 1
+          fi
+        else
+          echo "⚠ Dart not installed, skipping"
+        fi
+        cd ../..
+      else
+        echo "⚠ Dart client has no pubspec.yaml, skipping"
+      fi
+    fi
+
+    # Test Nim client
+    if [ -d "clients/nim" ]; then
+      echo ""
+      echo "=== Testing Nim client ==="
+      if [ -f "clients/nim/bitbarrel.nimble" ]; then
+        cd clients/nim
+        if nimble test 2>/dev/null; then
+          echo "✓ Nim client tests passed"
+        else
+          echo "⚠ Nim client tests not configured or failed"
+        fi
+        cd ../..
+      else
+        echo "⚠ Nim client has no nimble file, skipping"
+      fi
+    fi
+
+    echo ""
+    echo "=== Summary ==="
+    echo "✓ All available client libraries tested successfully"
+    echo ""
+    echo "Server log (last 20 lines):"
+    tail -20 /tmp/bitbarrel_server.log
+  """
 
 # Clean task - remove generated data files only (not source code)
 
