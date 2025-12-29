@@ -38,6 +38,15 @@ type
     maxBackups*: int
     format*: string
 
+  AuthConfig* = object
+    enabled*: bool
+    secret*: string
+    defaultTokenExpiryHours*: int
+
+  UserConfig* = object
+    username*: string
+    roles*: seq[string]
+
   BitBarrelConfig* = object
     server*: ServerConfig
     storage*: StorageConfig
@@ -45,6 +54,8 @@ type
     compact*: CompactConfig
     recovery*: RecoveryConfig
     logging*: LoggingConfig
+    auth*: AuthConfig
+    users*: seq[UserConfig]
 
 # YAML field access helpers - works with YamlNode.fields (TableRef[YamlNode, YamlNode])
 proc getYamlString*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: string = ""): string =
@@ -203,6 +214,42 @@ proc parseLoggingConfig*(yamlNode: YamlNode): LoggingConfig =
   result.maxBackups = getYamlInt(fields, "max_backups", 5)
   result.format = getYamlString(fields, "format", "text")
 
+proc parseAuthConfig*(yamlNode: YamlNode): AuthConfig =
+  if yamlNode.kind != yMapping:
+    raise newException(ValueError, "Auth config must be a mapping")
+
+  let fields = yamlNode.fields
+  result.enabled = getYamlBool(fields, "enabled", false)
+  result.secret = getYamlString(fields, "secret", "")
+  result.defaultTokenExpiryHours = getYamlInt(fields, "default_token_expiry_hours", 24)
+
+proc parseUserConfig*(yamlNode: YamlNode): UserConfig =
+  if yamlNode.kind != yMapping:
+    raise newException(ValueError, "User config must be a mapping")
+
+  let fields = yamlNode.fields
+  result.username = getYamlString(fields, "username", "")
+
+  var roles: seq[string] = @[]
+  for k, v in fields.pairs:
+    if k.content == "roles":
+      if v.kind == ySequence:
+        for i in 0 ..< v.len:
+          let roleNode = v[int(i)]
+          if roleNode.kind == yScalar:
+            roles.add(roleNode.content)
+      elif v.kind == yScalar:
+        roles.add(v.content)
+  result.roles = roles
+
+proc parseUsersConfig*(yamlNode: YamlNode): seq[UserConfig] =
+  result = @[]
+  if yamlNode.kind != ySequence:
+    raise newException(ValueError, "Users config must be a sequence")
+
+  for i in 0 ..< yamlNode.len:
+    result.add(parseUserConfig(yamlNode[int(i)]))
+
 proc getDefaultConfig*(): BitBarrelConfig =
   ## Get default configuration values
   result = BitBarrelConfig(
@@ -246,7 +293,13 @@ proc getDefaultConfig*(): BitBarrelConfig =
       maxSize: 100 * 1024 * 1024,  # 100MB
       maxBackups: 5,
       format: "text"
-    )
+    ),
+    auth: AuthConfig(
+      enabled: false,
+      secret: "",
+      defaultTokenExpiryHours: 24
+    ),
+    users: @[]
   )
 
 proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
@@ -278,6 +331,8 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
       of "compact": result.compact = parseCompactConfig(value)
       of "recovery": result.recovery = parseRecoveryConfig(value)
       of "logging": result.logging = parseLoggingConfig(value)
+      of "auth": result.auth = parseAuthConfig(value)
+      of "users": result.users = parseUsersConfig(value)
       else: discard
 
   except Exception as e:
@@ -285,56 +340,72 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
   finally:
     yamlStream.close()
 
+
 proc saveConfigToYaml*(config: BitBarrelConfig, filePath: string) =
   ## Save configuration to a YAML file
-  let stream = newFileStream(filePath, fmWrite)
-  if stream == nil:
-    raise newException(IOError, &"Could not create config file: {filePath}")
+  const yamlContent = """
+# BitBarrel Configuration File
+# All values have reasonable defaults
 
-  try:
-    stream.write("# BitBarrel Configuration File\n")
-    stream.write("# All values have reasonable defaults\n\n")
+server:
+  address: "0.0.0.0"
+  port: 8080
+  max_connections: 10000
+  timeout: 30000
 
-    # Write server config
-    stream.write("[server]\n")
-    stream.write(&"address = \"{config.server.address}\"\n")
-    stream.write(&"port = {config.server.port}\n")
-    stream.write(&"max_connections = {config.server.maxConnections}\n")
-    stream.write(&"timeout = {config.server.timeout}  # 30 seconds\n\n")
+storage:
+  data_dir: "./data"
+  max_file_size: 1073741824
+  max_key_size: 65536
+  max_value_size: 33554432
+  sync_mode: "immediate"
+  fsync_interval: 100
+  compression:
+    enabled: false
+    threshold: 256
+    level: "default"
 
-    # Write storage config
-    stream.write("[storage]\n")
-    stream.write(&"data_dir = \"{config.storage.dataDir}\"\n")
-    stream.write(&"max_file_size = {config.storage.maxFileSize}  # {config.storage.maxFileSize div (1024*1024)}MB\n")
-    stream.write(&"max_key_size = {config.storage.maxKeySize}  # {config.storage.maxKeySize div 1024}KB\n")
-    stream.write(&"max_value_size = {config.storage.maxValueSize}  # {config.storage.maxValueSize div (1024*1024)}MB\n")
-    stream.write(&"sync_mode = \"{config.storage.syncMode}\"\n")
-    stream.write(&"fsync_interval = {config.storage.fsyncInterval}  # ms\n\n")
+performance:
+  worker_threads: 4
+  write_buffer_size: 1000
+  write_buffer_timeout: 10
+  read_ahead_size: 64
+  cache_size: 256
 
-    # Write performance config
-    stream.write("[performance]\n")
-    stream.write(&"worker_threads = {config.performance.workerThreads}\n")
-    stream.write(&"write_buffer_size = {config.performance.writeBufferSize}\n")
-    stream.write(&"write_buffer_timeout = {config.performance.writeBufferTimeout}    # ms\n")
-    stream.write(&"read_ahead_size = {config.performance.readAheadSize}         # KB\n")
-    stream.write(&"cache_size = {config.performance.cacheSize}             # MB\n\n")
+compact:
+  enabled: true
+  trigger_threshold: 0.3
+  compact_interval: 60
+  compact_interval_bytes: 10485760
+  max_file_size: 1073741824
 
-    # Write merge config
-    # Note: Merge config fields don't exist in BitBarrelConfig - commenting out
-    # stream.write("[merge]\n")
-    # stream.write(&"enabled = {config.merge.enabled}\n")
-    # stream.write(&"trigger_threshold = {config.merge.triggerThreshold}      # {config.merge.triggerThreshold * 100}% fragmentation\n")
-    # stream.write(&"max_merge_threads = {config.merge.maxMergeThreads}\n")
-    # stream.write(&"merge_interval = {config.merge.mergeInterval}          # minutes\n")
-    # stream.write(&"min_file_size = {config.merge.minFileSize}      # {config.merge.minFileSize div (1024*1024)}MB\n\n")
+recovery:
+  enabled: true
+  validate_checksums: true
+  skip_corrupt_records: true
+  auto_recovery: true
 
-    # Write logging config
-    stream.write("[logging]\n")
-    stream.write(&"level = \"{config.logging.level}\"               # debug, info, warn, error\n")
-    stream.write(&"file = \"{config.logging.file}\"\n")
-    stream.write(&"max_size = {config.logging.maxSize}         # {config.logging.maxSize div (1024*1024)}MB\n")
-    stream.write(&"max_backups = {config.logging.maxBackups}\n")
-    stream.write(&"format = \"{config.logging.format}\"              # text or json\n")
+logging:
+  level: "info"
+  file: "barrel.log"
+  max_size: 104857600
+  max_backups: 5
+  format: "text"
 
-  finally:
-    stream.close()
+auth:
+  enabled: false
+  # Uncomment and set a secret for JWT authentication
+  # secret: "your-secret-key-32-characters-minimum"
+  default_token_expiry_hours: 24
+# users:
+#   - username: "admin"
+#     roles:
+#       - "admin"
+#   - username: "readwrite"
+#     roles:
+#       - "readwrite"
+#   - username: "readonly"
+#     roles:
+#       - "readonly"
+"""
+  writeFile(filePath, yamlContent)

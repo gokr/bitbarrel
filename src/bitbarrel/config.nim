@@ -61,6 +61,11 @@ proc loadFromEnvironment*(config: var BitBarrelConfig) =
   ## - ``BITBARREL_LOGGING_MAX_SIZE`` - Max log file size in bytes
   ## - ``BITBARREL_LOGGING_MAX_BACKUPS`` - Max number of rotated log files
   ## - ``BITBARREL_LOGGING_FORMAT`` - Log output format
+  ##
+  ## **Authentication settings:**
+  ## - ``BITBARREL_AUTH_ENABLED`` - Enable authentication (true/false)
+  ## - ``BITBARREL_AUTH_SECRET`` - JWT secret key for signing tokens
+  ## - ``BITBARREL_AUTH_DEFAULT_TOKEN_EXPIRY_HOURS`` - Token expiry in hours
 
   # Server settings
   if existsEnv("BITBARREL_SERVER_ADDRESS"):
@@ -131,6 +136,14 @@ proc loadFromEnvironment*(config: var BitBarrelConfig) =
     config.logging.maxBackups = parseInt(getEnv("BITBARREL_LOGGING_MAX_BACKUPS"))
   if existsEnv("BITBARREL_LOGGING_FORMAT"):
     config.logging.format = getEnv("BITBARREL_LOGGING_FORMAT")
+
+  # Authentication settings
+  if existsEnv("BITBARREL_AUTH_ENABLED"):
+    config.auth.enabled = parseBool(getEnv("BITBARREL_AUTH_ENABLED"))
+  if existsEnv("BITBARREL_AUTH_SECRET"):
+    config.auth.secret = getEnv("BITBARREL_AUTH_SECRET")
+  if existsEnv("BITBARREL_AUTH_DEFAULT_TOKEN_EXPIRY_HOURS"):
+    config.auth.defaultTokenExpiryHours = parseInt(getEnv("BITBARREL_AUTH_DEFAULT_TOKEN_EXPIRY_HOURS"))
 
 proc initConfig*(configFile: string = "bitbarrel.yaml"): BitBarrelConfig {.discardable.} =
   ## Initialize configuration with the specified file
