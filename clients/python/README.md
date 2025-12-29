@@ -116,6 +116,18 @@ print(keys)  # ["key1", "key2"]
 client.close()
 ```
 
+**Using context manager:**
+
+```python
+from bitbarrel import Client
+
+with Client() as client:
+    client.create_barrel("mydb")
+    client.use_barrel("mydb")
+    client.set("key1", "value1")
+# Connection automatically closed
+```
+
 ## API Reference
 
 ### Connection
@@ -131,6 +143,20 @@ client.close()
 client.connected  # bool property
 ```
 
+### Context Manager
+
+The client supports the `with` statement for automatic resource cleanup:
+
+```python
+from bitbarrel import Client
+
+with Client() as client:
+    client.create_barrel("mydb")
+    client.use_barrel("mydb")
+    client.set("key1", "value1")
+# Connection is automatically closed when exiting the context
+```
+
 ### Barrel Management
 
 ```python
@@ -140,6 +166,8 @@ client.use_barrel(name: str) -> None
 client.list_barrels() -> List[str]
 client.close_barrel(name: Optional[str] = None) -> None
 client.drop_barrel(name: str) -> None
+client.get_barrel_config(name: str) -> str
+client.set_barrel_config(name: str, config: str) -> None
 client.current_barrel  # str property
 ```
 
