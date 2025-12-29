@@ -207,8 +207,29 @@ proc handleWebSocketMessage*(
       resp.status = statusUnauthorized
       resp.value = "Unauthorized: admin role required"
     else:
-      resp.status = statusError
-      resp.value = "setBarrelConfig not yet implemented"
+      try:
+        let barrel = server.registry.getBarrel(req.key)
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          # Parse JSON and apply to current config
+          let newConfig = applyJsonUpdatesToConfig(barrel.get().config, req.value)
+
+          # Validate mode hasn't changed (not allowed at runtime)
+          if newConfig.mode != barrel.get().config.mode:
+            resp.status = statusError
+            resp.value = "Cannot change barrel mode at runtime"
+          else:
+            # Update config and persist to YAML
+            barrel.get().setConfig(newConfig)
+            resp.status = statusOk
+            resp.value = serializeBarrelConfig(barrel.get().config)
+      except ConfigValidationError as e:
+        resp.status = statusError
+        resp.value = e.msg
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = e.msg
 
   of cmdGet, cmdSet, cmdDelete, cmdExists, cmdCount, cmdListKeys:
     # These require a current barrel
