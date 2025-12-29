@@ -10,18 +10,18 @@ import ../../../src/storage/record
 suite "Compression Tests":
 
   test "Compression constants are defined correctly":
-    when defined(lz4Compression):
-      check compressionEnabled == true
-      check algorithmId == ALG_LZ4
-      check algorithmName == "LZ4"
+    when defined(noCompression):
+      check compressionEnabled == false
+      check algorithmId == ALG_NONE
+      check algorithmName == "None"
     elif defined(snappyCompression):
       check compressionEnabled == true
       check algorithmId == ALG_SNAPPY
       check algorithmName == "Snappy"
     else:
-      check compressionEnabled == false
-      check algorithmId == ALG_NONE
-      check algorithmName == "None"
+      check compressionEnabled == true
+      check algorithmId == ALG_LZ4
+      check algorithmName == "LZ4"
 
   test "Should compress threshold check":
     # Test with small value (should not compress)

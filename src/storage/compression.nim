@@ -2,9 +2,9 @@
 ##
 ## This module provides a unified interface for different compression algorithms
 ## selected at compile time. Currently supports:
-## - LZ4 (with lz4wrapper)
+## - LZ4 (with lz4wrapper) - default
 ## - Snappy (with supersnappy)
-## - No compression (default)
+## - No compression
 
 {.experimental: "codeReordering".}
 
@@ -19,41 +19,22 @@ type
     ## Raised when compression/decompression fails
 
 # Compile-time algorithm selection
-when defined(lz4Compression):
-  import lz4wrapper
+when defined(noCompression):
   const
-    compressionEnabled* = true
-    algorithmId* = ALG_LZ4
-    algorithmName* = "LZ4"
+    compressionEnabled* = false
+    algorithmId* = ALG_NONE
+    algorithmName* = "None"
 
-  proc compress*(src: openArray[byte]): seq[byte] {.raises: [CompressionError].} =
-    ## Compress data using LZ4
-    if src.len == 0:
-      return @[]
-
-    let maxCompressed = compressBound(src.len)
-    result = newSeq[byte](maxCompressed)
-
-    let compressedSize = compress(src, result)
-    if isError(compressedSize):
-      raise newException(CompressionError, "LZ4 compression failed: " & getErrorName(compressedSize))
-
-    result.setLen(compressedSize)
+  proc compress*(src: openArray[byte]): seq[byte] {.raises: [].} =
+    ## No compression - just copy data
+    result = @src
 
   proc decompress*(src: openArray[byte], expectedSize: int): seq[byte] {.raises: [CompressionError].} =
-    ## Decompress LZ4 data
-    if src.len == 0:
-      return @[]
-
-    result = newSeq[byte](expectedSize)
-
-    let decompressedSize = decompress(src, result)
-    if isError(decompressedSize):
-      raise newException(CompressionError, "LZ4 decompression failed: " & getErrorName(decompressedSize))
-
-    if decompressedSize != expectedSize:
-      raise newException(CompressionError, "LZ4 decompression size mismatch: expected " &
-                         $expectedSize & ", got " & $decompressedSize)
+    ## No decompression needed
+    if src.len != expectedSize:
+      raise newException(CompressionError, "Uncompressed data size mismatch: expected " &
+                         $expectedSize & ", got " & $src.len)
+    result = @src
 
 elif defined(snappyCompression):
   import supersnappy
@@ -90,21 +71,40 @@ elif defined(snappyCompression):
       raise newException(CompressionError, "Snappy decompression failed: " & e.msg)
 
 else:
+  import lz4wrapper
   const
-    compressionEnabled* = false
-    algorithmId* = ALG_NONE
-    algorithmName* = "None"
+    compressionEnabled* = true
+    algorithmId* = ALG_LZ4
+    algorithmName* = "LZ4"
 
-  proc compress*(src: openArray[byte]): seq[byte] {.raises: [].} =
-    ## No compression - just copy data
-    result = @src
+  proc compress*(src: openArray[byte]): seq[byte] {.raises: [CompressionError].} =
+    ## Compress data using LZ4
+    if src.len == 0:
+      return @[]
+
+    let maxCompressed = compressBound(src.len)
+    result = newSeq[byte](maxCompressed)
+
+    let compressedSize = compress(src, result)
+    if isError(compressedSize):
+      raise newException(CompressionError, "LZ4 compression failed: " & getErrorName(compressedSize))
+
+    result.setLen(compressedSize)
 
   proc decompress*(src: openArray[byte], expectedSize: int): seq[byte] {.raises: [CompressionError].} =
-    ## No decompression needed
-    if src.len != expectedSize:
-      raise newException(CompressionError, "Uncompressed data size mismatch: expected " &
-                         $expectedSize & ", got " & $src.len)
-    result = @src
+    ## Decompress LZ4 data
+    if src.len == 0:
+      return @[]
+
+    result = newSeq[byte](expectedSize)
+
+    let decompressedSize = decompress(src, result)
+    if isError(decompressedSize):
+      raise newException(CompressionError, "LZ4 decompression failed: " & getErrorName(decompressedSize))
+
+    if decompressedSize != expectedSize:
+      raise newException(CompressionError, "LZ4 decompression size mismatch: expected " &
+                         $expectedSize & ", got " & $decompressedSize)
 
 # Utility procedures
 proc shouldCompress*(value: openArray[byte], threshold: int): bool {.inline.} =

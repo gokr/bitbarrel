@@ -23,13 +23,13 @@ requires "https://github.com/gokr/whisky"     # Websocket client library
 task checkDocExamples, "Verify all .compilable code blocks in docs compile":
   exec "nim c -r tools/check_doc_examples.nim"
 
-task checkExamples, "Compile all examples and benchmarks (verification check) - exits on first error":
+task checkDemos, "Compile all demos and benchmarks (verification check) - exits on first error":
   exec """
     # Exit on first error
     set -e
 
-    # Compile all examples (demo_utils.nim is excluded as it's a utility module)
-    find examples -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
+    # Compile all demos (demo_utils.nim is excluded as it's a utility module)
+    find demos -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
       echo "Compiling $file..."
       nim c --verbosity:0 --path:src "$file"
     done
@@ -40,7 +40,7 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
       nim c --verbosity:0 --path:src "$file"
     done
 
-    echo "✓ All examples and benchmarks compiled successfully!"
+    echo "✓ All demos and benchmarks compiled successfully!"
   """
 
 task test, "Run all tests (automatic discovery via testament)":
@@ -86,37 +86,22 @@ task testHugeBarrel, "Run HugeBarrel feature tests - automatic discovery":
 # Tasks for running demos
 
 task demoBasic, "Run basic CRUD demo":
-  exec "nim c -r --path:src examples/basic_demo.nim"
+  exec "nim c -r --path:src demos/basic_demo.nim"
 
-task demoTuning, "Run performance tuning demo":
-  exec "nim c -r --path:src examples/performance_tuning_demo.nim"
+task demoPerformance, "Run performance demo":
+  exec "nim c -r --path:src demos/performance_demo.nim"
 
-task demoCompression, "Run compression demo":
-  exec "nim c -r --path:src examples/compression_demo.nim"
+task demoGraph, "Run graph traversal demo":
+  exec "nim c -r --path:src demos/graph_demo.nim"
 
-task demoBarrelModes, "Run barrel modes demo":
-  exec "nim c -r --path:src examples/barrel_modes_demo.nim"
+task demoAdvanced, "Run advanced features demo":
+  exec "nim c -r --path:src demos/advanced_demo.nim"
 
-task demoBuffer, "Run buffer performance demo":
-  exec "nim c -r --path:src examples/buffer_demo.nim"
+task demoNetworkBasic, "Run basic network demo":
+  exec "nim c -r --path:src demos/network/basic.nim"
 
-task demoConfig, "Run configuration demo":
-  exec "nim c -r --path:src examples/configuration_demo.nim"
-
-task demoContentGraph, "Run content graph traversal demo":
-  exec "nim c -r --path:src examples/content_graph_demo.nim"
-
-task demoDemo, "Run basic operations demo":
-  exec "nim c -r --path:src examples/demo.nim"
-
-task demoOrgChart, "Run organization chart demo":
-  exec "nim c -r --path:src examples/org_chart_demo.nim"
-
-task demoPerfSimple, "Run simple performance demo":
-  exec "nim c -r --path:src examples/performance_tuning_simple.nim"
-
-task demoSocialGraph, "Run social graph traversal demo":
-  exec "nim c -r --path:src examples/social_graph_demo.nim"
+task demoNetworkBarrels, "Run network barrels demo":
+  exec "nim c -r --path:src demos/network/barrels.nim"
 
 # Task for benchmarking
 
@@ -298,3 +283,19 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts se
     echo "Server log (last 20 lines):"
     tail -20 /tmp/bitbarrel_server.log
   """
+
+# Compression build tasks
+task buildLz4, "Build with LZ4 compression (default)":
+  exec "nim c -d:release src/bitbarrel.nim"
+
+task buildSnappy, "Build with Snappy compression":
+  exec "nim c -d:snappyCompression -d:release src/bitbarrel.nim"
+
+task buildNoCompression, "Build without compression":
+  exec "nim c -d:noCompression -d:release src/bitbarrel.nim"
+
+task buildDefault, "Build with default settings (LZ4 compression)":
+  exec "nim c -d:release src/bitbarrel.nim"
+
+task build, "Build with default settings (LZ4 compression)":
+  exec "nim c -d:release src/bitbarrel.nim"
