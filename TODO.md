@@ -367,7 +367,7 @@ For documentation on current features:
   - config/ (1 file): Configuration tests
   - docs/ (1 file): Documentation examples verification
   - Plus: testutils.nim, test_cli_integration.nim
-- Demo files: 5+ examples
+- Demo files: 4 demos (basic, performance, graph, advanced)
 - Documentation: Comprehensive (reorganized into USER_GUIDE, DEVELOPER_GUIDE, FEATURES, research)
 - Client libraries: Nim (✅), Go (✅), Dart/Flutter (✅), Python (✅)
 
