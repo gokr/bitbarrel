@@ -103,7 +103,7 @@ nim c -d:release -r bench/stress_test.nim
 
 ## Performance Tuning
 
-The `examples/performance_tuning_demo.nim` demonstrates how to:
+The `demos/performance_demo.nim` demonstrates how to:
 - Switch between sync modes (fastest vs safest)
 - Adjust buffer sizes
 - Calculate performance improvements
@@ -117,7 +117,7 @@ The `examples/performance_tuning_demo.nim` demonstrates how to:
 
 ## See Also
 - `nimble bench --help` - Shows all available commands
-- `examples/performance_tuning_demo.nim` - Performance tuning examples
+- `demos/performance_demo.nim` - Performance tuning examples
 - `bench/results_baseline.txt` - Baseline performance results
 - **Current benchmarks**: See "Current Benchmark Results" section above for latest numbers
 
@@ -127,75 +127,13 @@ For current project structure, see the repository root. Key directories:
 - `src/` - Source code
 - `tests/` - Test suite (25 test files)
 - `bench/` - Benchmark suite
-- `examples/` - Demo programs
+- `demos/` - Demo programs
 - `docs/` - Documentation (see `docs/TUTORIAL.md` for usage guide)
 
 **Note:** This file section is outdated. See repository for current structure.
-
-```
-kvs/
-├── src/bitbarrel/
-│   ├── types.nim
-│   ├── config.nim
-│   ├── barrel.nim
-│   ├── lowlevelapi.nim
-│   └── storage/
-│       ├── datafile.nim
-│       ├── keydir.nim
-│       ├── record.nim
-│       ├── hintfile.nim
-│       ├── writebuffer.nim
-│       └── readbuffer.nim
-│       └── recovery.nim
-│       └── compact.nim
-│   └── kvs.nim
-│   └── utils/
-│       ├── demo_output.nim
-│       ├── performance_timer.nim
-│       └── data_generator.nim
-├── examples/
-│   ├── basic_demo.nim
-│   ├── simple_kv_demo.nim
-│   └── performance_tuning_demo.nim
-│   └── buffer_demo.nim
-│   └── buffer_example.nim
-│   └── README.md
-│   └── utils/
-│       demo_output.nim
-│       performance_timer.nim
-│       data_generator.nim
-├── bench/
-│   ├── simple_bench.nim
-│   ├── stress_test.nim
-│   ├── unified_benchmark.nim
-│   └── results/
-│   │   ├── *.data
-│   │   └── *.txt
-│   └── └── stats.json
-├── tests/
-│   ├── test_storage.nim
-│   ├── test_keydir.nim
-│   ├── test_integration.nim
-│   ├── test_record.nim
-│   ├── test_error_handling.nim
-│   ├── test_recovery.nim
-│   ├── test_writebuffer.nim
-│   ├── test_readbuffer.nim
-│   └── test_hintfile.nim
-│   └── test_hintfile_recovery.nim
-│   └── test_merge.nim
-│   └── test_readbuffer.nim
-│
-├── docs/
-│   ├── TUTORIAL.md
-│   └── PLAN.md
-│   └── PHASE3_SUMMARY.md
-└── [...]
-```
-
 ## Next Steps
 
 1. **Run benchmarks** to see performance with your hardware
 2. **Configure** based on your use case
-3. **Monitor** using the performance_tuning_demo
+3. **Monitor** using the performance_demo
 4. **Scale** by adjusting configurations in your application code
