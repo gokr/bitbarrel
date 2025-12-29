@@ -1,17 +1,17 @@
 import 'package:bitbarrel/bitbarrel.dart';
-import 'package:observable/observable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:bitbarrel_admin/models/barrel.dart';
 import 'connection_service.dart';
 
 /// Service for managing BitBarrel barrels
-class BarrelService {
+class BarrelService extends ChangeNotifier {
   final ConnectionService _connectionService;
 
-  // Observable states
-  final ObservableList<Barrel> barrels = ObservableList();
-  final Observable<Barrel?> currentBarrel = Observable(null);
-  final Observable<bool> isLoading = Observable(false);
-  final Observable<String?> error = Observable(null);
+  // Observable states using ValueNotifier
+  final ValueNotifier<List<Barrel>> barrels = ValueNotifier([]);
+  final ValueNotifier<Barrel?> currentBarrel = ValueNotifier(null);
+  final ValueNotifier<bool> isLoading = ValueNotifier(false);
+  final ValueNotifier<String?> error = ValueNotifier(null);
 
   BarrelService(this._connectionService);
 
@@ -30,7 +30,7 @@ class BarrelService {
     try {
       final barrelNames = await _client!.listBarrels();
 
-      barrels.clear();
+      barrels.value = [];
       for (final name in barrelNames) {
         // Try to get barrel config if possible
         String? config;
@@ -40,10 +40,10 @@ class BarrelService {
           // Ignore errors for individual barrels
         }
 
-        barrels.add(Barrel(
+        barrels.value = [...barrels.value, Barrel(
           name: name,
           config: config,
-        ));
+        )];
       }
     } catch (e) {
       error.value = 'Failed to load barrels: $e';
@@ -63,7 +63,7 @@ class BarrelService {
     error.value = null;
 
     try {
-      await _client!.createBarrel(name, config);
+      await _client!.createBarrel(name, config ?? "");
 
       // Reload barrels
       await loadBarrels();
@@ -89,7 +89,7 @@ class BarrelService {
       await _client!.dropBarrel(name);
 
       // Remove from local list
-      barrels.removeWhere((b) => b.name == name);
+      barrels.value = barrels.value.where((b) => b.name != name).toList();
 
       // Clear current barrel if it was deleted
       if (currentBarrel.value?.name == name) {
@@ -117,7 +117,7 @@ class BarrelService {
       await _client!.useBarrel(name);
 
       // Find barrel in list and set as current
-      final barrel = barrels.firstWhere(
+      final barrel = barrels.value.firstWhere(
         (b) => b.name == name,
         orElse: () => Barrel(name: name),
       );
@@ -150,8 +150,12 @@ class BarrelService {
   }
 
   /// Dispose resources
+  @override
   void dispose() {
-    barrels.clear();
-    currentBarrel.value = null;
+    barrels.dispose();
+    currentBarrel.dispose();
+    isLoading.dispose();
+    error.dispose();
+    super.dispose();
   }
 }

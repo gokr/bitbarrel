@@ -1,14 +1,14 @@
 import 'package:bitbarrel/bitbarrel.dart';
-import 'package:observable/observable.dart';
+import 'package:flutter/foundation.dart';
 
 /// Service for managing BitBarrel server connections
-class ConnectionService {
+class ConnectionService extends ChangeNotifier {
   BitBarrelClient? _client;
 
-  // Observable states
-  final Observable<bool> isConnected = Observable(false);
-  final Observable<String?> error = Observable(null);
-  final Observable<bool> isConnecting = Observable(false);
+  // Observable states using ValueNotifier
+  final ValueNotifier<bool> isConnected = ValueNotifier(false);
+  final ValueNotifier<String?> error = ValueNotifier(null);
+  final ValueNotifier<bool> isConnecting = ValueNotifier(false);
 
   BitBarrelClient? get client => _client;
 
@@ -61,7 +61,12 @@ class ConnectionService {
   bool get connected => isConnected.value;
 
   /// Dispose resources
+  @override
   void dispose() {
+    isConnected.dispose();
+    error.dispose();
+    isConnecting.dispose();
     disconnect();
+    super.dispose();
   }
 }
