@@ -6,6 +6,7 @@ import std/[net, locks, tables, strutils, os, sequtils, strformat]
 import mummy
 import mummy/routers
 import session
+import auth as authjwt
 import ../bitbarrel/barrel
 import ../bitbarrel/refs
 import ../bitbarrel/config_json
@@ -32,6 +33,7 @@ type
     port*: Port           ## Default: 9876
     dataDir*: string      ## Base directory for barrels
     workerThreads*: int   ## Default: CPU * 10
+    auth*: authjwt.AuthConfig  ## Authentication configuration
 
 # Note: Avoid thread-local variables for server storage as closures capture them
 # across thread boundaries, causing ORC cleanup issues.
@@ -96,39 +98,46 @@ proc handleWebSocketMessage*(
     resp.value = "pong"
 
   of cmdCreateBarrel:
-    echo fmt"[DEBUG] cmdCreateBarrel: name='{req.key}', configLen={req.value.len}"
-    try:
-      let config = if req.value.len > 0:
-        parseBarrelConfigJson(req.value)
-      else:
-        defaultBarrelConfig()
-      echo fmt"[DEBUG] config parsed, dataDir={server.config.dataDir}, calling createBarrel..."
-
-      if server.registry.createBarrel(req.key, config):
-        resp.status = statusOk
-        echo fmt"[DEBUG] createBarrel succeeded for '{req.key}'"
-      else:
-        # Use detailed error from registry
-        let errorMsg = server.registry.lastError
-        # Check if barrel already exists based on error message
-        if req.key in server.registry.barrels or errorMsg.contains("already exists"):
-          resp.status = statusBarrelExists
-          resp.value = if errorMsg.len > 0: errorMsg else: fmt"Barrel '{req.key}' already exists"
+    if not session.authSession.canManageBarrels():
+      resp.status = statusUnauthorized
+      resp.value = "Unauthorized: admin role required"
+    else:
+      echo fmt"[DEBUG] cmdCreateBarrel: name='{req.key}', configLen={req.value.len}"
+      try:
+        let config = if req.value.len > 0:
+          parseBarrelConfigJson(req.value)
         else:
-          resp.status = statusError
-          resp.value = if errorMsg.len > 0: errorMsg else: fmt"Failed to create barrel '{req.key}'"
-        echo fmt"[DEBUG] createBarrel failed for '{req.key}' (status: {resp.status}, msg: {resp.value})"
-    except ConfigValidationError as e:
-      resp.status = statusInvalid
-      resp.value = e.msg
-      echo fmt"[DEBUG] ConfigValidationError: {e.msg}"
-    except CatchableError as e:
-      resp.status = statusError
-      resp.value = fmt"Failed to create barrel: {e.msg}"
-      echo fmt"[DEBUG] createBarrel exception: {e.msg}, {e.repr}"
+          defaultBarrelConfig()
+        echo fmt"[DEBUG] config parsed, dataDir={server.config.dataDir}, calling createBarrel..."
+
+        if server.registry.createBarrel(req.key, config):
+          resp.status = statusOk
+          echo fmt"[DEBUG] createBarrel succeeded for '{req.key}'"
+        else:
+          # Use detailed error from registry
+          let errorMsg = server.registry.lastError
+          # Check if barrel already exists based on error message
+          if req.key in server.registry.barrels or errorMsg.contains("already exists"):
+            resp.status = statusBarrelExists
+            resp.value = if errorMsg.len > 0: errorMsg else: fmt"Barrel '{req.key}' already exists"
+          else:
+            resp.status = statusError
+            resp.value = if errorMsg.len > 0: errorMsg else: fmt"Failed to create barrel '{req.key}'"
+          echo fmt"[DEBUG] createBarrel failed for '{req.key}' (status: {resp.status}, msg: {resp.value})"
+      except ConfigValidationError as e:
+        resp.status = statusInvalid
+        resp.value = e.msg
+        echo fmt"[DEBUG] ConfigValidationError: {e.msg}"
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = fmt"Failed to create barrel: {e.msg}"
+        echo fmt"[DEBUG] createBarrel exception: {e.msg}, {e.repr}"
 
   of cmdOpenBarrel:
-    if server.registry.openBarrel(req.key):
+    if not session.authSession.canManageBarrels():
+      resp.status = statusUnauthorized
+      resp.value = "Unauthorized: admin role required"
+    elif server.registry.openBarrel(req.key):
       resp.status = statusOk
     else:
       resp.status = statusBarrelNotFound
@@ -149,23 +158,30 @@ proc handleWebSocketMessage*(
     resp.value = barrels.join(",")
 
   of cmdCloseBarrel:
-    # If no key specified, close the session's current barrel
-    var barrelName = req.key
-    if barrelName == "":
-      withLock server.sessionsLock:
-        barrelName = server.sessions[ws.clientId].getCurrentBarrel()
-
-    if barrelName != "" and server.registry.closeBarrel(barrelName):
-      resp.status = statusOk
-      # Clear current barrel if it was the one being closed
-      withLock server.sessionsLock:
-        if server.sessions[ws.clientId].getCurrentBarrel() == barrelName:
-          server.sessions[ws.clientId].clearCurrentBarrel()
+    if not session.authSession.canManageBarrels():
+      resp.status = statusUnauthorized
+      resp.value = "Unauthorized: admin role required"
     else:
-      resp.status = statusBarrelNotFound
+      # If no key specified, close the session's current barrel
+      var barrelName = req.key
+      if barrelName == "":
+        withLock server.sessionsLock:
+          barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+
+      if barrelName != "" and server.registry.closeBarrel(barrelName):
+        resp.status = statusOk
+        # Clear current barrel if it was the one being closed
+        withLock server.sessionsLock:
+          if server.sessions[ws.clientId].getCurrentBarrel() == barrelName:
+            server.sessions[ws.clientId].clearCurrentBarrel()
+      else:
+        resp.status = statusBarrelNotFound
 
   of cmdDropBarrel:
-    if server.registry.dropBarrel(req.key):
+    if not session.authSession.canManageBarrels():
+      resp.status = statusUnauthorized
+      resp.value = "Unauthorized: admin role required"
+    elif server.registry.dropBarrel(req.key):
       resp.status = statusOk
       # Clear current barrel if it was the one being dropped
       withLock server.sessionsLock:
@@ -187,9 +203,12 @@ proc handleWebSocketMessage*(
       resp.value = e.msg
 
   of cmdSetBarrelConfig:
-    # TODO: Implement setBarrelConfig in BarrelRegistry
-    resp.status = statusError
-    resp.value = "setBarrelConfig not yet implemented"
+    if not session.authSession.canManageBarrels():
+      resp.status = statusUnauthorized
+      resp.value = "Unauthorized: admin role required"
+    else:
+      resp.status = statusError
+      resp.value = "setBarrelConfig not yet implemented"
 
   of cmdGet, cmdSet, cmdDelete, cmdExists, cmdCount, cmdListKeys:
     # These require a current barrel
@@ -204,24 +223,35 @@ proc handleWebSocketMessage*(
           resp.status = statusBarrelNotFound
         else:
           let b = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
 
           case req.command:
           of cmdGet:
-            let value = b.get(req.key)
-            if value.len > 0:
-              resp.status = statusOk
-              resp.value = value
+            if not authSess.canReadData():
+              resp.status = statusUnauthorized
+              resp.value = "Unauthorized: read access required"
             else:
-              resp.status = statusNotFound
+              let value = b.get(req.key)
+              if value.len > 0:
+                resp.status = statusOk
+                resp.value = value
+              else:
+                resp.status = statusNotFound
 
           of cmdSet:
-            if b.set(req.key, req.value):
+            if not authSess.canWriteData():
+              resp.status = statusUnauthorized
+              resp.value = "Unauthorized: write access required"
+            elif b.set(req.key, req.value):
               resp.status = statusOk
             else:
               resp.status = statusError
 
           of cmdDelete:
-            if b.delete(req.key):
+            if not authSess.canWriteData():
+              resp.status = statusUnauthorized
+              resp.value = "Unauthorized: write access required"
+            elif b.delete(req.key):
               resp.status = statusOk
             else:
               resp.status = statusError
@@ -343,24 +373,29 @@ proc handleWebSocketMessage*(
           resp.status = statusBarrelNotFound
         else:
           let b = barrel.get()
-          try:
-            # Decode range query request
-            let params = protocol.decodeRangeRequest(req.value)
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Decode range query request
+              let params = protocol.decodeRangeRequest(req.value)
 
-            # Execute range query
-            let (items, nextCursor, hasMore) = b.itemsInRange(
-              params.startKey, params.endKey, params.limit, params.cursor)
+              # Execute range query
+              let (items, nextCursor, hasMore) = b.itemsInRange(
+                params.startKey, params.endKey, params.limit, params.cursor)
 
-            # Encode and send response
-            let respData = protocol.encodeRangeResponse(
-              protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
-            let finalResp = protocol.okResponse(req.seq, respData)
-            ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
-            return  # Skip normal response sending
+              # Encode and send response
+              let respData = protocol.encodeRangeResponse(
+                protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
+              let finalResp = protocol.okResponse(req.seq, respData)
+              ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
+              return  # Skip normal response sending
 
-          except CatchableError as e:
-            resp.status = statusError
-            resp.value = "Range query error: " & e.msg
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Range query error: " & e.msg
 
   of cmdPrefixQuery:
     # Prefix query requires a current barrel
@@ -375,24 +410,29 @@ proc handleWebSocketMessage*(
           resp.status = statusBarrelNotFound
         else:
           let b = barrel.get()
-          try:
-            # Decode prefix query request
-            let params = protocol.decodePrefixRequest(req.value)
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Decode prefix query request
+              let params = protocol.decodePrefixRequest(req.value)
 
-            # Execute prefix query
-            let (items, nextCursor, hasMore) = b.itemsWithPrefix(
-              params.prefix, params.limit, params.cursor)
+              # Execute prefix query
+              let (items, nextCursor, hasMore) = b.itemsWithPrefix(
+                params.prefix, params.limit, params.cursor)
 
-            # Encode and send response
-            let respData = protocol.encodeRangeResponse(
-              protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
-            let finalResp = protocol.okResponse(req.seq, respData)
-            ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
-            return  # Skip normal response sending
+              # Encode and send response
+              let respData = protocol.encodeRangeResponse(
+                protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
+              let finalResp = protocol.okResponse(req.seq, respData)
+              ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
+              return  # Skip normal response sending
 
-          except CatchableError as e:
-            resp.status = statusError
-            resp.value = "Prefix query error: " & e.msg
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Prefix query error: " & e.msg
 
   of cmdRangeCount:
     # Count query requires a current barrel
@@ -407,16 +447,21 @@ proc handleWebSocketMessage*(
           resp.status = statusBarrelNotFound
         else:
           let b = barrel.get()
-          try:
-            # Decode count request (similar to range query format)
-            let params = protocol.decodeRangeRequest(req.value)
-            let count = b.keysInRange(params.startKey, params.endKey).len
-            resp.status = statusOk
-            resp.value = $count
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Decode count request (similar to range query format)
+              let params = protocol.decodeRangeRequest(req.value)
+              let count = b.keysInRange(params.startKey, params.endKey).len
+              resp.status = statusOk
+              resp.value = $count
 
-          except CatchableError as e:
-            resp.status = statusError
-            resp.value = "Range count error: " & e.msg
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Range count error: " & e.msg
 
   else:
     resp.status = statusInvalid
@@ -426,10 +471,35 @@ proc handleWebSocketMessage*(
   ws.send(encodeResponse(resp), BinaryMessage)
 
 proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
-  ## Handle WebSocket upgrade request
+  ## Handle WebSocket upgrade request with JWT authentication
   try:
+    var authSession = authjwt.AuthSession(authenticated: false)
+
+    if server.config.auth.enabled:
+      if not request.headers.contains("Authorization"):
+        request.respond(401, body = "Missing Authorization header")
+        return
+
+      let authHeader = request.headers["Authorization"]
+      if not authHeader.startsWith("Bearer "):
+        request.respond(401, body = "Invalid Authorization header format")
+        return
+
+      let token = authHeader[7..^1]
+      try:
+        authSession = authjwt.verifyToken(server.config.auth, token)
+        if not authSession.authenticated:
+          request.respond(401, body = "Invalid token")
+          return
+      except authjwt.AuthError as e:
+        request.respond(401, body = e.msg)
+        return
+
     let ws = request.upgradeToWebSocket()
-    # Session will be created on first message
+    var session = newSession(ws.clientId)
+    session.authSession = authSession
+    withLock server.sessionsLock:
+      server.sessions[ws.clientId] = session
     ws.send("Connected to BitBarrel network server")
   except CatchableError:
     request.respond(400, body = "WebSocket upgrade failed")
