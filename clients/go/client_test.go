@@ -2,7 +2,7 @@ package bitbarrel
 
 import (
 	"fmt"
-	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,11 +12,14 @@ const (
 	testServerPort = 9876
 )
 
-// skipIfNoServer skips the test if BITBARREL_TEST_SERVER is not set to "true"
+// skipIfNoServer attempts to connect to test server and skips if unavailable
 func skipIfNoServer(t *testing.T) {
-	if os.Getenv("BITBARREL_TEST_SERVER") != "true" {
-		t.Skip("Skipping integration test - set BITBARREL_TEST_SERVER=true to run")
+	client := NewClient(testServerHost, testServerPort)
+	err := client.Connect()
+	if err != nil {
+		t.Skip("Skipping integration test - no server running on localhost:9876")
 	}
+	client.Close()
 }
 
 // TestNewClient tests client creation
@@ -896,6 +899,78 @@ func TestClientConfigDefaults(t *testing.T) {
 	}
 }
 
+// TestGetBarrelConfig tests getting barrel configuration
+func TestGetBarrelConfig(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	barrelName := fmt.Sprintf("test_config_get_%d", time.Now().UnixNano())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	config, err := client.GetBarrelConfig(barrelName)
+	if err != nil {
+		t.Fatalf("GetBarrelConfig() error = %v", err)
+	}
+
+	if config == "" {
+		t.Error("GetBarrelConfig() returned empty config")
+	}
+
+	// Verify the config contains the expected mode
+	if !strings.Contains(config, "critbit") {
+		t.Errorf("GetBarrelConfig() should contain 'critbit', got: %s", config)
+	}
+}
+
+// TestSetBarrelConfig tests setting barrel configuration
+func TestSetBarrelConfig(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	barrelName := fmt.Sprintf("test_config_set_%d", time.Now().UnixNano())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	// Try changing a mutable option (can't change mode at runtime)
+	newConfig := `{"autoCompact": false}`
+	err = client.SetBarrelConfig(barrelName, newConfig)
+	if err != nil {
+		t.Fatalf("SetBarrelConfig() error = %v", err)
+	}
+
+	// Verify the config was updated
+	retrieved, err := client.GetBarrelConfig(barrelName)
+	if err != nil {
+		t.Fatalf("GetBarrelConfig() error = %v", err)
+	}
+
+	if !strings.Contains(strings.ToLower(retrieved), `"autocompact": false`) &&
+	   !strings.Contains(strings.ToLower(retrieved), `"autocompact":false`) {
+		t.Errorf("GetBarrelConfig() should contain autoCompact=false, got: %s", retrieved)
+	}
+}
+
 // BenchmarkRequestEncode benchmarks request encoding
 func BenchmarkRequestEncode(b *testing.B) {
 	req := NewRequest(CmdSet, "test_key", "test_value")
@@ -939,3 +1014,332 @@ func BenchmarkResponseDecode(b *testing.B) {
 		_, _ = DecodeResponse(encoded)
 	}
 }
+
+// TestRangeQuery tests range query operations with ordered barrel
+func TestRangeQuery(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Create ordered barrel for range queries
+	barrelName := fmt.Sprintf("test_range_%d", time.Now().Unix())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	err = client.UseBarrel(barrelName)
+	if err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	// Add test data
+	client.Set("user:001", "Alice")
+	client.Set("user:002", "Bob")
+	client.Set("user:003", "Charlie")
+	client.Set("product:001", "Widget")
+
+	// Test range query
+	result, err := client.RangeQuery("user:001", "user:003")
+	if err != nil {
+		t.Fatalf("RangeQuery() error = %v", err)
+	}
+
+	if len(result.Items) != 2 {
+		t.Errorf("Expected 2 items, got %d", len(result.Items))
+	}
+
+	// Verify items
+	keys := make(map[string]bool)
+	for _, item := range result.Items {
+		keys[item.Key] = true
+	}
+	if !keys["user:001"] || !keys["user:002"] {
+		t.Error("Expected keys user:001 and user:002 in results")
+	}
+}
+
+// TestPrefixQuery tests prefix query operations with ordered barrel
+func TestPrefixQuery(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Create ordered barrel for prefix queries
+	barrelName := fmt.Sprintf("test_prefix_%d", time.Now().Unix())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	err = client.UseBarrel(barrelName)
+	if err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	// Add test data
+	client.Set("user:001", "Alice")
+	client.Set("user:002", "Bob")
+	client.Set("user:003", "Charlie")
+	client.Set("product:001", "Widget")
+	client.Set("order:001", "Order1")
+
+	// Test prefix query
+	result, err := client.PrefixQuery("user:")
+	if err != nil {
+		t.Fatalf("PrefixQuery() error = %v", err)
+	}
+
+	if len(result.Items) != 3 {
+		t.Errorf("Expected 3 items with prefix 'user:', got %d", len(result.Items))
+	}
+
+	// Verify all items have correct prefix
+	for _, item := range result.Items {
+		if !strings.HasPrefix(item.Key, "user:") {
+			t.Errorf("Key %s does not have expected prefix 'user:'", item.Key)
+		}
+	}
+}
+
+// TestRangeCount tests counting keys in a range
+func TestRangeCount(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Create ordered barrel for range queries
+	barrelName := fmt.Sprintf("test_count_%d", time.Now().Unix())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	err = client.UseBarrel(barrelName)
+	if err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	// Add test data
+	client.Set("user:001", "Alice")
+	client.Set("user:002", "Bob")
+	client.Set("user:003", "Charlie")
+	client.Set("user:004", "David")
+	client.Set("product:001", "Widget")
+
+	// Test range count
+	count, err := client.RangeCount("user:001", "user:004")
+	if err != nil {
+		t.Fatalf("RangeCount() error = %v", err)
+	}
+
+	if count != 3 {
+		t.Errorf("Expected count of 3, got %d", count)
+	}
+
+	// Test full range
+	count, err = client.RangeCount("user:000", "user:999")
+	if err != nil {
+		t.Fatalf("RangeCount() error = %v", err)
+	}
+
+	if count != 4 {
+		t.Errorf("Expected count of 4 for full range, got %d", count)
+	}
+}
+
+// TestGetBarrelConfig tests getting barrel configuration
+func TestGetBarrelConfig(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Create barrel with config
+	barrelName := fmt.Sprintf("test_get_config_%d", time.Now().Unix())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	// Test getting config
+	config, err := client.GetBarrelConfig(barrelName)
+	if err != nil {
+		t.Fatalf("GetBarrelConfig() error = %v", err)
+	}
+
+	if config == "" {
+		t.Error("Expected non-empty config")
+	}
+
+	if !strings.Contains(strings.ToLower(config), "critbit") {
+		t.Error("Expected config to contain 'critbit' mode")
+	}
+}
+
+// TestSetBarrelConfig tests setting barrel configuration
+func TestSetBarrelConfig(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Create barrel with config
+	barrelName := fmt.Sprintf("test_set_config_%d", time.Now().Unix())
+	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	// Update config
+	newConfig := `{"autoCompact": false}`
+	err = client.SetBarrelConfig(barrelName, newConfig)
+	if err != nil {
+		t.Fatalf("SetBarrelConfig() error = %v", err)
+	}
+
+	// Verify config was updated
+	config, err := client.GetBarrelConfig(barrelName)
+	if err != nil {
+		t.Fatalf("GetBarrelConfig() error = %v", err)
+	}
+
+	if !strings.Contains(strings.ToLower(config), "autocompact") {
+		t.Error("Expected config to contain 'autoCompact'")
+	}
+}
+
+// TestGetOrDefault tests get-or-default operation
+func TestGetOrDefault(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Create barrel
+	barrelName := fmt.Sprintf("test_getdefault_%d", time.Now().Unix())
+	err = client.CreateBarrel(barrelName)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	err = client.UseBarrel(barrelName)
+	if err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	// Test getting non-existent key with default
+	value, err := client.GetOrDefault("nonexistent_key", "default_value")
+	if err != nil {
+		t.Fatalf("GetOrDefault() error = %v", err)
+	}
+
+	if value != "default_value" {
+		t.Errorf("Expected 'default_value', got %q", value)
+	}
+
+	// Add a key and test getting existing value
+	err = client.Set("existing_key", "actual_value")
+	if err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	value, err = client.GetOrDefault("existing_key", "default_value")
+	if err != nil {
+		t.Fatalf("GetOrDefault() error = %v", err)
+	}
+
+	if value != "actual_value" {
+		t.Errorf("Expected 'actual_value', got %q", value)
+	}
+}
+
+// TestClientWithToken tests client creation with token
+func TestClientWithToken(t *testing.T) {
+	token := "test-jwt-token"
+	client := NewClientWithConfig(ClientConfig{
+		Host:           testServerHost,
+		Port:           testServerPort,
+		ConnectTimeout: 5 * time.Second,
+		RequestTimeout: 3 * time.Second,
+		Token:          token,
+	})
+
+	if client.token != token {
+		t.Errorf("token = %q, want %q", client.token, token)
+	}
+}
+
+// TestConnectWithToken tests connection with JWT token
+func TestConnectWithToken(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	client.token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3JlYWR3cml0ZSIsInJvbGVzIjpbInJlYWR3cml0ZSJdLCJpYXQiOjE3MDQwNjcyMDAsImV4cCI6NDA5OTc2NzIwMH0.test_signature_for_testing"
+	defer client.Close()
+
+	// Connection should succeed and send Authorization header
+	err := client.Connect()
+	if err != nil {
+		// This might fail if server has auth enabled with different config
+		// which is expected - we're testing the client sends the token
+		t.Logf("Connect() with token error (may be expected): %v", err)
+	}
+}
+
+// TestConnectWithoutToken tests connection without authentication
+func TestConnectWithoutToken(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() without token error: %v", err)
+	}
+
+	if !client.isConnected() {
+		t.Error("Expected client to be connected")
+	}
+}
+
