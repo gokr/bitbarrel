@@ -9,9 +9,12 @@ class BitBarrelWebSocket {
   final String _host;
   final int _port;
   bool _isConnected = false;
+  late final Stream<dynamic> _broadcastStream;
 
   BitBarrelWebSocket._(this._channel, this._host, this._port) {
     _isConnected = true;
+    // Create broadcast stream early to allow multiple listeners
+    _broadcastStream = _channel.stream.asBroadcastStream();
   }
 
   /// Connect to a BitBarrel server
@@ -34,7 +37,8 @@ class BitBarrelWebSocket {
       await channel.ready;
 
       // Read welcome message - server sends text on connection
-      final firstMessage = await channel.stream.first;
+      final socket = BitBarrelWebSocket._(channel, host, port);
+      final firstMessage = await socket._broadcastStream.first;
       final welcomeStr = firstMessage is String
           ? firstMessage
           : String.fromCharCodes(firstMessage as List<int>);
@@ -44,7 +48,7 @@ class BitBarrelWebSocket {
         throw ConnectFailedException('Invalid welcome from server: $welcomeStr');
       }
 
-      return BitBarrelWebSocket._(channel, host, port);
+      return socket;
     } catch (e) {
       if (e is ConnectFailedException) rethrow;
       throw ConnectFailedException('Failed to connect: $e');
@@ -73,7 +77,7 @@ class BitBarrelWebSocket {
     }
 
     try {
-      final message = await _channel.stream.first;
+      final message = await _broadcastStream.first;
 
       Uint8List data;
       if (message is String) {
