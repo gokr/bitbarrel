@@ -80,6 +80,16 @@ class Client:
             self._ws = None
         self._connected = False
 
+    def __enter__(self):
+        """Context manager entry: connect to the server."""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit: close the connection."""
+        self.close()
+        return False
+
     @property
     def connected(self) -> bool:
         """Check if connected to the server."""
