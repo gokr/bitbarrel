@@ -9,7 +9,7 @@ import bitbarrel
 
 proc main() =
   echo "╔════════════════════════════════════════════╗"
-  echo "║   BitBarrel Demo: Basic CRUD Operations   ║"
+  echo "║   BitBarrel Demo: Basic CRUD Operations    ║"
   echo "╚════════════════════════════════════════════╝"
   echo ""
 

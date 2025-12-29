@@ -86,22 +86,22 @@ task testHugeBarrel, "Run HugeBarrel feature tests - automatic discovery":
 # Tasks for running demos
 
 task demoBasic, "Run basic CRUD demo":
-  exec "nim c -r --path:src demos/basic_demo.nim"
+  exec "nim r demos/basic_demo.nim"
 
 task demoPerformance, "Run performance demo":
-  exec "nim c -r --path:src demos/performance_demo.nim"
+  exec "nim r demos/performance_demo.nim"
 
 task demoGraph, "Run graph traversal demo":
-  exec "nim c -r --path:src demos/graph_demo.nim"
+  exec "nim r demos/graph_demo.nim"
 
 task demoAdvanced, "Run advanced features demo":
-  exec "nim c -r --path:src demos/advanced_demo.nim"
+  exec "nim r demos/advanced_demo.nim"
 
 task demoNetworkBasic, "Run basic network demo":
-  exec "nim c -r --path:src demos/network/basic.nim"
+  exec "nim r demos/network/basic.nim"
 
 task demoNetworkBarrels, "Run network barrels demo":
-  exec "nim c -r --path:src demos/network/barrels.nim"
+  exec "nim r demos/network/barrels.nim"
 
 # Task for benchmarking
 

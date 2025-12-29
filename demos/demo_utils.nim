@@ -7,7 +7,7 @@ import times
 
 proc sectionHeader*(title: string, width: int = 54) =
   ## Print a section header with the given title
-  let padding = width - title.len - 4
+  let padding = width - title.len
   let leftPad = padding div 2
   let rightPad = padding - leftPad
 

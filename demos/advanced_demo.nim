@@ -16,7 +16,7 @@ from bitbarrel/types import BarrelMode, BarrelConfig, UserSyncMode
 proc printHeader(title: string) =
   echo ""
   echo "╔" & "═".repeat(78) & "╗"
-  echo "║ " & title.alignLeft(77) & "║"
+  echo "║ " & title.alignLeft(81) & "║"
   echo "╚" & "═".repeat(78) & "╝"
   echo ""
 
