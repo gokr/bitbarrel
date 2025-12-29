@@ -10,6 +10,7 @@
 
 import std/[times, options, os, strformat, strutils, endians, tables, typedthreads, sequtils]
 import types
+import config_yaml
 import ../storage
 import ../storage/datafile
 import ../storage/keydir
@@ -214,6 +215,9 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
 proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = defaultBarrelConfig()): Barrel =
   ## Open a barrel with optional configuration
   ##
+  ## If a persisted configuration file exists (e.g., "mydata.yaml" for "mydata.data"),
+  ## it takes precedence over the provided config.
+  ##
   ## **Example:**
   ## ```nim
   ## import bitbarrel
@@ -232,15 +236,20 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
   result = Barrel()
   result.path = path
   result.fileId = fileId
-  result.config = config
-  result.mode = config.mode
+
+  # Load persisted config if it exists, otherwise use provided config
+  let persistedConfig = loadBarrelConfigYaml(path)
+  let effectiveConfig = if persistedConfig.isSome(): persistedConfig.get() else: config
+
+  result.config = effectiveConfig
+  result.mode = effectiveConfig.mode
   result.closed = false
   result.dataFiles = initTable[uint32, DataFile]()
   result.compactionState = CompactionState(inProgress: false)
 
   # Convert UserSyncMode to storage SyncMode
   var storageSyncMode = syncImmediate
-  case config.syncMode
+  case effectiveConfig.syncMode
   of UserSyncMode.None:
     storageSyncMode = syncBuffered
   of UserSyncMode.Sync:
@@ -249,13 +258,13 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     storageSyncMode = syncImmediate
 
   result.dataFile = open(path, fileId, storageSyncMode,
-                         shouldFsync = (config.syncMode == UserSyncMode.Fsync),
-                         bufferSize = config.writeBufferSize,
-                         validateCrc = config.validateCrc)
+                         shouldFsync = (effectiveConfig.syncMode == UserSyncMode.Fsync),
+                         bufferSize = effectiveConfig.writeBufferSize,
+                         validateCrc = effectiveConfig.validateCrc)
   result.dataFiles[fileId] = result.dataFile
 
   # Initialize index based on mode
-  case config.mode
+  case effectiveConfig.mode
   of bmHash:
     result.keyDir = keydir.init()
   of bmCritBit:
@@ -265,25 +274,25 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
     raise newException(ValueError, "bmHugeCritBit mode not yet implemented")
 
   # Rebuild index from data file (for existing barrels)
-  let recoveredCount = rebuildIndexFromDataFile(result, config.validateCrc)
+  let recoveredCount = rebuildIndexFromDataFile(result, effectiveConfig.validateCrc)
   if recoveredCount > 0:
-    echo fmt"Recovered {recoveredCount} records from data file"
+    echo fmt("Recovered {recoveredCount} records from data file")
 
   # Initialize compaction
   # Always create compactController for manual compaction, but only start
   # the background worker if autoCompact is explicitly enabled
   var compactConfig: CompactConfig
-  compactConfig.enabled = config.autoCompact  # Background worker only when explicitly enabled
+  compactConfig.enabled = effectiveConfig.autoCompact  # Background worker only when explicitly enabled
   compactConfig.maxFileSize = 1024 * 1024 * 1024  # 1GB default
-  compactConfig.triggerThreshold = config.compactThreshold
-  compactConfig.compactInterval = config.compactInterval
+  compactConfig.triggerThreshold = effectiveConfig.compactThreshold
+  compactConfig.compactInterval = effectiveConfig.compactInterval
   compactConfig.compactIntervalBytes = 10 * 1024 * 1024  # 10MB
 
   # Initialize with appropriate index based on mode
   # Note: We don't pass a callback because the non-blocking compaction path
   # (used by triggerCompact) handles all state updates in compactWorkerThread.
   # This avoids ORC issues with proc references.
-  case config.mode
+  case effectiveConfig.mode
   of bmHash:
     result.compactController = newCompactController(compactConfig, addr(result.keyDir))
   of bmCritBit:
@@ -1061,6 +1070,23 @@ proc getMode*(barrel: Barrel): BarrelMode =
 proc getConfig*(barrel: Barrel): BarrelConfig =
   ## Get the configuration of the barrel
   barrel.config
+
+proc setConfig*(barrel: Barrel, config: BarrelConfig) =
+  ## Update the barrel configuration and persist to disk
+  ##
+  ## Note: The `mode` field cannot be changed at runtime as it
+  ## requires rebuilding the entire index structure. The server
+  ## should validate this before calling setConfig.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var config = barrel.getConfig()
+  ## config.autoCompact = true
+  ## config.compactThreshold = 0.5
+  ## barrel.setConfig(config)
+  ## ```
+  barrel.config = config
+  saveBarrelConfigYaml(barrel.path, config)
 
 proc getPath*(barrel: Barrel): string =
   ## Get the data file path
