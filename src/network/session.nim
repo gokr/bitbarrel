@@ -3,11 +3,13 @@
 import std/[tables, locks, os, options, strformat]
 import ../bitbarrel/types
 import ../bitbarrel/barrel
+import auth as authjwt
 
 type
   Session* = object
     id*: uint64               ## WebSocket client ID
     currentBarrel*: string    ## Name of current barrel (empty = none)
+    authSession*: authjwt.AuthSession  ## Authentication session data
 
   BarrelRegistry* = object
     barrels*: Table[string, Barrel]  ## name -> Barrel
@@ -146,7 +148,7 @@ proc closeAll*(reg: var BarrelRegistry) =
 
 proc newSession*(id: uint64): Session =
   ## Create a new session with the given ID.
-  Session(id: id, currentBarrel: "")
+  Session(id: id, currentBarrel: "", authSession: authjwt.AuthSession(authenticated: false))
 
 proc setCurrentBarrel*(session: var Session, barrelName: string) =
   ## Set the current barrel for a session.
