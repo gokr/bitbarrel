@@ -22,7 +22,7 @@ bench_direct
 temp_*/
 test_*_data/
 ranges/
-examples/data/
+demos/data/
 testresults/
 
 # IDE and editor files
