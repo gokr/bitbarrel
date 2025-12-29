@@ -127,11 +127,12 @@ go test -v -run TestRangeQuery
 Integration tests require a running BitBarrel server. Start the server first:
 
 ```bash
-# From the bitbarrel root directory (using the nim binary)
-./bitbarrel server --port 9876
+# From the bitbarrel root directory
+./bitbarrel --port 9876 serve
 
 # Or if using nim directly
-nim c -r src/cli/main.nim server --port 9876
+nim c -r src/cli/main.nim --port 9876 serve
+
 ```
 
 Then run the integration tests with the `BITBARREL_TEST_SERVER` environment variable:
