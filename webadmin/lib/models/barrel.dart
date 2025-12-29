@@ -18,10 +18,14 @@ class Barrel extends Equatable {
     if (config == null) return null;
     // Simple parsing to extract mode from config JSON
     final modeMatch = RegExp(r'"mode"\s*:\s*"([^"]+)"').firstMatch(config!);
-    return modeMatch?.group(1);
+    final mode = modeMatch?.group(1);
+    // Convert server format to display format
+    if (mode == 'hash') return 'Hash';
+    if (mode == 'critbit') return 'CritBit';
+    return mode;
   }
 
-  bool get supportsRangeQueries => indexMode == 'bmCritBit';
+  bool get supportsRangeQueries => indexMode == 'CritBit';
 
   Barrel copyWith({
     String? name,

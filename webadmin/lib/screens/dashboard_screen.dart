@@ -48,12 +48,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               items: const [
                 DropdownMenuItem(
-                  value: 'bmHash',
-                  child: Text('bmHash (Fast lookups)'),
+                  value: 'hash',
+                  child: Text('Hash (Fast lookups)'),
                 ),
                 DropdownMenuItem(
-                  value: 'bmCritBit',
-                  child: Text('bmCritBit (Range queries)'),
+                  value: 'critbit',
+                  child: Text('CritBit (Range queries)'),
                 ),
               ],
               onChanged: (value) {
