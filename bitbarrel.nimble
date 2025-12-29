@@ -12,6 +12,7 @@ bin           = @["bitbarrel"]
 requires "nim >= 2.2.6"
 requires "crunchy >= 0.1.0"
 requires "yaml >= 2.1.0"
+requires "jwt"             # JWT authentication
 requires "supersnappy"      # For optional Snappy support
 requires "https://github.com/gokr/lz4wrapper" # For optional LZ4 support
 requires "https://github.com/gokr/mummy"      # MummyX WebSocket/HTTP server
