@@ -43,7 +43,7 @@ fi
 
 # Start BitBarrel server in background
 echo "Starting BitBarrel server..."
-./bitbarrel serve -p 9876 > /tmp/bitbarrel_server.log 2>&1 &
+./bitbarrel serve -p=9876 > /tmp/bitbarrel_server.log 2>&1 &
 SERVER_PID=$!
 
 # Wait for server to start
