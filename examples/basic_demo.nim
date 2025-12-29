@@ -40,10 +40,9 @@ proc main() =
     keyDir.add(key, KeyDirEntry(
       fileId: 1,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
       valueSize: info.valueSize,
-      timestamp: ts,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
     ))
     echo &"   SET {key} = {value}"
 
@@ -55,9 +54,9 @@ proc main() =
       let entry = found.get()
       let recordInfo = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
       let (_, readValue, _) = dataFile.readRecord(recordInfo)
       if readValue == expectedValue:
@@ -75,10 +74,9 @@ proc main() =
   keyDir.add("user:1", KeyDirEntry(
     fileId: 1,
     recordPos: info.recordPos,
-    valuePos: info.valuePos,
     valueSize: info.valueSize,
-    timestamp: ts,
-    recordSize: info.recordSize
+    recordSize: info.recordSize,
+    keyLen: info.keyLen
   ))
   echo &"   SET user:1 = {updatedValue}"
 
@@ -88,9 +86,9 @@ proc main() =
     let entry = found.get()
     let recordInfo = RecordInfo(
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
       valueSize: entry.valueSize,
-      recordSize: entry.recordSize
+      recordSize: entry.recordSize,
+      keyLen: entry.keyLen
     )
     let (_, value, _) = dataFile.readRecord(recordInfo)
     echo &"   ✅ Verified: user:1 = {value}"
@@ -102,10 +100,9 @@ proc main() =
   keyDir.add("user:2", KeyDirEntry(
     fileId: 1,
     recordPos: delInfo.recordPos,
-    valuePos: delInfo.valuePos,
     valueSize: delInfo.valueSize,
-    timestamp: delTs,
-    recordSize: delInfo.recordSize
+    recordSize: delInfo.recordSize,
+    keyLen: delInfo.keyLen
   ))
   echo "   SET user:2 = (tombstone)"
 
@@ -115,9 +112,9 @@ proc main() =
     let entry = delFound.get()
     let recordInfo = RecordInfo(
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
       valueSize: entry.valueSize,
-      recordSize: entry.recordSize
+      recordSize: entry.recordSize,
+      keyLen: entry.keyLen
     )
     let (_, value, _) = dataFile.readRecord(recordInfo)
     if value.len == 0:

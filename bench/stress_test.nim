@@ -48,10 +48,9 @@ proc testLargeKeys() =
   keyDir.add(maxKey, KeyDirEntry(
     fileId: 1,
     recordPos: info.recordPos,
-    valuePos: info.valuePos,
     valueSize: info.valueSize,
-    timestamp: ts,
-    recordSize: info.recordSize
+    recordSize: info.recordSize,
+    keyLen: info.keyLen
   ))
 
   let found = keyDir.get(maxKey)
@@ -59,9 +58,9 @@ proc testLargeKeys() =
     let entry = found.get()
     let recordInfo = RecordInfo(
       recordPos: entry.recordPos,
-      valuePos: entry.valuePos,
       valueSize: entry.valueSize,
-      recordSize: entry.recordSize
+      recordSize: entry.recordSize,
+      keyLen: entry.keyLen
     )
     let (readKey, readValue, _) = dataFile.readRecord(recordInfo)
     if readKey == maxKey and readValue == value:
@@ -82,10 +81,9 @@ proc testLargeKeys() =
       keyDir.add(key, KeyDirEntry(
         fileId: 1,
         recordPos: info.recordPos,
-        valuePos: info.valuePos,
         valueSize: info.valueSize,
-        timestamp: ts,
-        recordSize: info.recordSize
+        recordSize: info.recordSize,
+        keyLen: info.keyLen
       ))
   echo "  ✅ Various key sizes test completed"
 
@@ -120,10 +118,9 @@ proc testLargeValues() =
     keyDir.add(key, KeyDirEntry(
       fileId: 1,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
       valueSize: info.valueSize,
-      timestamp: ts,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
     ))
 
     totalBytes += value.len
@@ -163,10 +160,9 @@ proc testRapidWrites(count: int = 10000) =
       keyDir.add(key, KeyDirEntry(
         fileId: 1,
         recordPos: info.recordPos,
-        valuePos: info.valuePos,
         valueSize: info.valueSize,
-        timestamp: ts,
-        recordSize: info.recordSize
+        recordSize: info.recordSize,
+        keyLen: info.keyLen
       ))
     except:
       errors.inc()
@@ -211,10 +207,9 @@ proc testRandomAccess(count: int = 5000) =
     keyDir.add(key, KeyDirEntry(
       fileId: 1,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
       valueSize: info.valueSize,
-      timestamp: ts,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
     ))
 
   # Mix of reads and writes
@@ -228,9 +223,9 @@ proc testRandomAccess(count: int = 5000) =
         let entry = found.get()
         let recordInfo = RecordInfo(
           recordPos: entry.recordPos,
-          valuePos: entry.valuePos,
           valueSize: entry.valueSize,
-          recordSize: entry.recordSize
+          recordSize: entry.recordSize,
+          keyLen: entry.keyLen
         )
         try:
           let (k, v, _) = dataFile.readRecord(recordInfo)
@@ -251,10 +246,9 @@ proc testRandomAccess(count: int = 5000) =
         keyDir.add(key, KeyDirEntry(
           fileId: 1,
           recordPos: info.recordPos,
-          valuePos: info.valuePos,
           valueSize: info.valueSize,
-          timestamp: ts,
-          recordSize: info.recordSize
+          recordSize: info.recordSize,
+          keyLen: info.keyLen
         ))
       except:
         writeErrors.inc()
@@ -298,10 +292,9 @@ proc testMemoryUsage(sampleCount: int = 100000) =
     keyDir.add(key, KeyDirEntry(
       fileId: 1,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
       valueSize: info.valueSize,
-      timestamp: ts,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
     ))
 
     if (i + 1) mod 10000 == 0:

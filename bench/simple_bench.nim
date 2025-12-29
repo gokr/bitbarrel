@@ -45,10 +45,9 @@ proc benchmarkWrites(dataFile: var DataFile, keyDir: var KeyDir, count: int) =
     keyDir.add(key, KeyDirEntry(
       fileId: 1,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
       valueSize: info.valueSize,
-      timestamp: ts,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
     ))
 
     valueSizeTotal += value.len
@@ -83,11 +82,11 @@ proc benchmarkReads(dataFile: var DataFile, keyDir: var KeyDir, count: int, rand
       let entry = found.get()
       let recordInfo = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
-      let (readKey, readValue, _) = dataFile.readRecord(recordInfo)
+      let (_, readValue, _) = dataFile.readRecord(recordInfo)
       if readValue.len > 0:
         foundCount.inc()
 
@@ -121,9 +120,9 @@ proc benchmarkMixed(dataFile: var DataFile, keyDir: var KeyDir, count: int, read
         let entry = found.get()
         let recordInfo = RecordInfo(
           recordPos: entry.recordPos,
-          valuePos: entry.valuePos,
           valueSize: entry.valueSize,
-          recordSize: entry.recordSize
+          recordSize: entry.recordSize,
+          keyLen: entry.keyLen
         )
         discard dataFile.readRecord(recordInfo)
     else:
@@ -137,10 +136,9 @@ proc benchmarkMixed(dataFile: var DataFile, keyDir: var KeyDir, count: int, read
       keyDir.add(key, KeyDirEntry(
         fileId: 1,
         recordPos: info.recordPos,
-        valuePos: info.valuePos,
         valueSize: info.valueSize,
-        timestamp: ts,
-        recordSize: info.recordSize
+        recordSize: info.recordSize,
+        keyLen: info.keyLen
       ))
 
   let elapsed = getTime().toUnixFloat() - start
