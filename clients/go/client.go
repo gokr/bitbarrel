@@ -18,6 +18,7 @@ type Client struct {
 	mu           sync.Mutex
 	connectTimeout time.Duration
 	requestTimeout time.Duration
+	token        string  // JWT authorization token
 }
 
 // ClientConfig holds client configuration
@@ -26,6 +27,7 @@ type ClientConfig struct {
 	Port           int
 	ConnectTimeout time.Duration
 	RequestTimeout time.Duration
+	Token          string  // JWT authorization token
 }
 
 // NewClient creates a new BitBarrel client
@@ -45,6 +47,7 @@ func NewClientWithConfig(config ClientConfig) *Client {
 		port:           config.Port,
 		connectTimeout: config.ConnectTimeout,
 		requestTimeout: config.RequestTimeout,
+		token:          config.Token,
 	}
 }
 
@@ -58,7 +61,19 @@ func (c *Client) Connect() error {
 	}
 
 	address := fmt.Sprintf("%s:%d", c.host, c.port)
-	ws, err := Dial(address)
+
+	var ws *WebSocket
+	var err error
+	if c.token != "" {
+		// Connect with token authentication
+		headers := map[string]string{
+			"Authorization": "Bearer " + c.token,
+		}
+		ws, err = DialWithHeaders(address, headers)
+	} else {
+		// Connect without authentication
+		ws, err = Dial(address)
+	}
 	if err != nil {
 		return NewError("connect", err)
 	}

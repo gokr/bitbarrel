@@ -115,6 +115,88 @@ func Dial(address string) (*WebSocket, error) {
 	}, nil
 }
 
+// DialWithHeaders connects to a WebSocket server with custom headers
+func DialWithHeaders(address string, headers map[string]string) (*WebSocket, error) {
+	// Parse the address
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid address: %w", err)
+	}
+
+	// Connect to the server
+	conn, err := net.Dial("tcp", net.JoinHostPort(host, port))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+
+	// Generate WebSocket key
+	key := make([]byte, 16)
+	if _, err := rand.Read(key); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to generate key: %w", err)
+	}
+	wsKey := base64.StdEncoding.EncodeToString(key)
+
+	// Build handshake request with custom headers
+	handshake := fmt.Sprintf(
+		"GET /ws HTTP/1.1\r\n"+
+			"Host: %s:%s\r\n"+
+			"Upgrade: websocket\r\n"+
+			"Connection: Upgrade\r\n"+
+			"Sec-WebSocket-Key: %s\r\n"+
+			"Sec-WebSocket-Version: 13\r\n",
+		host, port, wsKey,
+	)
+
+	// Add custom headers
+	for key, value := range headers {
+		handshake += fmt.Sprintf("%s: %s\r\n", key, value)
+	}
+
+	// Add empty line to end headers
+	handshake += "\r\n"
+
+	// Send handshake
+	if _, err := conn.Write([]byte(handshake)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to send handshake: %w", err)
+	}
+
+	// Read and parse response
+	reader := bufio.NewReader(conn)
+
+	// Read status line
+	statusLine, err := reader.ReadString('\n')
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to read status: %w", err)
+	}
+
+	// Check status
+	if !contains(statusLine, "101 Switching Protocols") {
+		conn.Close()
+		return nil, fmt.Errorf("unexpected status: %s", strings.TrimSpace(statusLine))
+	}
+
+	// Read headers
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("failed to read headers: %w", err)
+		}
+		if line == "\r\n" {
+			break
+		}
+	}
+
+	return &WebSocket{
+		conn:     conn,
+		reader:   reader,
+		isClient: true,
+	}, nil
+}
+
 // Close closes the WebSocket connection
 func (ws *WebSocket) Close() error {
 	if ws.conn == nil {
