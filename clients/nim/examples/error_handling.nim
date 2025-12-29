@@ -9,6 +9,7 @@
 ##   nim c -r examples/error_handling.nim
 
 import ../src/bitbarrel_client
+import std/net
 
 proc demonstrateConnectionError() =
   echo "1. Connection Error Example"

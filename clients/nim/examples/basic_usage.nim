@@ -10,6 +10,7 @@
 ##   nim c -r examples/basic_usage.nim
 
 import ../src/bitbarrel_client
+import std/net
 
 proc main() =
   echo "BitBarrel Client - Basic Usage Example"
