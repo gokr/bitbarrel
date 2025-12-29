@@ -268,19 +268,72 @@ Client                              Server
 
 ## Security Architecture
 
+### Authentication & Authorization
+
+BitBarrel supports JWT-based authentication with role-based access control (RBAC).
+
+**JWT Authentication (Built-in):**
+- Algorithm: HS256 (HMAC SHA-256)
+- Token format: `Authorization: Bearer <base64-jwt>`
+- Token claims: `sub` (username), `roles` (array), `iat` (issued), `exp` (expiry)
+- Three RBAC roles: `admin`, `readwrite`, `readonly`
+
+**Authorization Model:**
+
+| Operation | admin | readwrite | readonly |
+|-----------|-------|-----------|----------|
+| Barrel management: CREATE, OPEN, DROP | YES | NO | NO |
+| Write operations: SET, DELETE | YES | YES | NO |
+| Read operations: GET, EXISTS, COUNT, RANGE, PREFIX | YES | YES | YES |
+
 ### Current State
-- **No encryption:** Plain TCP/WebSocket
-- **No authentication:** Accepts all connections
-- **No authorization:** Full access to all barrels
+- **No encryption:** Plain TCP/WebSocket; use TLS/WSS in production
+- **Authentication:** JWT tokens with RBAC (optional, disabled by default)
 - **Input validation:** Size limits and format validation
+- **Rate limiting:** Not implemented; use reverse proxy for production
 
 ### Recommended Deployment
+
+**Option 1: Built-in JWT (Simple)**
 ```
-Client <--TLS--> Proxy (nginx/HAProxy) <--TCP--> BitBarrel Server
+Client --TLS--> BitBarrel Server
                       ↓
-                Authentication/Authorization
-                Rate Limiting
-                Connection Pooling
+                JWT Token verification
+                RBAC authorization checks
+```
+
+**Option 2: External Proxy (Complex):**
+```
+Client <--TLS--> Proxy (nginx/HAProxy) <--TLS--> BitBarrel Server
+                      ↓
+                TLS Client Cert or OIDC token
+                Proxy ACL rules
+                Rate limiting
+                Connection pooling
+```
+
+### JWT Configuration
+
+**YAML:**
+```yaml
+auth:
+  enabled: true
+  secret: "production-secret-key-32-chars-minimum"
+  default_token_expiry_hours: 24
+
+users:
+  - username: "admin"
+    roles: ["admin"]
+  - username: "readwrite"
+    roles: ["readwrite"]
+  - username: "readonly"
+    roles: ["readonly"]
+```
+
+**Environment:**
+```bash
+BITBARREL_AUTH_ENABLED=true
+BITBARREL_AUTH_SECRET="production-secret-key"
 ```
 
 ## Scalability
