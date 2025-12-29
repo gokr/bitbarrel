@@ -318,7 +318,7 @@ Integration tests require a running BitBarrel server:
 ```bash
 # Terminal 1: Start the BitBarrel server
 cd /path/to/bitbarrel
-./bitbarrel server --port 9876
+./bitbarrel --port 9876 serve
 
 # Terminal 2: Run tests
 cd clients/dart

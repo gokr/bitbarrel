@@ -27,7 +27,7 @@ flutter pub get
 2. **Start BitBarrel server** (if not already running):
 ```bash
 cd ..
-./bitbarrel serve -p 9876
+./bitbarrel --port 9876 serve
 ```
 
 3. **Run the admin console in development mode:**

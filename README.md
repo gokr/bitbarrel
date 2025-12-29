@@ -45,7 +45,7 @@ nim c -r examples/basic_demo.nim
 nim c -r examples/simple_kv_demo.nim
 
 # Run recovery tests
-nimble test-recovery
+nimble testRecovery
 
 # Run all tests
 nimble test

@@ -7,7 +7,7 @@ This directory contains runnable examples demonstrating how to use the BitBarrel
 ### Run the Basic Demo
 
 ```bash
-nim c -r samples/basic_demo.nim
+nim c -r examples/basic_demo.nim
 ```
 
 This demonstrates CRUD operations (GET, SET, DELETE) and is the best starting point.
@@ -16,10 +16,10 @@ This demonstrates CRUD operations (GET, SET, DELETE) and is the best starting po
 
 ```bash
 # Run basic demo
-nimble demo-basic
+nimble demoBasic
 
 # Run extended demo
-nimble demo
+nimble demoDemo
 ```
 
 ## Available Demos
@@ -352,7 +352,7 @@ Use these demos as templates for your own applications:
 
 ## Demo Output Example
 
-When you run `nim c -r samples/basic_demo.nim`, you should see:
+When you run `nim c -r examples/basic_demo.nim`, you should see:
 
 ```
 ╔════════════════════════════════════════════╗
