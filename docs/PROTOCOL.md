@@ -272,6 +272,128 @@ Delete a barrel and all its data.
 - Status: OK (0x00) on success, BARREL_NOT_FOUND (0x06) if not exists
 - Value: Empty
 
+### Configuration Operations
+
+#### GET_BARREL_CONFIG (0x16)
+Get the configuration of a barrel.
+
+**Request:**
+- Command: 0x16
+- Key: Barrel name
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00) with configuration JSON, BARREL_NOT_FOUND (0x06) if not exists
+- Value: JSON object containing barrel configuration
+
+**Example Response:**
+```json
+{
+  "writeBufferSize": 65536,
+  "syncMode": "sync",
+  "autoCompact": false,
+  "compactThreshold": 0.3,
+  "validateCrc": true,
+  "defaultTtl": 0,
+  "checkExpirationOnRead": true,
+  "deleteExpiredOnRead": false,
+  "mode": "hash"
+}
+```
+
+#### SET_BARREL_CONFIG (0x17)
+Update the configuration of a barrel. Changes are persisted to a YAML file alongside the data file.
+
+**Request:**
+- Command: 0x17
+- Key: Barrel name
+- Value: JSON object with configuration fields to update (partial update supported)
+
+**Response:**
+- Status: OK (0x00) with updated configuration JSON
+- Status: ERROR (0x02) if mode change attempted (not allowed at runtime)
+- Status: BARREL_NOT_FOUND (0x06) if barrel not exists
+- Status: UNAUTHORIZED (0x07) if insufficient permissions (requires admin role)
+
+**Example Request:**
+```json
+{
+  "autoCompact": true,
+  "compactThreshold": 0.5
+}
+```
+
+**Configurable Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| writeBufferSize | int | Write buffer size in bytes (default: 65536) |
+| syncMode | string | "none", "sync", or "fsync" |
+| autoCompact | bool | Enable automatic compaction |
+| compactThreshold | float | Compaction trigger threshold (0.0-1.0) |
+| validateCrc | bool | Validate CRC32 on reads |
+| defaultTtl | int | Default TTL in seconds (0 = no expiration) |
+| checkExpirationOnRead | bool | Check expiration when reading |
+| deleteExpiredOnRead | bool | Delete expired records on read |
+
+**Note:** The `mode` field cannot be changed at runtime as it requires rebuilding the entire index structure.
+
+### Range Queries
+
+Range queries require the barrel to be opened in `bmCritBit` mode (ordered index).
+
+#### RANGE_QUERY (0x21)
+Get key-value pairs in a key range.
+
+**Request:**
+- Command: 0x21
+- Key: Empty
+- Value: Encoded range request
+
+**Range Request Format:**
+```
+[startKeyLen:2][startKey][endKeyLen:2][endKey][limit:4][cursorLen:2][cursor]
+```
+
+**Response:**
+- Status: OK (0x00) with encoded range response
+- Status: ERROR (0x02) if barrel not in bmCritBit mode
+
+**Range Response Format:**
+```
+[count:4][items...][hasMore:1][nextCursorLen:2][nextCursor]
+
+Each item:
+[keyLen:2][key][valueLen:4][value]
+```
+
+#### PREFIX_QUERY (0x22)
+Get key-value pairs with a key prefix.
+
+**Request:**
+- Command: 0x22
+- Key: Empty
+- Value: Encoded prefix request
+
+**Prefix Request Format:**
+```
+[prefixLen:2][prefix][limit:4][cursorLen:2][cursor]
+```
+
+**Response:**
+- Same format as RANGE_QUERY response
+
+#### RANGE_COUNT (0x23)
+Count keys in a range without retrieving values.
+
+**Request:**
+- Command: 0x23
+- Key: Empty
+- Value: Encoded range request (same as RANGE_QUERY)
+
+**Response:**
+- Status: OK (0x00)
+- Value: String representation of count
+
 ### Reference Traversal
 
 #### TRAVERSE (0x20) - Advanced Feature
@@ -316,6 +438,7 @@ Each result contains:
 | 0x04 | NO_BARREL | No barrel selected for operation |
 | 0x05 | BARREL_EXISTS | Barrel already exists |
 | 0x06 | BARREL_NOT_FOUND | Barrel does not exist |
+| 0x07 | UNAUTHORIZED | Authentication failed or insufficient permissions |
 
 ## Size Limits
 
@@ -358,7 +481,7 @@ The protocol uses WebSocket binary frames (opcode 0x02) with client-to-server ma
 ### Handshake
 
 1. Client establishes TCP connection to server
-2. Client sends WebSocket upgrade request:
+2. Client sends WebSocket upgrade request with optional JWT authentication:
 ```
 GET /ws HTTP/1.1
 Host: localhost:9876
@@ -366,16 +489,27 @@ Upgrade: websocket
 Connection: Upgrade
 Sec-WebSocket-Key: <base64-random-16-bytes>
 Sec-WebSocket-Version: 13
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
-3. Server responds with 101 Switching Protocols
+
+**Authorization Header:**
+- Required if server authentication is enabled
+- Format: `Authorization: Bearer <jwt_token>`
+- JWT tokens are generated using `bitbarrel token` CLI command
+- Server verifies HS256 signature and extracts username/roles
+
+3. Server responds:
+   - `101 Switching Protocols` if auth successful or auth disabled
+   - `401 Unauthorized` if auth required but missing/invalid
 4. Connection is established
 
 ### Session Management
 
 - Each WebSocket connection maintains a session
-- Session tracks current barrel selection
+- Session tracks current barrel selection and authentication state
 - Sequence numbers are per-connection and monotonic
 - Connection loss requires reconnection and barrel reselection
+- Authenticated sessions include username and roles for authorization
 
 ### Timeouts
 
@@ -408,6 +542,13 @@ PUT    /barrels/{name}/kvbatch     # Batch operations (JSON body)
 # Graph traversal
 GET    /barrels/{name}/traverse/{key}?path=*->*&depth=2
 ```
+
+**Authentication (when enabled):**
+```
+Authorization: Bearer <jwt_token>
+```
+
+All authenticated REST requests must include the JWT bearer token in the Authorization header.
 
 ## Examples
 
@@ -490,11 +631,29 @@ except ClientError as e:
 
 ## Security Considerations
 
-- **No encryption:** Protocol is unencrypted; use TLS/WSS in production
-- **No authentication:** Server accepts all connections; implement at proxy layer
-- **No authorization:** All clients have full access; implement ACLs externally
+- **Encryption:** Protocol is unencrypted; use TLS/WSS in production
+- **JWT Authentication:** Server supports HS256 JWT tokens with RBAC (admin, readwrite, readonly roles)
+- **Authorization:** Commands are checked against user role permissions
 - **Input validation:** Server validates size limits and protocol format
-- **Rate limiting:** Not implemented; use reverse proxy for protection
+- **Rate limiting:** Not implemented; use reverse proxy for production
+
+### JWT Authentication Details
+
+- **Algorithm:** HS256 (HMAC SHA-256)
+- **Token generation:** Use `bitbarrel token` CLI command
+- **Token format:** `Authorization: Bearer <base64-encoded-jwt>`
+- **Token claims:** `sub` (username), `roles` (array), `iat` (issued), `exp` (expiry)
+- **Default expiry:** 24 hours (configurable)
+
+### JWT vs External Auth
+
+| Aspect | JWT (Internal) | External Proxy |
+|--------|----------------|---------------|
+| Configuration | Single secret in YAML | TLS cert management, separate auth service |
+| Token storage | Environment var or config | TLS client certificates or OIDC |
+| Permission checks | Server-side RBAC | Proxy rules (nginx ACLs) |
+| Token rotation | Secret rotation + new tokens | Certificate renewal, OIDC token refresh |
+| Complexity | Simple, self-contained | More components, distributed coordination |
 
 ## Compatibility
 
