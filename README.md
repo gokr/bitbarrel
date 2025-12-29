@@ -3,9 +3,12 @@
 BitBarrel is a high-performance key/value storage engine built in Nim, using the Bitcask storage model. It offers fast writes, efficient reads, and robust crash recovery—perfect for caching, session storage, time‑series data, and large‑scale analytics.
 
 ### Why BitBarrel?
-- **Three index modes** tailor performance to your use case: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑level huge datasets.
-- **Network‑ready** with WebSocket and REST APIs.
-- **Production‑ready** with compression, TTL, background compaction, and fast recovery.
+- **Three index modes** tailor performance to your use case: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑tier partitioned indexes for massive datasets.
+- **Cursor-based pagination** for efficient range queries and prefix searches without offset overhead.
+- **Non-blocking compaction** — writes continue uninterrupted during background compaction.
+- **Graph traversal** with built-in reference model for modeling relationships and detecting cycles.
+- **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, and Python.
+- **Also supports** compression (LZ4/Snappy), TTL, CRC32 checksums, and fast hint-file recovery.
 
 ## Quick Start
 
@@ -68,8 +71,6 @@ nimble buildSnappy
 # Build without compression (default)
 nimble buildDefault
 ```
-
-### Using as a Library
 
 ## Client Libraries
 
@@ -148,51 +149,6 @@ db.close()
 
 See the [tutorial](docs/USER_GUIDE/tutorial.md) for comprehensive examples.
 
-## Client Libraries
-
-BitBarrel provides client libraries in multiple languages for remote access via WebSocket:
-
-| Language | Location | Status |
-|----------|----------|--------|
-| Nim | `clients/nim/` | Full WebSocket protocol |
-| Go | `clients/go/` | Full WebSocket protocol |
-| Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
-| Python | `clients/python/` | WebSocket client |
-
-### Dart/Flutter Example
-
-```dart
-import 'package:bitbarrel/bitbarrel.dart';
-
-final client = BitBarrelClient.localhost();
-await client.connect();
-await client.createBarrel('mydb');
-await client.useBarrel('mydb');
-await client.set('key', 'value');
-final value = await client.get('key');
-await client.close();
-```
-
-See [`clients/dart/README.md`](clients/dart/README.md) for full documentation.
-
-### Go Example
-
-```go
-package main
-
-import "github.com/tankfeed/bitbarrel-go"
-
-client := bitbarrel.NewClient("localhost", 9876)
-client.Connect()
-client.CreateBarrel("mydb", "")
-client.UseBarrel("mydb")
-client.Set("key", "value")
-value := client.Get("key")
-client.Close()
-```
-
-See [`clients/go/README.md`](clients/go/README.md) for full documentation.
-
 ### Testing All Clients
 
 ```bash
@@ -247,7 +203,7 @@ BitBarrel supports three index modes optimized for different use cases:
 
 | Mode | Best For | Lookup | Memory | Special Features |
 |------|----------|--------|--------|------------------|
-| `bmHash` | General KV, caching, sessions | O(1) | ~50 bytes/key | Fastest lookups |
+| `bmHash` | General KV, caching, sessions | O(1) | ~40 bytes/key | Fastest lookups |
 | `bmCritBit` | Time‑series, leaderboards, prefix searches | O(k) | ~60 bytes/key | Range queries, ordered iteration |
 | `bmHugeCritBit` | Billions of keys, limited RAM | O(1) per range | Lazy‑loaded partitions | Massive datasets, range‑based caching |
 
