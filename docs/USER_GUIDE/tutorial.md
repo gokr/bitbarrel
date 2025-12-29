@@ -540,21 +540,20 @@ var df = lowlevelapi.openDataFile("mydb.data", 1'u32)
 var kd = lowlevelapi.withKeyDir:
   # Use KeyDir inside this block
 
-# Helper functions
+# Helper functions - KeyDirEntry uses keyLen for value position calculation
 var entry = lowlevelapi.newKeyDirEntry(
   fileId = 1,
   recordPos = 100,
-  valuePos = 150,
   valueSize = 20,
-  timestamp = getTime().toUnix(),
-  recordSize = 70
+  recordSize = 70,
+  keyLen = 10  # Used to calculate value position
 )
 
 var info = lowlevelapi.newRecordInfo(
   recordPos = 100,
-  valuePos = 150,
   valueSize = 20,
-  recordSize = 70
+  recordSize = 70,
+  keyLen = 10
 )
 ```
 

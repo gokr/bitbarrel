@@ -36,14 +36,13 @@ proc main() =
   # Update KeyDir
   let keyDirEntry = KeyDirEntry(
     fileId: 1,
-    valuePos: recordInfo.recordPos,  # Use record position as value position for now
+    recordPos: recordInfo.recordPos,
     valueSize: recordInfo.valueSize,
-    timestamp: timestamp,
-    recordSize: recordInfo.recordSize
+    recordSize: recordInfo.recordSize,
+    keyLen: recordInfo.keyLen
   )
   keyDir.add(key, keyDirEntry)
   echo "  - Record written at position:", recordInfo.recordPos
-  echo "  - Value position:", recordInfo.valuePos
   echo "  - Record size:", recordInfo.recordSize
 
   # GET operation
@@ -53,16 +52,15 @@ proc main() =
     let entry = found.get()
     echo "Key found in KeyDir:"
     echo "  - File ID:", entry.fileId
-    echo "  - Timestamp:", entry.timestamp
     echo "  - Value size:", entry.valueSize
 
     # Read actual value from disk
     # Create RecordInfo for reading
     let readRecordInfo = RecordInfo(
-      recordPos: entry.valuePos,  # Use valuePos as recordPos
-      valuePos: entry.valuePos,
+      recordPos: entry.recordPos,
       valueSize: entry.valueSize,
-      recordSize: entry.recordSize
+      recordSize: entry.recordSize,
+      keyLen: entry.keyLen
     )
     let (readKey, readValue, readTimestamp) = dataFile.readRecord(readRecordInfo)
     echo "Value read from disk:"
@@ -87,10 +85,9 @@ proc main() =
     keyDir.add(key, KeyDirEntry(
       fileId: 1,
       recordPos: info.recordPos,
-      valuePos: info.valuePos,
       valueSize: info.valueSize,
-      timestamp: ts,
-      recordSize: info.recordSize
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
     ))
     echo "Stored:", key, "=>", value
 
@@ -103,9 +100,9 @@ proc main() =
       let entry = found.get()
       let recordInfo = RecordInfo(
         recordPos: entry.recordPos,
-        valuePos: entry.valuePos,
         valueSize: entry.valueSize,
-        recordSize: entry.recordSize
+        recordSize: entry.recordSize,
+        keyLen: entry.keyLen
       )
       let (_, readValue, _) = dataFile.readRecord(recordInfo)
       if readValue == expectedValue:

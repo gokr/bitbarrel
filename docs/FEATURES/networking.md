@@ -59,7 +59,7 @@ BitBarrel provides client libraries in multiple languages:
 | Prefix queries | ✅ | ✅ | ✅ | ✅ |
 | Reference traversal | ✅ | ✅ | ✅ | ✅ |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | - | - | - |
 | Context manager | ✅ | - | - | ✅ |
 | Thread-safe | ✅ | ✅ | ✅ | ✅ |
 | Mobile support | - | - | ✅ | - |
@@ -172,13 +172,7 @@ client.close()
 ```dart
 import 'package:bitbarrel/bitbarrel.dart';
 
-final config = BitBarrelConfig(
-  host: 'localhost',
-  port: 9876,
-  authToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-);
-
-final client = BitBarrelClient(config);
+final client = BitBarrelClient.localhost();
 await client.connect();
 await client.createBarrel('mydb');
 await client.useBarrel('mydb');
@@ -193,11 +187,7 @@ package main
 
 import "github.com/gokr/bitbarrel-go"
 
-client := bitbarrel.NewClientWithAuth(
-  "localhost",
-  9876,
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-)
+client := bitbarrel.NewClient("localhost", 9876)
 client.Connect()
 client.CreateBarrel("mydb", "")
 client.UseBarrel("mydb")

@@ -93,13 +93,12 @@ type
 
   HintEntry* = object
     key*: string                # Key string
-    recordPos*: uint64          # Position of record in data file
-    valuePos*: uint64           # Position of value within record
-    valueSize*: uint32          # Size of value
-    timestamp*: int64           # Record timestamp
+    recordPos*: uint64          # Position of record in data file (CRC position)
+    valueSize*: uint32          # Size of value (0 = tombstone/deleted)
     recordSize*: uint32         # Total record size
-    deleted*: bool              # True if this is a tombstone
 ```
+
+**Note:** The HintEntry structure is optimized - value position is calculated from recordPos and key length, timestamp ordering is implicit (append-only), and deletion is indicated by valueSize == 0.
 
 ## Incremental Recovery (Version 2)
 
@@ -251,7 +250,7 @@ The hint file API is available in `src/storage/hintfile.nim`:
 
 ```nim
 # Write a v2 hint file
-let entries = @[HintEntry(key: "user:1", recordPos: 100, valuePos: 120, ...)]
+let entries = @[HintEntry(key: "user:1", recordPos: 100, valueSize: 50, recordSize: 70)]
 let dataFileSize = getFileSize("000001.data")
 let success = writeHintFile("000001.hint", 1'u32, entries, dataFileSize)
 

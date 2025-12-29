@@ -73,10 +73,10 @@ proc main() =
   let updateInfo = dataFile.appendRecord("user:1", updatedValue, updateTs)
   keyDir.add("user:1", KeyDirEntry(
     fileId: 1,
-    recordPos: updateInfo.recordPos,
-    valueSize: updateInfo.valueSize,
-    recordSize: updateInfo.recordSize,
-    keyLen: updateInfo.keyLen
+    recordPos: info.recordPos,
+    valueSize: info.valueSize,
+    recordSize: info.recordSize,
+    keyLen: info.keyLen
   ))
   echo &"   SET user:1 = {updatedValue}"
 
