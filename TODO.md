@@ -79,12 +79,15 @@ This document consolidates all planned and potential future enhancements for Bit
 
 ### Python Client ✅ COMPLETED
 - ✅ Located in `/clients/python/`
-- ✅ WebSocket client implementation
-- ✅ Test suite and examples
+- ✅ Feature-complete WebSocket client implementation
 - ✅ Full CRUD and barrel operations
+- ✅ Barrel config operations (get/set)
+- ✅ Range and prefix queries with cursor pagination
+- ✅ Reference traversal support
+- ✅ Context manager support (`with` statement)
+- ✅ Test suite (28 tests, all passing)
 
-### Planned Client Libraries (Already Complete)
-- ✅ Python client library
+### Planned Client Libraries
 - JavaScript/Node.js client
 - Java client
 
@@ -258,8 +261,9 @@ PubSubConfig(
 - Projection and filtering
 
 ### Security
-- Authentication (TLS client certs, JWT)
-- Role-based access control (RBAC)
+- ✅ JWT authentication with HS256 and static secret - COMPLETED
+- ✅ Role-based access control (RBAC) - COMPLETED
+- TLS client certificates for additional security (future)
 - Encryption at rest
 - Audit logging
 
@@ -293,7 +297,6 @@ Ensure threads complete before parent objects are destroyed. See `barrel.nim:clo
 - Basic CRUD operations work but coordinated compaction is missing
 
 ### Incomplete Features
-- `setBarrelConfig` on server returns error (not implemented)
 - CLI interactive client is a stub only
 - Prometheus `/metrics` endpoint is prepared but not implemented
 

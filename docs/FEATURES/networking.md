@@ -54,10 +54,12 @@ BitBarrel provides client libraries in multiple languages:
 | WebSocket protocol | ✅ | ✅ | ✅ | ✅ |
 | CRUD operations | ✅ | ✅ | ✅ | ✅ |
 | Barrel management | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ |
 | Range queries | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | - |
-| Reference traversal | ✅ | ✅ | ✅ | - |
-| Cursor pagination | ✅ | ✅ | ✅ | - |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ |
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ |
+| Context manager | ✅ | - | - | ✅ |
 | Thread-safe | ✅ | ✅ | ✅ | ✅ |
 | Mobile support | - | - | ✅ | - |
 | Web support | - | - | ✅ | - |
@@ -68,7 +70,7 @@ BitBarrel provides client libraries in multiple languages:
 
 **Nim Client**: Standalone nimble package with full feature parity with the server.
 
-**Python Client**: WebSocket-based client with basic CRUD and barrel operations.
+**Python Client**: Feature-complete WebSocket client with support for all protocol commands including barrel config operations, range queries, prefix queries, reference traversal, and context manager support.
 
 ### Testing All Clients
 

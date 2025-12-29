@@ -47,17 +47,19 @@ BitBarrel provides client libraries for multiple programming languages:
 - **[Nim Client](../clients/nim/README.md)** - Full WebSocket protocol implementation
 - **[Go Client](../clients/go/README.md)** - Full WebSocket protocol implementation
 - **[Dart/Flutter Client](../clients/dart/README.md)** - Mobile + Web compatible client
-- **[Python Client](../clients/python/README.md)** - WebSocket client
+- **[Python Client](../clients/python/README.md)** - Feature-complete WebSocket client
 
 | Feature | Nim | Go | Dart/Flutter | Python |
 |---------|-----|----|--------------|--------|
 | WebSocket protocol | ✅ | ✅ | ✅ | ✅ |
 | CRUD operations | ✅ | ✅ | ✅ | ✅ |
 | Barrel management | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ |
 | Range queries | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | - |
-| Reference traversal | ✅ | ✅ | ✅ | - |
-| Cursor pagination | ✅ | ✅ | ✅ | - |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ |
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ |
+| Context manager | ✅ | - | - | ✅ |
 | Mobile support | - | - | ✅ | - |
 | Web support | - | - | ✅ | - |
 

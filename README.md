@@ -8,6 +8,7 @@ BitBarrel is a high-performance key/value storage engine built in Nim, using the
 - **Non-blocking compaction** — writes continue uninterrupted during background compaction.
 - **Graph traversal** with built-in reference model for modeling relationships and detecting cycles.
 - **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, and Python.
+- **JWT authentication** with role-based access control (admin, readwrite, readonly) for secure network access.
 - **Also supports** compression (LZ4/Snappy), TTL, CRC32 checksums, and fast hint-file recovery.
 
 ## Quick Start
@@ -74,14 +75,14 @@ nimble buildDefault
 
 ## Client Libraries
 
-BitBarrel provides client libraries in multiple languages for remote access via WebSocket:
+BitBarrel provides client libraries in multiple languages for remote access via WebSocket, with JWT authentication support:
 
-| Language | Location | Status |
-|----------|----------|--------|
-| Nim | `clients/nim/` | Full WebSocket protocol |
-| Go | `clients/go/` | Full WebSocket protocol |
-| Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
-| Python | `clients/python/` | WebSocket client |
+| Language | Location | Status | Auth Support |
+|----------|----------|--------|--------------|
+| Nim | `clients/nim/` | Full WebSocket protocol | Token in ClientConfig |
+| Go | `clients/go/` | Full WebSocket protocol | Token parameter |
+| Dart/Flutter | `clients/dart/` | Mobile + Web compatible | `authToken` in config |
+| Python | `clients/python/` | Feature-complete WebSocket client | `auth_token` parameter, context manager |
 
 ### Dart/Flutter Example
 
@@ -116,6 +117,41 @@ client.Close()
 ```
 
 See [`clients/go/README.md`](clients/go/README.md) for full documentation.
+
+### JWT Authentication Example
+
+For production deployments, enable JWT authentication on the server:
+
+```bash
+# Initialize config with auth disabled (default)
+bitbarrel init
+
+# Edit config to enable auth and add users
+# bitbarrel.yaml:
+#   auth:
+#     enabled: true
+#     secret: "your-32-char-secret-key"
+#   users:
+#     - username: "admin"
+#       roles:
+#         - "admin"
+#     - username: "app"
+#       roles:
+#         - "readwrite"
+
+# Generate JWT token for a user
+bitbarrel token
+
+# Start server
+bitbarrel serve
+
+# Client connects with JWT token
+var client = newClient(host="localhost", port=9876.Port,
+                        token="eyJhbGciOiJIUzI1...")
+client.connect()
+```
+
+See [`docs/networking-guide.md`](docs/networking-guide.md) for full authentication documentation.
 
 ### Using as a Nim Library
 
@@ -165,7 +201,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Storage | Append‑only log, three index modes, compression (LZ4/Snappy), binary record encoding |
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
-| Network | WebSocket binary protocol (19 commands), REST API, session management, thread‑safe operations |
+| Network | WebSocket binary protocol (20 commands), REST API, JWT authentication, session management, thread‑safe operations |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python client libraries |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
 
@@ -297,6 +333,34 @@ criticalCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
 var cacheDb = openBarrel("cache.db", cacheCfg)
 var generalDb = openBarrel("data.db", generalCfg)
 var criticalDb = openBarrel("critical.db", criticalCfg)
+```
+
+### Network Configuration with JWT Authentication
+
+```nim
+import network/server
+import network/auth as authjwt
+
+# Configure server with JWT authentication
+var serverConfig = ServerConfig(
+  address: "0.0.0.0",
+  port: 9876.Port,
+  dataDir: "./data",
+  workerThreads: 10,
+  auth: authjwt.AuthConfig(
+    enabled: true,
+    secret: "production-secret-key-32-chars-minimum",
+    defaultTokenExpiryHours: 24,
+    users: {
+      "admin": @[authjwt.rAdmin],
+      "readwrite": @[authjwt.rReadWrite],
+      "readonly": @[authjwt.rReadonly]
+    }.toTable()
+  )
+)
+
+var server = newServer(serverConfig)
+server.start()
 ```
 
 ## Documentation & Next Steps
