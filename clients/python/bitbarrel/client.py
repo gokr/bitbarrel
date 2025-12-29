@@ -194,6 +194,38 @@ class Client:
             self._current_barrel = ""
         return True
 
+    def get_barrel_config(self, name: str) -> str:
+        """Get the configuration for a barrel.
+
+        Args:
+            name: Barrel name
+
+        Returns:
+            Barrel configuration as JSON string
+
+        Raises:
+            BarrelNotFoundError: If barrel doesn't exist
+            ServerError: If server reports an error
+        """
+        return self._send_request(Command.GET_BARREL_CONFIG, name, "")
+
+    def set_barrel_config(self, name: str, config: str) -> bool:
+        """Set the configuration for a barrel.
+
+        Args:
+            name: Barrel name
+            config: Configuration as JSON string
+
+        Returns:
+            True on success
+
+        Raises:
+            BarrelNotFoundError: If barrel doesn't exist
+            ServerError: If server reports an error
+        """
+        self._send_request(Command.SET_BARREL_CONFIG, name, config)
+        return True
+
     # Basic key-value operations
 
     def get(self, key: str) -> str:
