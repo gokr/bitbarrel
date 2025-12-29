@@ -5,29 +5,78 @@ This guide provides comprehensive documentation for using the BitBarrel network 
 ## Table of Contents
 
 1. [Getting Started](#getting-started)
-2. [Connection Management](#connection-management)
-3. [Barrel Operations](#barrel-operations)
-4. [Key-Value Operations](#key-value-operations)
-5. [Error Handling](#error-handling)
-6. [Advanced Features](#advanced-features)
-7. [Performance Tuning](#performance-tuning)
-8. [Troubleshooting](#troubleshooting)
+2. [Authentication](#authentication)
+3. [Connection Management](#connection-management)
+4. [Barrel Operations](#barrel-operations)
+5. [Key-Value Operations](#key-value-operations)
+6. [Error Handling](#error-handling)
+7. [Advanced Features](#advanced-features)
+8. [Performance Tuning](#performance-tuning)
+9. [Troubleshooting](#troubleshooting)
 
 ## Getting Started
 
-### Prerequisites
+### Server Setup
 
-**Server Setup:**
 ```bash
-# Start the BitBarrel server
-nimble server
+# Start the BitBarrel server (default: no authentication)
+bitbarrel serve
 
-# Or run directly
-nim c -d:release --mm:orc --threads:on -o:bitbarrel_server src/network/server_main.nim
-./bitbarrel_server
+# Initialize configuration file
+bitbarrel init
+
+# Start with custom config
+bitbarrel -c=myconfig.yaml serve
 ```
 
-The server listens on `localhost:9876` by default.
+### Authentication Setup
+
+BitBarrel supports JWT authentication with role-based access control (RBAC).
+
+**YAML Configuration:**
+```yaml
+# bitbarrel.yaml
+auth:
+  enabled: true
+  secret: "your-32-char-secret-key-minimum"
+  default_token_expiry_hours: 24
+
+users:
+  - username: "admin"
+    roles:
+      - "admin"
+  - username: "readwrite"
+    roles:
+      - "readwrite"
+  - username: "readonly"
+    roles:
+      - "readonly"
+```
+
+**Environment Variables:**
+```bash
+BITBARREL_AUTH_ENABLED=true
+BITBARREL_AUTH_SECRET="your-32-char-secret-key"
+```
+
+**Generate JWT Tokens:**
+```bash
+# Generate tokens for all configured users
+bitbarrel token
+
+# Output example:
+# User: admin
+#   Roles: admin
+#   Token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+### RBAC Roles
+
+| Role | Permissions |
+|------|-------------|
+| `admin` | Full access: barrel management, all data operations |
+| `readwrite` | Read and write: GET, SET, DELETE, EXISTS, COUNT |
+| `readonly` | Read-only: GET, EXISTS, COUNT, range queries |
 
 ### Nim Client Quick Start
 
@@ -61,7 +110,135 @@ echo value
 client.close()
 ```
 
-### Go Client Quick Start (Future)
+### Authenticated Connection
+
+```nim
+import network/client as netclient
+import net
+
+# Create client with JWT token
+var client = netclient.newClient(
+  host = "localhost",
+  port = 9876.Port,
+  token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+)
+
+# Connect with Authorization header
+client.connect()
+
+# Now perform operations (subject to role permissions)
+discard client.useBarrel("mydatabase")
+discard client.set("secure", "data")
+echo client.get("secure")
+
+client.close()
+```
+
+```bash
+# Generate token via CLI
+bitbarrel token
+
+# Use in production (store token in env var or secure config)
+export BITBARREL_TOKEN="eyJhbGciOiJIUzI1NiIs..."
+```
+
+## Authentication
+
+Bearer token authentication provides secure access control for BitBarrel network operations.
+
+### Authentication Flow
+
+```
+Client              Server
+  │                        │
+  │-- Connect (with Authorization: Bearer <token>) -->
+  │                        │
+  │                        │  Verify JWT signature
+  │                        │  Extract username/roles
+  │                        │
+  │<-- Unauthorized (401) or Connected (200) -->
+  │                        │
+  │-- Command (GET) --------->│
+  │                        │  Check role permissions
+  │<-- Response ------------│
+```
+
+### Client Configuration
+
+**Nim Client:**
+```nim
+import network/client as netclient
+import net
+
+var client = netclient.newClient(
+  host = "production.example.com",
+  port = 9876.Port,
+  token = getEnv("BITBARREL_TOKEN")
+)
+
+client.connect()
+```
+
+**Python Client:**
+```python
+from bitbarrel import BitBarrelClient
+
+client = BitBarrelClient(
+    host="production.example.com",
+    port=9876,
+    auth_token=os.getenv("BITBARREL_TOKEN")
+)
+
+client.connect()
+```
+
+**Dart Client:**
+```dart
+import 'package:bitbarrel/bitbarrel.dart';
+
+final config = BitBarrelConfig(
+    host: 'production.example.com',
+    port: 9876,
+    authToken: Platform.environment['BITBARREL_TOKEN']!
+);
+
+final client = BitBarrelClient(config);
+await client.connect();
+```
+
+### Authorization Rules
+
+| Operation | admin | readwrite | readonly |
+|-----------|-------|-----------|----------|
+| CREATE_BARREL, OPEN_BARREL, DROP_BARREL | YES | NO | NO |
+| SET, DELETE | YES | YES | NO |
+| GET, EXISTS, COUNT | YES | YES | YES |
+| RANGE_QUERY, PREFIX_QUERY | YES | YES | YES |
+
+### Common Auth Errors
+
+**Missing Authorization Header:**
+```
+Error: 401 Unauthorized
+Cause: Server requires authentication but client did not send Authorization header
+Fix: Ensure JWT token is provided in client configuration
+```
+
+**Invalid Token:**
+```
+Error: 401 Unauthorized: Invalid token
+Cause: JWT signature verification failed or token expired
+Fix: Generate new token using `bitbarrel token`
+```
+
+**Insufficient Permissions:**
+```
+Error: Response status UNAUTHORIZED
+Cause: User role lacks permission for the requested operation
+Fix: Use a user with appropriate role or update user roles in config
+```
+
+### Go Client Quick Start
 
 ```go
 package main
@@ -69,12 +246,16 @@ package main
 import (
     "fmt"
     "log"
-    "github.com/yourusername/bitbarrel-go"
+    "github.com/gokr/bitbarrel-go/v2"
 )
 
 func main() {
-    // Create client
-    client := bitbarrel.NewClient("localhost", 9876)
+    // Create client with auth token
+    client := bitbarrel.NewClientWithAuth(
+        "localhost",
+        9876,
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    )
 
     // Connect
     if err := client.Connect(); err != nil {
@@ -118,11 +299,19 @@ var client = newClient()
 # With custom host and port
 var client = newClient("192.168.1.100", 9000.Port)
 
+# With JWT token for authentication
+var client = newClient(
+  host = "localhost",
+  port = 9876.Port,
+  token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+)
+
 # With full configuration
 let config = ClientConfig(
   host: "localhost",
   port: 9876.Port,
-  connectTimeout: 5000  # milliseconds
+  connectTimeout: 5000,  # milliseconds
+  token: getEnv("BITBARREL_TOKEN")  # Load from environment
 )
 var client = newClient(config)
 ```
@@ -256,19 +445,38 @@ else:
   echo "Failed to delete barrel (may not exist)"
 ```
 
-### Barrel Configuration (Future)
+### Barrel Configuration
 
+You can get and set barrel configuration at runtime. Configuration changes are persisted to a YAML file alongside the data file.
+
+**Get Configuration:**
 ```nim
-# Note: JSON configuration currently ignored
-# but reserved for future use
-let config = """{
-  "max_size": "10GB",
-  "compression": true,
-  "sync_mode": "buffered"
-}"""
-
-discard client.createBarrel("optimized", config)
+# Get current barrel configuration
+let config = client.getBarrelConfig("mydatabase")
+echo config  # Returns JSON with all config fields
 ```
+
+**Set Configuration (requires admin role):**
+```nim
+# Update specific configuration fields (partial update)
+let configJson = """{"autoCompact": true, "compactThreshold": 0.5}"""
+let updatedConfig = client.setBarrelConfig("mydatabase", configJson)
+echo updatedConfig  # Returns full updated configuration
+```
+
+**Configurable Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| writeBufferSize | int | Write buffer size in bytes |
+| syncMode | string | "none", "sync", or "fsync" |
+| autoCompact | bool | Enable automatic compaction |
+| compactThreshold | float | Compaction trigger threshold (0.0-1.0) |
+| validateCrc | bool | Validate CRC32 on reads |
+| defaultTtl | int | Default TTL in seconds (0 = no expiration) |
+| checkExpirationOnRead | bool | Check expiration when reading |
+| deleteExpiredOnRead | bool | Delete expired records on read |
+
+**Note:** The `mode` field (hash, critbit, hugecritbit) cannot be changed at runtime.
 
 ## Key-Value Operations
 
