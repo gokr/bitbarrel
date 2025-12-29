@@ -6,7 +6,7 @@
 ## To use a different WebSocket implementation, modify this file to replace
 ## the whisky dependency with another library.
 
-import std/[locks, tables, strformat, net, strutils, os]
+import std/[locks, tables, strformat, net, strutils, os, httpclient]
 import whisky
 import protocol
 
@@ -23,14 +23,16 @@ type
     connected*: bool
     seqCounter*: uint32
     currentBarrel*: string
-    pending*: Table[uint32, Response]
+    pending*: Table[uint32, protocol.Response]
     lock: Lock
+    token*: string            ## JWT authorization token
 
   ClientConfig* = object
     ## Configuration for BitBarrel client connections
     host*: string              ## Server host (default: "localhost")
     port*: Port              ## Server port (default: 9876)
     connectTimeout*: int     ## Connection timeout in ms (default: 5000)
+    token*: string            ## JWT authorization token
 
   ClientError* = object of CatchableError
     ## Raised when client operations fail
@@ -49,7 +51,8 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
   ## var config = ClientConfig(
   ##   host: "localhost",
   ##   port: 9876.Port,
-  ##   connectTimeout: 5000
+  ##   connectTimeout: 5000,
+  ##   token: "your-jwt-token"
   ## )
   ## var client = newClient(config)
   ## ```
@@ -61,11 +64,12 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
     connected: false,
     seqCounter: 0,
     currentBarrel: "",
-    pending: initTable[uint32, Response]()
+    pending: initTable[uint32, protocol.Response](),
+    token: config.token
   )
   initLock(result.lock)
 
-proc newClient*(host: string = "localhost", port: Port = 9876.Port): BitBarrelClient =
+proc newClient*(host: string = "localhost", port: Port = 9876.Port, token: string = ""): BitBarrelClient =
   ## Create client with default config
   ##
   ## **Example:**
@@ -75,8 +79,11 @@ proc newClient*(host: string = "localhost", port: Port = 9876.Port): BitBarrelCl
   ##
   ## # Create with custom host
   ## var client2 = newClient("192.168.1.100", 8080.Port)
+  ##
+  ## # Create with auth token
+  ## var client3 = newClient("localhost", 9876.Port, "your-jwt-token")
   ## ```
-  newClient(ClientConfig(host: host, port: port))
+  newClient(ClientConfig(host: host, port: port, token: token))
 
 proc connect*(client: var BitBarrelClient) =
   ## Connect to the server
@@ -91,13 +98,22 @@ proc connect*(client: var BitBarrelClient) =
   ##
   ## # Or let operations auto-connect
   ## client.createBarrel("mydb")  # Connects automatically
+  ##
+  ## # With authentication
+  ## var client = newClient("localhost", 9876.Port, "your-jwt-token")
+  ## client.connect()
   ## ```
   if client.connected:
     return  # Already connected
 
   let url = fmt"ws://{client.host}:{client.port}/ws"
   try:
-    client.ws = newWebSocket(url)
+    if client.token.len > 0:
+      var headers = newHttpHeaders()
+      headers["Authorization"] = "Bearer " & client.token
+      client.ws = newWebSocket(url, extraHeaders=headers)
+    else:
+      client.ws = newWebSocket(url)
 
     # Wait for welcome message
     const maxAttempts = 50  # 50 * 100ms = 5 seconds
@@ -137,7 +153,7 @@ proc close*(client: var BitBarrelClient) {.raises: [].} =
       discard
     client.connected = false
 
-proc sendAndWait*(client: var BitBarrelClient, req: Request): Response =
+proc sendAndWait*(client: var BitBarrelClient, req: Request): protocol.Response =
   ## Send request and wait for response
   var mutableReq = req
   mutableReq.seq = client.seqCounter
