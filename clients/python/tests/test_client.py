@@ -259,16 +259,16 @@ class TestBarrelConfig:
         finally:
             client.drop_barrel(name)
 
-    @pytest.mark.skip(reason="Server does not implement SET_BARREL_CONFIG yet")
     def test_set_barrel_config(self, client):
         """Test setting barrel configuration."""
         name = f"test_config_set_{int(time.time() * 1000)}"
-        client.create_barrel(name)
+        client.create_barrel(name, '{"mode": "critbit"}')
         try:
-            new_config = '{"mode": "critbit"}'
+            # Try changing a mutable option (can't change mode at runtime)
+            new_config = '{"autoCompact": false}'
             client.set_barrel_config(name, new_config)
             retrieved = client.get_barrel_config(name)
-            assert "critbit" in retrieved
+            assert '"autoCompact": false' in retrieved or '"autoCompact": false' in retrieved.lower()
         finally:
             client.drop_barrel(name)
 
