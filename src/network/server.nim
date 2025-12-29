@@ -895,7 +895,20 @@ proc start*(server: BitBarrelServer) =
   # Ensure data directory exists
   createDir(server.config.dataDir)
 
-  server.mummyServer.serve(server.config.port, server.config.address)
+  try:
+    server.mummyServer.serve(server.config.port, server.config.address)
+  except MummyError as e:
+    if e.msg.contains("Address already in use"):
+      echo ""
+      echo "Error: Port ", server.config.port, " is already in use."
+      echo "Another BitBarrel server or process may be running on this port."
+      echo ""
+      echo "Solutions:"
+      echo "  1. Stop the other process using: lsof -i :", server.config.port
+      echo "  2. Use a different port: bitbarrel -p=9877 serve"
+      quit(1)
+    else:
+      raise
 
 proc stop*(server: BitBarrelServer) =
   ## Gracefully stop the server
