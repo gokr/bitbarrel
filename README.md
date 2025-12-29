@@ -42,7 +42,7 @@ nimble install
 nim c -r examples/basic_demo.nim
 
 # Run detailed demo with stats
-nim c -r examples/simple_kv_demo.nim
+nim c -r examples/demo.nim
 
 # Run recovery tests
 nimble testRecovery
