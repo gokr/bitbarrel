@@ -1027,7 +1027,7 @@ when isMainModule:
 - Read the [Protocol Specification](./PROTOCOL.md) for wire format details
 - Check out the [Architecture Guide](./network-architecture.md) for design details
 - Explore the Go client implementation (coming soon)
-- Run the examples in the `examples/network/` directory
+- Run the examples in the `demos/network/` directory
 
 ## Support
 

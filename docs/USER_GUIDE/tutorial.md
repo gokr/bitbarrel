@@ -103,58 +103,60 @@ This BitBarrel uses the Bitcask storage model:
 
 ## Running Demos
 
-### Basic Demo (examples/basic_demo.nim)
+### Basic Demo (demos/basic_demo.nim)
 
-Demonstrates CRUD operations:
+Demonstrates CRUD operations using the high-level Barrel API:
 
 ```bash
-nim c -r examples/basic_demo.nim
+nim c -r demos/basic_demo.nim
 ```
 
 **What it does:**
-- Creates a database
-- Stores 3 user records
-- Reads them back
-- Updates a record
-- Deletes a record (using tombstone)
-- Shows final statistics
+- Creates a database with `openBarrel()`
+- Stores records using `barrel.set(key, value)`
+- Reads data using `barrel.get(key)`
+- Updates records using `barrel.set()`
+- Deletes records using `barrel.delete(key)`
+- Checks existence with `barrel.exists(key)`
+- Uses TTL (time-to-live) for expiring keys
+- Tests persistence by closing and reopening
 
 **Expected output:**
 ```
-╔════════════════════════════════════════════════════════════╗
-║   BitBarrel Demo: Basic CRUD Operations                         ║
-╚════════════════════════════════════════════════════════════╝
+╔════════════════════════════════════════════╗
+║   BitBarrel Demo: Basic CRUD Operations   ║
+╚════════════════════════════════════════════╝
 
 📁 Opening database...
+   ✓ Database opened successfully
 
 ✍️  Storing user data...
    SET user:1 = Alice Johnson
    SET user:2 = Bob Smith
    SET user:3 = Charlie Brown
+   ✓ Stored 3 keys
 
 📖 Reading user data...
-   ✅ GET user:1 = Alice Johnson
-   ✅ GET user:2 = Bob Smith
-   ✅ GET user:3 = Charlie Brown
-
-🔄 Updating user:1...
-   SET user:1 = Alice Smith-Johnson
-   ✅ Verified: user:1 = Alice Smith-Johnson
-
-🗑️  Deleting user:2...
-   SET user:2 = (tombstone)
-   ✅ Verified: user:2 is deleted (tombstone)
-
-✨ Demo completed successfully!
-   Total keys in database: 3
+   ✓ GET user:1 = Alice Johnson
+   ✓ GET user:2 = Bob Smith
+   ✓ GET user:3 = Charlie Brown
+...
 ```
 
-### Original Demo (examples/demo.nim)
+### Performance Demo (demos/performance_demo.nim)
 
-More detailed demonstration with file statistics:
+Demonstrates performance tuning options:
 
 ```bash
-nim c -r examples/demo.nim
+nim c -r demos/performance_demo.nim
+```
+
+### Advanced Demo (demos/advanced_demo.nim)
+
+Demonstrates advanced features like barrel modes and compression:
+
+```bash
+nim c -r demos/advanced_demo.nim
 ```
 
 ## Benchmarking
@@ -284,34 +286,42 @@ Avg read latency:  ~0.009 ms
 
 ### Compression
 
-BitBarrel supports transparent compression of record values to reduce storage and I/O overhead:
+BitBarrel includes transparent LZ4 compression by default to reduce storage and I/O overhead:
 
 #### Supported Algorithms
-- **LZ4** (recommended): ~500 MB/s compression, 2.1x compression ratio
+- **LZ4** (default): ~500 MB/s compression, 2.1x compression ratio
 - **Snappy**: ~250 MB/s compression, 1.7x compression ratio, more robust error handling
 
 #### Building with Compression
 
 ```bash
-# Build with LZ4 compression
+# LZ4 is the default - no flags needed
+nim c -d:release src/bitbarrel.nim
+
+# Or explicitly specify LZ4
 nim c -d:lz4Compression -d:release src/bitbarrel.nim
 
 # Build with Snappy compression
 nim c -d:snappyCompression -d:release src/bitbarrel.nim
 
+# Build without compression
+nim c -d:noCompression -d:release src/bitbarrel.nim
+
 # Or use nimble tasks:
-nimble buildLz4    # For LZ4
+nimble buildLz4    # LZ4 (default)
 nimble buildSnappy # For Snappy
+nimble buildNoCompression # No compression
+nimble build       # Default (LZ4)
 ```
 
 #### Configuration
 
-Enable compression in your configuration file:
+Compression is enabled by default. Configure in your YAML file:
 
 ```yaml
 storage:
   compression:
-    enabled: true      # Enable/disable
+    enabled: true      # Enabled by default with LZ4
     threshold: 256      # Min size to compress (bytes)
     level: "default"    # "fast", "default", or "best"
 ```
@@ -773,7 +783,7 @@ ulimit -n 65536
 Compile with debug symbols and runtime checks:
 
 ```bash
-nim c -d:debug -r examples/basic_demo.nim
+nim c -d:debug -r demos/basic_demo.nim
 ```
 
 This enables:

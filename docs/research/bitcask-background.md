@@ -162,9 +162,11 @@ cfg.compactMaxFiles = 4     # Compact up to 4 files at once
 BitBarrel supports LZ4 and Snappy compression for large values, reducing storage requirements by ~1.7-2.1x depending on data characteristics.
 
 ```bash
-# Build with compression
-nimble buildLz4     # LZ4 compression (recommended)
+# Build with compression (LZ4 is default)
+nimble build        # LZ4 compression (default, recommended)
+nimble buildLz4     # LZ4 compression (explicit)
 nimble buildSnappy  # Snappy compression
+nimble buildNoCompression  # No compression
 ```
 
 ### Thread Safety and Data Integrity
@@ -498,8 +500,8 @@ discard cache.set(key, expensiveComputation())  # Fast but volatile
 ### Compression for Large Values
 
 ```nim
-# Build with LZ4 for large documents
-nimble buildLz4
+# Build with LZ4 for large documents (LZ4 is default)
+nimble build
 
 var db = openBarrel("documents.db")
 

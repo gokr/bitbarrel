@@ -89,9 +89,10 @@ nim c -d:release -r bench/stress_test.nim
 - `nimble benchNetworkComprehensive` - Network benchmark (100K ops, 10 clients)
 
 ### Compression Builds
-- `nimble buildDefault` - Build without compression
-- `nimble buildLz4` - Build with LZ4 compression
+- `nimble buildLz4` - Build with LZ4 compression (default)
 - `nimble buildSnappy` - Build with Snappy compression
+- `nimble buildNoCompression` - Build without compression
+- `nimble build` - Build with default settings (LZ4)
 
 ### Configurations Tested
 

@@ -1,10 +1,10 @@
 # Compression Support in BitBarrel
 
-BitBarrel supports configurable compression for record values to reduce storage size and I/O bandwidth. The implementation provides compile-time selection between LZ4 and Snappy compression algorithms.
+BitBarrel supports configurable compression for record values to reduce storage size and I/O bandwidth. The implementation provides compile-time selection between LZ4, Snappy, or no compression.
 
 ## Overview
 
-- **Optional**: Compression is completely optional - BitBarrel works fine without it
+- **LZ4 by default**: Enabled automatically, can be disabled if needed
 - **Compile-time selection**: Choose your compression algorithm at build time
 - **Selective compression**: Only values above a configurable threshold are compressed
 - **Backward compatible**: Can read data files created without compression
@@ -42,28 +42,34 @@ storage:
 Build with your preferred algorithm:
 
 ```bash
-# Build with LZ4 compression
+# LZ4 is the default - no flags needed
+nim c -d:release src/bitbarrel.nim
+
+# Or explicitly specify LZ4
 nim c -d:lz4Compression -d:release src/bitbarrel.nim
 
 # Build with Snappy compression
 nim c -d:snappyCompression -d:release src/bitbarrel.nim
 
-# Build without compression (default)
-nim c -d:release src/bitbarrel.nim
+# Build without compression (explicit opt-out)
+nim c -d:noCompression -d:release src/bitbarrel.nim
 ```
 
 ### Nimble Tasks
 Use the provided nimble tasks:
 
 ```bash
-# Build with LZ4
+# Build with LZ4 (default)
 nimble buildLz4
+
+# Or simply
+nimble build
 
 # Build with Snappy
 nimble buildSnappy
 
 # Build without compression
-nimble buildDefault
+nimble buildNoCompression
 ```
 
 ## Dependencies
@@ -129,18 +135,24 @@ To enable compression on an existing BitBarrel deployment:
 ## Troubleshooting
 
 ### Compression Not Working
-- Check that compression is enabled in config
-- Verify threshold is appropriate for your data
-- Values smaller than threshold won't be compressed
+- LZ4 compression is enabled by default in BitBarrel
+- Check that compression is enabled in config (`storage.compression.enabled: true`)
+- Verify threshold is appropriate for your data (values smaller than threshold won't be compressed)
+- For debugging, check compile-time algorithm selection:
+  ```bash
+  nim c -r -d:lz4Compression --path:src demos/advanced_demo.nim
+  ```
 
 ### Build Errors with LZ4
-- Install liblz4-dev system package
-- Check futhark is installed (`nimble install futhark`)
+- Install liblz4-dev system package: `apt-get install liblz4-dev` (Ubuntu/Debian)
+- Check futhark is installed: `nimble install futhark`
+- Verify Nim version is 2.0 or higher
 
 ### Performance Issues
-- Larger threshold reduces CPU overhead
-- Use LZ4 for better performance
+- Larger threshold reduces CPU overhead (e.g., 512 or 1024 bytes)
+- LZ4 is the default and recommended algorithm for best performance
 - Monitor compression ratios - inefficient compression wastes CPU
+- For incompressible data (JPEG, MP3, etc.), use `-d:noCompression`
 
 ## API Reference
 
@@ -167,12 +179,15 @@ if shouldCompress(data, threshold):
 Run compression tests:
 
 ```bash
-# Test without compression
+# Test with LZ4 (default)
 nim c -r --path:src tests/test_compression.nim
 
-# Test with LZ4
-nim c -r --path:src  -d:lz4Compression tests/test_compression.nim
+# Test with LZ4 (explicit)
+nim c -r --path:src -d:lz4Compression tests/test_compression.nim
 
 # Test with Snappy
 nim c -r --path:src -d:snappyCompression tests/test_compression.nim
+
+# Test without compression
+nim c -r --path:src -d:noCompression tests/test_compression.nim
 ```

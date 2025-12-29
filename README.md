@@ -9,7 +9,7 @@ BitBarrel is a high-performance key/value storage engine built in Nim, using the
 - **Graph traversal** with built-in reference model for modeling relationships and detecting cycles.
 - **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, and Python.
 - **JWT authentication** with role-based access control (admin, readwrite, readonly) for secure network access.
-- **Also supports** compression (LZ4/Snappy), TTL, CRC32 checksums, and fast hint-file recovery.
+- **LZ4 compression by default** (with Snappy as alternative), TTL, CRC32 checksums, and fast hint-file recovery.
 
 ## Quick Start
 
@@ -39,13 +39,13 @@ db.close()
 nimble install
 
 # Run basic CRUD demo
-nim c -r examples/basic_demo.nim
+nim c -r demos/basic_demo.nim
 
-# Run detailed demo with stats
-nim c -r examples/simple_kv_demo.nim
+# Run performance demo
+nim c -r demos/performance_demo.nim
 
-# Run recovery tests
-nimble test-recovery
+# Run advanced features demo
+nim c -r demos/advanced_demo.nim
 
 # Run all tests
 nimble test
@@ -63,14 +63,17 @@ nimble stress
 ### Build with compression
 
 ```bash
-# Build with LZ4 compression (recommended)
+# Build with LZ4 compression (default)
 nimble buildLz4
+
+# Or simply (LZ4 is the default)
+nimble build
 
 # Build with Snappy compression
 nimble buildSnappy
 
-# Build without compression (default)
-nimble buildDefault
+# Build without compression
+nimble buildNoCompression
 ```
 
 ## Client Libraries
@@ -198,7 +201,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 
 | Category | Highlights |
 |----------|------------|
-| Storage | Append‑only log, three index modes, compression (LZ4/Snappy), binary record encoding |
+| Storage | Append‑only log, three index modes, compression (LZ4 by default, Snappy optional), binary record encoding |
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (19 commands), REST API, JWT authentication, session management, thread‑safe operations |
@@ -374,7 +377,7 @@ server.start()
 ### Getting Started
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**: Quick setup guide
-- **[examples/README.md](examples/README.md)**: Demo documentation
+- **[demos/README.md](demos/README.md)**: Demo documentation
 
 ### Test Suite
 - **[tests/README.md](tests/README.md)**: Complete test suite guide
