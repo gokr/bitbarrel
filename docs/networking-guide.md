@@ -179,32 +179,7 @@ var client = netclient.newClient(
 client.connect()
 ```
 
-**Python Client:**
-```python
-from bitbarrel import BitBarrelClient
-
-client = BitBarrelClient(
-    host="production.example.com",
-    port=9876,
-    auth_token=os.getenv("BITBARREL_TOKEN")
-)
-
-client.connect()
-```
-
-**Dart Client:**
-```dart
-import 'package:bitbarrel/bitbarrel.dart';
-
-final config = BitBarrelConfig(
-    host: 'production.example.com',
-    port: 9876,
-    authToken: Platform.environment['BITBARREL_TOKEN']!
-);
-
-final client = BitBarrelClient(config);
-await client.connect();
-```
+**Note:** JWT authentication is currently only supported in the Nim client. Go, Python, and Dart clients do not yet have built-in auth support.
 
 ### Authorization Rules
 
@@ -246,16 +221,12 @@ package main
 import (
     "fmt"
     "log"
-    "github.com/gokr/bitbarrel-go/v2"
+    "github.com/gokr/bitbarrel-go"
 )
 
 func main() {
-    // Create client with auth token
-    client := bitbarrel.NewClientWithAuth(
-        "localhost",
-        9876,
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-    )
+    // Create client
+    client := bitbarrel.NewClient("localhost", 9876)
 
     // Connect
     if err := client.Connect(); err != nil {
