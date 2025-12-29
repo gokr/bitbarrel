@@ -243,3 +243,47 @@ class TestRangeQueries:
 
         count = client.range_count("user:000", "user:999")
         assert count == 3
+
+
+class TestBarrelConfig:
+    """Test barrel configuration operations."""
+
+    def test_get_barrel_config(self, client):
+        """Test getting barrel configuration."""
+        name = f"test_config_{int(time.time() * 1000)}"
+        client.create_barrel(name, '{"mode": "critbit"}')
+        try:
+            config = client.get_barrel_config(name)
+            assert isinstance(config, str)
+            assert "critbit" in config
+        finally:
+            client.drop_barrel(name)
+
+    @pytest.mark.skip(reason="Server does not implement SET_BARREL_CONFIG yet")
+    def test_set_barrel_config(self, client):
+        """Test setting barrel configuration."""
+        name = f"test_config_set_{int(time.time() * 1000)}"
+        client.create_barrel(name)
+        try:
+            new_config = '{"mode": "critbit"}'
+            client.set_barrel_config(name, new_config)
+            retrieved = client.get_barrel_config(name)
+            assert "critbit" in retrieved
+        finally:
+            client.drop_barrel(name)
+
+
+class TestContextManager:
+    """Test context manager usage."""
+
+    def test_context_manager(self):
+        """Test using client as context manager."""
+        name = f"test_ctx_{int(time.time() * 1000)}"
+        with Client() as client:
+            assert client.connected
+            client.create_barrel(name)
+            client.use_barrel(name)
+            client.set("test", "value")
+            assert client.get("test") == "value"
+        # Connection should be closed after exiting context
+        assert not client.connected
