@@ -45,7 +45,7 @@ BitBarrel supports three different index modes to optimize for different use cas
 ### bmHash: Hash Table Mode (Default)
 - Uses `Table[string, KeyDirEntry]` for O(1) lookups
 - Simple hash map, no ordering guarantees
-- Memory overhead: ~50 bytes per key
+- Memory overhead: ~40 bytes per key
 - Best for: General-purpose KV, caching, session storage
 
 ### bmCritBit: Sorted Mode
@@ -184,7 +184,7 @@ After Compaction:
 - *Latency depends on sync mode, buffer size, and workload*
 
 ### Resource Usage
-- **Memory per key**: ~50 bytes (KeyDir overhead)
+- **Memory per key**: ~40 bytes (KeyDir overhead)
 - **Recovery speed**: 68K+ keys/sec (with hint files)
 - **Dataset size**: Limited by available RAM for active keys (all keys must be in KeyDir)
 

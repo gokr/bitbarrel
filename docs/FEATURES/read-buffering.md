@@ -96,7 +96,7 @@ Typical hit rates depend on workload:
 - **Mixed workloads**: 50-70% for typical database usage
 
 ### Memory Usage
-- **Per entry overhead**: ~50 bytes metadata + cached data size
+- **Per entry overhead**: ~40 bytes metadata + cached data size
 - **Typical cache size**: 256 MB - 2 GB (configurable)
 - **Eviction threshold**: 90% of max memory triggers LRU cleanup
 

@@ -243,7 +243,7 @@ Client                              Server
 ### Server Memory
 - Session storage: ~100 bytes per connection
 - Barrel registry: ~50 bytes per barrel entry
-- KeyDir: 8 bytes per key entry (pointer + size)
+- KeyDir: ~40 bytes per key entry (24-byte struct + table overhead)
 - No per-operation allocations in hot path
 
 ## Performance Considerations

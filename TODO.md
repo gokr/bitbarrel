@@ -48,7 +48,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - **Writes**: ~250K ops/sec (None sync), ~245K ops/sec (Sync), ~11.5K ops/sec (Fsync)
 - **Reads**: ~180K ops/sec
 - **Recovery**: 40,000+ keys/sec with hint files
-- **Memory**: ~50 bytes per key overhead
+- **Memory**: ~40 bytes per key overhead
 - **Stability**: Stress-tested with 25K+ keys
 - **HugeBarrel**: Scales to 100K+ entries per range partition
 
@@ -377,7 +377,7 @@ For documentation on current features:
 - Write throughput: ~250K ops/sec (None sync)
 - Read throughput: ~180K ops/sec
 - Recovery time: <1s with hint files
-- Memory overhead: ~50 bytes per key
+- Memory overhead: ~40 bytes per key
 
 **Recent Refactoring (Dec 2025):**
 - Test suite reorganized into hierarchical directories (testament-based discovery)

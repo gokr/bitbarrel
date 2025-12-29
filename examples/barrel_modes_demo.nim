@@ -35,7 +35,7 @@ proc demoNormalMode() =
   echo "Use case: Session storage, caching, general key-value operations"
   echo "Characteristics:"
   echo "  • O(1) lookup time complexity"
-  echo "  • ~50 bytes memory per key"
+  echo "  • ~40 bytes memory per key"
   echo "  • Keys are not ordered"
   echo "  • Fastest for simple get/set operations"
   echo ""

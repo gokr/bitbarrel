@@ -427,7 +427,7 @@ The default mode uses a hash table for O(1) lookups. This is ideal for simple ke
 
 **Key characteristics:**
 - **Lookup**: O(1) time complexity
-- **Memory**: ~50 bytes per key
+- **Memory**: ~40 bytes per key
 - **Ordering**: None - keys are not sorted
 
 ```nim

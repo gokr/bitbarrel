@@ -19,7 +19,7 @@ The name comes from Bitcask terminology—they provide "hints" about where keys 
 | Aspect | Hint Files | Data Files |
 |--------|------------|------------|
 | Content | Key metadata only | Full records (keys + values) |
-| Size | ~50 bytes per key | Full record size (key + value + overhead) |
+| Size | ~40 bytes per key | Full record size (key + value + overhead) |
 | Purpose | Fast index rebuild | Actual data storage |
 | Recovery speed | 68K+ keys/sec | 4K-8K keys/sec (full scan) |
 | Generated | After compaction | All writes go here |
@@ -180,7 +180,7 @@ The recovery engine (`src/storage/recovery.nim`) handles both version 1 and vers
 - **Speedup**: 5-10× faster recovery
 
 ### Space Overhead
-- **Per key**: ~50 bytes (vs. full record which can be kilobytes)
+- **Per key**: ~40 bytes (vs. full record which can be kilobytes)
 - **v2 header overhead**: +16 bytes per hint file (for incremental recovery)
 - **Typical ratio**: Hint files are 1-5% the size of data files
 

@@ -257,8 +257,8 @@ proc printPerformanceInsights*() =
   info("  • Oversized batches increase individual operation latency")
 
   echo "\n✅ Memory Trade-offs:"
-  info("  • KeyDir overhead: ~50 bytes per key")
-  info("  • 1 million keys ≈ 500MB memory")
+  info("  • KeyDir overhead: ~40 bytes per key")
+  info("  • 1 million keys ≈ 400MB memory")
   info("  • Recommendation: 1-5 million keys as practical limit")
 
   echo "\n✅ Disk Usage:"

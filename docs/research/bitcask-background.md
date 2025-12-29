@@ -57,7 +57,7 @@ let session = db.get("session:abc123")
 ```
 
 **Use case**: Session storage, caching, general-purpose KV operations
-**Performance**: O(1) lookup, ~50 bytes per key memory overhead
+**Performance**: O(1) lookup, ~40 bytes per key memory overhead
 
 #### bmCritBit: Sorted with Range Queries
 
@@ -336,7 +336,7 @@ graph LR
     subgraph "bmNormal<br/>(Hash Table)"
         direction TB
         N1[O(1) Lookup]
-        N2[~50 bytes/key]
+        N2[~40 bytes/key]
         N3[No ordering]
     end
 
@@ -370,7 +370,7 @@ graph LR
 - Simple get/set/delete operations
 - O(1) lookups via hash index
 - Optional durability levels
-- Minimal memory footprint (~50 bytes/key)
+- Minimal memory footprint (~40 bytes/key)
 - Predictable, consistent performance
 
 **When to choose BitBarrel**: High-throughput KV workloads where SQL complexity isn't needed—session storage, simple user data, caching layers, event logs. For complex queries and relationships, SQL remains the better choice.

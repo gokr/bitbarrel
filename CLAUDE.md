@@ -255,7 +255,7 @@ BitBarrel supports three indexing modes, each optimized for different use cases:
 
 #### bmHash (Default)
 - Hash table index with O(1) lookups
-- ~50 bytes memory per key
+- ~40 bytes memory per key
 - Keys not ordered
 - Fastest for simple get/set operations
 - **Limitation**: No range query support
