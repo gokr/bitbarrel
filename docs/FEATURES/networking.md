@@ -9,11 +9,11 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 ### Binary Protocol (`src/network/protocol.nim`)
 - Request/Response message structures
 - Commands (19 total):
-  - Data: GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS, PING
-  - Barrel: CREATE_BARREL, OPEN_BARREL, USE_BARREL, CLOSE_BARREL, LIST_BARRELS, DROP_BARREL
-  - Config: GET_BARREL_CONFIG, SET_BARREL_CONFIG
-  - Query: TRAVERSE, RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT
-- Status codes: OK, NOT_FOUND, ERROR, INVALID, NO_BARREL, BARREL_EXISTS, BARREL_NOT_FOUND
+  - Data: GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS, PING (7)
+  - Barrel: CREATE_BARREL, OPEN_BARREL, USE_BARREL, CLOSE_BARREL, LIST_BARRELS, DROP_BARREL (6)
+  - Config: GET_BARREL_CONFIG, SET_BARREL_CONFIG (2)
+  - Query: TRAVERSE, RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT (4)
+- Status codes: OK, NOT_FOUND, ERROR, INVALID, NO_BARREL, BARREL_EXISTS, BARREL_NOT_FOUND, UNAUTHORIZED
 - Big-endian encoding for cross-platform compatibility
 - Size limits: 64KB max key, 32MB max value
 
@@ -59,6 +59,7 @@ BitBarrel provides client libraries in multiple languages:
 | Prefix queries | ✅ | ✅ | ✅ | ✅ |
 | Reference traversal | ✅ | ✅ | ✅ | ✅ |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ |
 | Context manager | ✅ | - | - | ✅ |
 | Thread-safe | ✅ | ✅ | ✅ | ✅ |
 | Mobile support | - | - | ✅ | - |
@@ -124,11 +125,21 @@ HEAD   /barrels/{name}/kv/{key}       # Check if key exists
 ### Server
 ```nim
 import network/server
+import network/auth as authjwt
 
 let config = ServerConfig(
   address: "0.0.0.0",
   port: 9876.Port,
-  dataDir: "./data"
+  dataDir: "./data",
+  auth: authjwt.AuthConfig(
+    enabled: true,
+    secret: "production-secret-key-32-chars-minimum",
+    users: {
+      "admin": @[authjwt.rAdmin],
+      "app": @[authjwt.rReadWrite],
+      "readonly": @[authjwt.rReadonly]
+    }.toTable()
+  )
 )
 var server = newServer(config)
 server.start()
@@ -138,7 +149,11 @@ server.start()
 ```nim
 import network/client
 
-var client = newClient("localhost", 9876.Port)
+var client = newClient(
+  host = "localhost",
+  port = 9876.Port,
+  token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+)
 client.connect()
 
 # Barrel operations
@@ -157,7 +172,13 @@ client.close()
 ```dart
 import 'package:bitbarrel/bitbarrel.dart';
 
-final client = BitBarrelClient.localhost();
+final config = BitBarrelConfig(
+  host: 'localhost',
+  port: 9876,
+  authToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+);
+
+final client = BitBarrelClient(config);
 await client.connect();
 await client.createBarrel('mydb');
 await client.useBarrel('mydb');
@@ -170,9 +191,13 @@ await client.close();
 ```go
 package main
 
-import "github.com/tankfeed/bitbarrel-go"
+import "github.com/gokr/bitbarrel-go"
 
-client := bitbarrel.NewClient("localhost", 9876)
+client := bitbarrel.NewClientWithAuth(
+  "localhost",
+  9876,
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+)
 client.Connect()
 client.CreateBarrel("mydb", "")
 client.UseBarrel("mydb")
@@ -187,14 +212,18 @@ client.Close()
 2. **No reconnection**: Client does not auto-reconnect on connection loss
 3. **Large frames**: 64-bit WebSocket frame lengths not supported
 4. **Concurrent requests**: Client operations are serialized (no request pipelining)
-5. **Configuration**: JSON config parsing for CREATE_BARREL not yet implemented
+5. **CREATE_BARREL config**: JSON config for CREATE_BARREL creates with defaults (use SET_BARREL_CONFIG after)
 6. **Pagination**: LIST_KEYS returns all keys (no pagination support)
+7. **Token refresh**: JWT tokens don't auto-refresh; clients must handle token expiry
+8. **Token storage**: JWT secret must be stored securely; lost secret invalidates all tokens
 
 ## Architecture Notes
 
 - Server uses MummyX's TaskPools for concurrent request handling
-- Each WebSocket connection has its own session with current barrel tracking
+- Each WebSocket connection has its own session with current barrel tracking and authentication state
 - BarrelRegistry provides thread-safe barrel lifecycle management
+- Server verifies JWT tokens in WebSocket upgrade handler using HS256 signature
+- Authorization checks are performed per-command based on user roles (admin, readwrite, readonly) before execution
 - No CRC32 in protocol (TCP/WebSocket provides integrity)
 
 ## Testing
