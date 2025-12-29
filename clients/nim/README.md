@@ -237,11 +237,6 @@ Run examples:
 nim c -r examples/basic_usage.nim
 ```
 
-## Requirements
-
-- Nim >= 2.0.0
-- whisky (WebSocket library)
-- Running BitBarrel server for integration tests
 
 ## License
 

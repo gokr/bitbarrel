@@ -8,8 +8,8 @@ srcDir        = "src"
 
 # Dependencies
 
-requires "nim >= 2.0.0"
-requires "whisky >= 0.1.0"
+requires "nim >= 2.2.6"
+requires "https://github.com/gokr/whisky"     # Websocket client library
 
 # Tasks
 

@@ -9,8 +9,12 @@
 ## Run integration tests:
 ##   nim c -r -d:integration tests/test_client.nim
 
-import std/[unittest, net, strformat, times, random]
+import std/[unittest, net, strformat, times, random, strutils]
 import ../src/bitbarrel_client
+
+const 
+  TestServerHost = "localhost"
+  TestServerPort = 9876.Port
 
 # Helper to generate unique barrel names
 proc uniqueBarrelName(prefix: string): string =
