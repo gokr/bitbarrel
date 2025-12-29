@@ -42,6 +42,7 @@ type
     statusNoBarrel = 0x04
     statusBarrelExists = 0x05
     statusBarrelNotFound = 0x06
+    statusUnauthorized = 0x07
 
   Request* = object
     command*: Command
@@ -125,8 +126,7 @@ proc decodeRequest*(data: string): Request =
   let cmdByte = readByte(data, pos)
   # Validate command byte - must include all Command enum values
   if cmdByte notin {0x01'u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09,  # Data ops + ping
-                     0x10, 0x11, 0x12, 0x13, 0x14, 0x15,         # Barrel ops
-                     0x16, 0x17,                                 # Config ops
+                     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,  # Barrel ops + config
                      0x20,                                       # Traverse
                      0x21, 0x22, 0x23}:                          # Range queries
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
@@ -161,7 +161,7 @@ proc decodeResponse*(data: string): Response =
   var pos = 0
 
   let statusByte = readByte(data, pos)
-  if statusByte > byte(ord(high(ResponseStatus))):
+  if statusByte > byte(0x07):
     raise newException(ProtocolError, "Invalid status: 0x" & statusByte.toHex)
 
   result.status = ResponseStatus(statusByte)
@@ -433,6 +433,10 @@ proc invalidResponse*(seq: uint32, message: string = ""): Response =
   ## Create an invalid request response.
   newResponse(statusInvalid, seq, message)
 
+proc unauthorizedResponse*(seq: uint32, message: string = ""): Response =
+  ## Create an unauthorized response.
+  newResponse(statusUnauthorized, seq, message)
+
 
 proc `$`*(cmd: Command): string =
   ## String representation of command.
@@ -467,6 +471,7 @@ proc `$`*(status: ResponseStatus): string =
   of statusNoBarrel: "NO_BARREL"
   of statusBarrelExists: "BARREL_EXISTS"
   of statusBarrelNotFound: "BARREL_NOT_FOUND"
+  of statusUnauthorized: "UNAUTHORIZED"
 
 proc `$`*(req: Request): string =
   ## String representation of request.
