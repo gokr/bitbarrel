@@ -1,29 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:watch_it/watch_it.dart';
 import '../services/connection_service.dart';
 import '../theme/app_theme.dart';
 
 /// Connection screen for connecting to BitBarrel server
-class ConnectionScreen extends StatefulWidget {
-  const ConnectionScreen({super.key});
-
-  @override
-  State<ConnectionScreen> createState() => _ConnectionScreenState();
-}
-
-class _ConnectionScreenState extends State<ConnectionScreen> with WatchItStatefulWidgetMixin {
+class ConnectionScreen extends StatelessWidget with WatchItMixin {
   final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController(text: 'localhost');
   final _portController = TextEditingController(text: '9876');
 
-  @override
-  void dispose() {
+  void _disposeControllers() {
     _hostController.dispose();
     _portController.dispose();
-    super.dispose();
   }
 
-  Future<void> _connect() async {
+  Future<void> _connect(BuildContext context) async {
     if (_formKey.currentState!.validate()) {
       final host = _hostController.text;
       final port = int.parse(_portController.text);
@@ -31,12 +23,12 @@ class _ConnectionScreenState extends State<ConnectionScreen> with WatchItStatefu
       try {
         await di<ConnectionService>().connect(host, port);
 
-        if (mounted && di<ConnectionService>().connected) {
+        if (di<ConnectionService>().connected) {
           // Navigate to dashboard
-          Navigator.of(context).pushReplacementNamed('/dashboard');
+          context.go('/dashboard');
         }
       } catch (e) {
-        if (mounted) {
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to connect: $e'),
@@ -52,7 +44,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> with WatchItStatefu
   Widget build(BuildContext context) {
     final isConnected = watchValue((ConnectionService s) => s.isConnected);
     final isConnecting = watchValue((ConnectionService s) => s.isConnecting);
-    final error = watchValue((ConnectionService s) => s.error.value);
+    final error = watchValue((ConnectionService s) => s.error);
 
     return Scaffold(
       body: Container(
@@ -197,7 +189,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> with WatchItStatefu
 
                         // Connect button
                         ElevatedButton(
-                          onPressed: (isConnecting) ? null : _connect,
+                          onPressed: (isConnecting) ? null : () => _connect(context),
                           style: AppTheme.primaryButtonStyle.copyWith(
                             padding: WidgetStateProperty.all(
                               const EdgeInsets.symmetric(vertical: 16),

@@ -5,30 +5,28 @@ import '../services/barrel_service.dart';
 import '../theme/app_theme.dart';
 
 /// Dashboard screen showing available barrels
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends StatefulWidget with WatchItStatefulWidgetMixin {
   const DashboardScreen({super.key});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulWidgetMixin {
+class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
     // Load barrels when screen opens
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      di<BarrelService>().loadBarrels();
-    });
+    di<BarrelService>().loadBarrels();
   }
 
-  Future<void> _createBarrel() async {
+  Future<void> _createBarrel(BuildContext context) async {
     final nameController = TextEditingController();
     String? selectedMode = 'bmHash'; // default
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Create New Barrel'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -66,13 +64,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () {
               if (nameController.text.isNotEmpty) {
-                Navigator.of(context).pop(true);
+                Navigator.of(dialogContext).pop(true);
               }
             },
             child: const Text('Create'),
@@ -86,7 +84,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
         final config = selectedMode != null ? '{"mode":"$selectedMode"}' : null;
         await di<BarrelService>().createBarrel(nameController.text, config: config);
 
-        if (mounted) {
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Barrel "${nameController.text}" created successfully'),
@@ -95,7 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
           );
         }
       } catch (e) {
-        if (mounted) {
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to create barrel: $e'),
@@ -109,7 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
     nameController.dispose();
   }
 
-  Future<void> _deleteBarrel(String name) async {
+  Future<void> _deleteBarrel(BuildContext context, String name) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -156,7 +154,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
     }
   }
 
-  Future<void> _selectBarrel(String name) async {
+  Future<void> _selectBarrel(BuildContext context, String name) async {
     try {
       await di<BarrelService>().useBarrel(name);
 
@@ -187,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
   Widget build(BuildContext context) {
     final barrels = watchValue((BarrelService s) => s.barrels);
     final isLoading = watchValue((BarrelService s) => s.isLoading);
-    final error = watchValue((BarrelService s) => s.error.value);
+    final error = watchValue((BarrelService s) => s.error);
 
     return Scaffold(
       appBar: AppBar(
@@ -210,7 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
               children: [
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossnAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'BitBarrel Server',
@@ -227,7 +225,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
                   ),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _createBarrel,
+                  onPressed: () => _createBarrel(context),
                   icon: const Icon(Icons.add),
                   label: const Text('New Barrel'),
                   style: AppTheme.primaryButtonStyle,
@@ -343,12 +341,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WatchItStatefulW
                               IconButton(
                                 icon: const Icon(Icons.visibility),
                                 tooltip: 'Explore',
-                                onPressed: () => _selectBarrel(barrel.name),
+                                onPressed: () => _selectBarrel(context, barrel.name),
                               ),
                               IconButton(
                                 icon: Icon(Icons.delete, color: AppTheme.errorColor),
                                 tooltip: 'Delete',
-                                onPressed: () => _deleteBarrel(barrel.name),
+                                onPressed: () => _deleteBarrel(context, barrel.name),
                               ),
                             ],
                           ),
