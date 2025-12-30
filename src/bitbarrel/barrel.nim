@@ -66,6 +66,7 @@ proc defaultBarrelConfig*(): BarrelConfig =
     compactThreshold: 0.3,
     compactInterval: 60,        # Check every 60 seconds
     validateCrc: true,  # Validate CRC32 on reads (see docs/CRC.md)
+    compressionConfig: nil,  # Use default compression (LZ4)
     defaultTtl: 0,              # No expiration by default
     checkExpirationOnRead: true,  # Check and ignore expired records
     deleteExpiredOnRead: false,  # Don't automatically write tombstones
@@ -168,11 +169,31 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
     if valueLen > MAX_VALUE_SIZE.uint32:
       break
 
-    # Skip flags (1 byte) and algorithm (1 byte)
-    file.setFilePos(file.getFilePos() + 2, fspSet)
+    # Read flags (1 byte) and algorithm (1 byte) to detect compression
+    var flags: uint8
+    if file.readBuffer(addr flags, 1) != 1:
+      break
+    var algoId: uint8
+    if file.readBuffer(addr algoId, 1) != 1:
+      break
 
-    # Calculate record size: CRC(4) + timestamp(8) + keyLen(4) + key + valueLen(4) + flags(1) + algo(1) + value
-    let recordSize = (4 + 8 + 4 + keyLen.int + 4 + 1 + 1 + valueLen.int).uint32
+    # Check if value is compressed
+    const COMPRESS_FLAG = 0b00000001
+    let isCompressed = (flags and COMPRESS_FLAG) != 0
+
+    # Read original length if compressed (NEW in Option 2 format)
+    var originalLen: uint32 = 0
+    if isCompressed:
+      var rawOrigLen: uint32
+      if file.readBuffer(addr rawOrigLen, 4) != 4:
+        break
+      littleEndian32(addr originalLen, addr rawOrigLen)
+
+    # Calculate record size using NEW format
+    # valueLen now stores ACTUAL size on disk (compressed or uncompressed)
+    # originalLen (4 bytes) is only present when compressed
+    let originalLenSize = if isCompressed: 4 else: 0
+    let recordSize = (4 + 8 + 4 + keyLen.int + 4 + 1 + 1 + originalLenSize + valueLen.int).uint32
 
     # Validate CRC if enabled
     if validateCrc:
@@ -190,10 +211,13 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
     # Build KeyDirEntry
     let recordPos = offset.uint64 + 4  # Position after CRC
 
+    # valueSize should be the uncompressed size for stats/reporting
+    let entryValueSize = if isCompressed: originalLen else: valueLen
+
     let entry = KeyDirEntry(
       recordPos: recordPos,
       fileId: barrel.fileId,
-      valueSize: valueLen,
+      valueSize: entryValueSize,
       recordSize: recordSize,
       keyLen: keyLen.uint16
     )
@@ -260,7 +284,8 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
   result.dataFile = open(path, fileId, storageSyncMode,
                          shouldFsync = (effectiveConfig.syncMode == UserSyncMode.Fsync),
                          bufferSize = effectiveConfig.writeBufferSize,
-                         validateCrc = effectiveConfig.validateCrc)
+                         validateCrc = effectiveConfig.validateCrc,
+                         compressionConfig = effectiveConfig.compressionConfig)
   result.dataFiles[fileId] = result.dataFile
 
   # Initialize index based on mode
