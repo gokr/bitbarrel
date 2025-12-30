@@ -59,7 +59,7 @@ BitBarrel provides client libraries in multiple languages:
 | Prefix queries | ✅ | ✅ | ✅ | ✅ |
 | Reference traversal | ✅ | ✅ | ✅ | ✅ |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ❌ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ |
 | GetOrDefault method | ✅ | ✅ | ✅ | ✅ |
 | Context manager | ✅ | - | - | ✅ |
 | Thread-safe | ✅ | ✅ | ✅ | ✅ |
