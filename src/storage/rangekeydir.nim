@@ -271,8 +271,8 @@ proc deserialize*(data: string): RangeKeyDir =
     raise newException(ValueError, fmt("Invalid magic: expected RKDR, got {magic}"))
 
   let version = readUint32(data, 4)
-  if version != RANGEKEYDIR_VERSION and version != 1:
-    raise newException(ValueError, fmt("Unsupported version: {version}"))
+  if version != RANGEKEYDIR_VERSION:
+    raise newException(ValueError, fmt("Unsupported version: {version}, expected {RANGEKEYDIR_VERSION}"))
 
   let _ = readUint32(data, 8)  # flags (reserved for future use)
   let entryCount = readUint32(data, 12).int
@@ -302,10 +302,8 @@ proc deserialize*(data: string): RangeKeyDir =
     if calculatedChecksum != checksum:
       raise newException(ValueError, fmt("Checksum mismatch: expected {checksum}, got {calculatedChecksum}"))
 
-  # Read assignedFileId from reserved space (version 2+)
-  var assignedFileId = 0'u32
-  if version >= 2:
-    assignedFileId = readUint32(data, 28)  # Position after checksum
+  # Read assignedFileId from reserved space
+  let assignedFileId = readUint32(data, 28)  # Position after checksum
 
   result = RangeKeyDir(
     minKey: minKey,
