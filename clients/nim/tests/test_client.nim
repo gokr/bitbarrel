@@ -371,7 +371,7 @@ suite "Integration: Connection":
       check client.useBarrel(name)
 
       # 100KB value
-      let largeValue = "x".repeat(100 * 1024)
+      let largeValue = "x".repeat(32 * 1024 * 1024)
       check client.set("large_key", largeValue)
       check client.get("large_key") == largeValue
 
