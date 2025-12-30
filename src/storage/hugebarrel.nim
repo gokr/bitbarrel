@@ -30,8 +30,8 @@ type
     # Barrel2: Multiple data files (store refs for safe sharing)
     barrel2Files*: Table[uint32, ref DataFile]
     nextFileId*: uint32
-    currentFileId*: uint32
-    currentFileSize*: uint64
+    currentAssignmentFile*: uint32      # For range assignment (replaces currentFileId)
+    rangesAssignedToCurrentFile*: int   # Counter for current file
     barrel2Lock*: Lock  # Thread-safe access to barrel2Files
 
     # Range metadata in memory
@@ -200,22 +200,25 @@ proc getOrCreateDataFile(hb: var HugeBarrel, fileId: uint32): ref DataFile =
     hb.barrel2Files[fileId] = dataFileRef
     return dataFileRef
 
-proc createNewDataFile(hb: var HugeBarrel) =
-  ## Create a new data file when current is full
-  withLock(hb.barrel2Lock):
-    hb.currentFileId = hb.nextFileId
-    inc(hb.nextFileId)
+# Note: createNewDataFile removed - files are created on-demand via getOrCreateDataFile
 
-    let filePath = hb.path / "barrel2" / fmt"file_{hb.currentFileId:06d}.data"
-    createDir(hb.path / "barrel2")
+# --- Range assignment ---
 
-    # Create DataFile and wrap in ref
-    var dataFile = open(filePath, hb.currentFileId, syncImmediate, false, 0, false)
-    let dataFileRef = new(ref DataFile)
-    dataFileRef[] = dataFile
+proc assignRangeToFile(hb: var HugeBarrel, rkd: var RangeKeyDir) =
+  ## Assign a RangeKeyDir to a Barrel2 datafile
+  ## Uses simple counter-based rotation when quota is reached
 
-    hb.barrel2Files[hb.currentFileId] = dataFileRef
-    hb.currentFileSize = 0
+  # Check if current file has reached its range quota
+  let rangesPerFile = if hb.config.rangesPerFile > 0: hb.config.rangesPerFile else: 100
+  if hb.rangesAssignedToCurrentFile >= rangesPerFile:
+    # Start new file (simple counter-based rotation)
+    hb.currentAssignmentFile = hb.nextFileId
+    inc hb.nextFileId
+    hb.rangesAssignedToCurrentFile = 0
+
+  # Assign range to current file
+  rkd.assignedFileId = hb.currentAssignmentFile
+  inc hb.rangesAssignedToCurrentFile
 
 # --- RangeKeyDir operations ---
 
@@ -495,6 +498,8 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
     rangeKey = fmt("R{hb.nextFileId:010d}")
     inc(hb.nextFileId)
     var newRange = newRangeKeyDir(key, key)
+    # Assign to a datafile
+    hb.assignRangeToFile(newRange)
     hb.saveRangeKeyDir(rangeKey, newRange)
     hb.ranges.add((minKey: key, maxKey: key, rangeKey: rangeKey))
     hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
@@ -504,16 +509,12 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   # Load RangeKeyDir
   var rkd = hb.loadRangeKeyDir(rangeKey)
 
-  # Create new file if current is too large
-  let maxSize = hb.config.maxDataFileSizeMB.uint64 * 1024 * 1024
-  if hb.currentFileSize > maxSize:
-    hb.createNewDataFile()
+  # Write to THIS RangeKeyDir's assigned file
+  let targetFileId = rkd.assignedFileId
+  let targetFileRef = hb.getOrCreateDataFile(targetFileId)
 
-  # Write to data file
   let rawTimestamp = getTime().toUnix() * 1000
-
-  let currentFileRef = hb.getOrCreateDataFile(hb.currentFileId)
-  let recordInfo = currentFileRef[].appendRecord(
+  let recordInfo = targetFileRef[].appendRecord(
     key = key,
     value = value,
     timestamp = rawTimestamp
@@ -525,7 +526,7 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   let entry = RangeKeyDirEntry(
     key: key,
     recordPos: recordInfo.recordPos,
-    fileId: hb.currentFileId,
+    fileId: targetFileId,
     valueSize: recordInfo.valueSize,
     recordSize: recordInfo.recordSize,
     keyLen: recordInfo.keyLen
@@ -547,8 +548,6 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   if rkd.len() > hb.config.maxEntriesPerRange and hb.config.autoSplitEnabled:
     # Perform atomic range split (with crash recovery marker)
     discard hb.splitRangeAtomic(rangeKey)
-
-  hb.currentFileSize += recordInfo.recordSize + 4  # +4 for CRC
 
   return true
 
@@ -600,8 +599,8 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
     config: config.hugeConfig,
     barrel2Files: initTable[uint32, ref DataFile](),
     nextFileId: 2,  # Start at 2 so first file is 1
-    currentFileId: 1,  # Initialize to first file ID
-    currentFileSize: 0,
+    currentAssignmentFile: 1,  # Initialize to first file ID
+    rangesAssignedToCurrentFile: 0,  # Counter starts at 0
     ranges: @[],
     lastFlushTime: cpuTime() * 1000  # Initialize flush time
   )
@@ -665,8 +664,7 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
       if stats.recoveredRecords > 0:
         echo fmt"Recovered {stats.recoveredRecords} orphaned records from Barrel2"
 
-  # Create first data file
-  result.createNewDataFile()
+  # Note: Data files are created on-demand when ranges are assigned to them
 
 proc close*(hb: var HugeBarrel) =
   ## Close the HugeBarrel
@@ -708,6 +706,15 @@ proc getRangeKeys*(hb: HugeBarrel): seq[string] =
   for r in hb.ranges:
     result.add(r.rangeKey)
 
+proc listRangesByFile*(hb: var HugeBarrel, fileId: uint32): seq[string] =
+  ## Find all RangeKeyDirs assigned to a specific Barrel2 file
+  ## Used for compaction to determine which ranges need updating
+  result = @[]
+  for rangeKey in hb.getRangeKeys():
+    let rkd = hb.loadRangeKeyDir(rangeKey)
+    if rkd.assignedFileId == fileId:
+      result.add(rangeKey)
+
 proc flushDirtyRanges*(hb: var HugeBarrel): int =
   ## Flush all dirty ranges to Barrel1
   ## Iterates over ALL ranges (not just cached ones) to ensure complete persistence
@@ -735,6 +742,116 @@ proc flushIfNeeded*(hb: var HugeBarrel) =
   if hb.shouldTimeFlush():
     discard hb.flushDirtyRanges()
     hb.lastFlushTime = cpuTime() * 1000
+
+# --- Compaction ---
+
+proc compactFile*(hb: var HugeBarrel, fileId: uint32): bool =
+  ## Compact a single Barrel2 datafile
+  ## Loads all affected RangeKeyDirs into RAM, updates them during compaction, saves them back
+  ##
+  ## Returns true if compaction succeeded, false if skipped or failed
+
+  # Step 1: Find all RangeKeyDirs assigned to this file
+  let affectedRanges = hb.listRangesByFile(fileId)
+  if affectedRanges.len == 0:
+    echo fmt"Skipping compaction of file {fileId}: no ranges assigned"
+    return false
+
+  echo fmt"Compacting file {fileId} with {affectedRanges.len} assigned ranges"
+
+  # Step 2: Load all affected RangeKeyDirs into RAM cache
+  var rangeCache = initTable[string, RangeKeyDir]()
+  for rangeKey in affectedRanges:
+    rangeCache[rangeKey] = hb.loadRangeKeyDir(rangeKey)
+
+  # Step 3: Build map of all live entries in this file (key → RangeKeyDirEntry)
+  var liveEntries = initTable[string, RangeKeyDirEntry]()
+  var totalKeys = 0
+  for rangeKey, rkd in rangeCache:
+    # Iterate over all entries in this range
+    for key, entry in rkd.pairs():
+      if entry.fileId == fileId and not entry.isDeleted:
+        liveEntries[key] = entry
+        inc totalKeys
+
+  if liveEntries.len == 0:
+    echo fmt"Skipping compaction of file {fileId}: no live records"
+    return false
+
+  echo fmt"Found {liveEntries.len} live records to compact"
+
+  # Step 4: Create new compacted file
+  let newFileId = hb.nextFileId
+  inc hb.nextFileId
+  let oldFilePath = hb.path / "barrel2" / fmt"file_{fileId:06d}.data"
+  let newFilePath = hb.path / "barrel2" / fmt"file_{newFileId:06d}.data"
+
+  # Create new data file
+  var newDataFile = open(newFilePath, newFileId, syncImmediate, false, 0, false)
+
+  # Step 5: Read old file and write live records to new file
+  var oldDataFile = open(oldFilePath, fileId, syncImmediate, false, 0, false)
+  var recordsWritten = 0
+
+  for key, oldEntry in liveEntries:
+    # Read the record from old file
+    var recordInfo: RecordInfo
+    recordInfo.recordPos = oldEntry.recordPos
+    recordInfo.valueSize = oldEntry.valueSize
+    recordInfo.recordSize = oldEntry.recordSize
+    recordInfo.keyLen = oldEntry.keyLen
+
+    let (readKey, value, timestamp) = oldDataFile.readRecord(recordInfo)
+
+    # Write to new file
+    let newRecordInfo = newDataFile.appendRecord(
+      key = readKey,
+      value = value,
+      timestamp = timestamp
+    )
+
+    # Update RangeKeyDir entry with new position
+    let rangeKey = hb.findRangeForKey(key)
+    if rangeKey in rangeCache:
+      var rkd = rangeCache[rangeKey]
+      let newEntry = RangeKeyDirEntry(
+        key: key,
+        recordPos: newRecordInfo.recordPos,
+        fileId: newFileId,  # New file ID!
+        valueSize: newRecordInfo.valueSize,
+        recordSize: newRecordInfo.recordSize,
+        keyLen: newRecordInfo.keyLen
+      )
+      rkd.insert(key, newEntry)
+      rangeCache[rangeKey] = rkd
+      inc recordsWritten
+
+  # Close files
+  oldDataFile.close()
+  newDataFile.close()
+
+  echo fmt"Compacted {recordsWritten} records from file {fileId} to {newFileId}"
+
+  # Step 6: Save all modified RangeKeyDirs
+  for rangeKey, rkd in rangeCache:
+    var mutableRkd = rkd
+    mutableRkd.flush()
+    hb.saveRangeKeyDir(rangeKey, mutableRkd)
+
+  # Step 7: Update ranges to point to new file (reassign all affected ranges)
+  for rangeKey in affectedRanges:
+    var rkd = hb.loadRangeKeyDir(rangeKey)
+    rkd.assignedFileId = newFileId
+    hb.saveRangeKeyDir(rangeKey, rkd)
+
+  # Step 8: Delete old file
+  try:
+    removeFile(oldFilePath)
+    echo fmt"Removed old file {oldFilePath}"
+  except IOError:
+    echo fmt"Warning: Could not remove old file {oldFilePath}"
+
+  return true
 
 # --- Barrel2 Recovery ---
 
@@ -1093,6 +1210,10 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   # Right range gets entries [splitIndex..end]
   var leftRkd = newRangeKeyDir(allEntries[0].key, allEntries[splitIndex - 1].key)
   var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, allEntries[^1].key)
+
+  # Preserve parent's file assignment (keep locality)
+  leftRkd.assignedFileId = rkd.assignedFileId
+  rightRkd.assignedFileId = rkd.assignedFileId
 
   # Distribute entries
   for i, entry in allEntries:

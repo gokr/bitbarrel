@@ -8,7 +8,7 @@ import ../bitbarrel/types
 
 const
   RANGEKEYDIR_MAGIC* = ['R', 'K', 'D', 'R']
-  RANGEKEYDIR_VERSION* = 1'u32
+  RANGEKEYDIR_VERSION* = 2'u32
   HEADER_SIZE = 48
   DEFAULT_MAX_PENDING = 1000
   CRC32_POLYNOMIAL = 0xEDB88320'u32
@@ -29,6 +29,9 @@ type
     # Range bounds
     minKey*: string
     maxKey*: string
+
+    # File assignment (NEW in version 2)
+    assignedFileId*: uint32     # Which Barrel2 datafile this range writes to
 
     # Sorted array data (serialized blob kept for binary search)
     data*: string               # The serialized blob
@@ -115,11 +118,13 @@ proc readString(data: string, pos: int): (string, int) =
 # --- RangeKeyDir creation ---
 
 proc newRangeKeyDir*(minKey: string = "", maxKey: string = "",
+                     assignedFileId: uint32 = 0,
                      maxPending: int = DEFAULT_MAX_PENDING): RangeKeyDir =
   ## Create a new empty RangeKeyDir
   result = RangeKeyDir(
     minKey: minKey,
     maxKey: maxKey,
+    assignedFileId: assignedFileId,
     data: "",
     entryCount: 0,
     offsetTableStart: 0,
@@ -241,8 +246,9 @@ proc serialize*(rkd: RangeKeyDir): string =
   header.writeUint16(maxKey.len.uint16)
   header.writeUint32(totalSize.uint32)
   header.writeUint32(checksum)
-  # Reserved (20 bytes)
-  for i in 0..<20:
+  # Reserved (20 bytes) - use first 4 bytes for assignedFileId (v2)
+  header.writeUint32(rkd.assignedFileId)
+  for i in 0..<16:
     header.add('\x00')
 
   assert header.len == HEADER_SIZE
@@ -265,7 +271,7 @@ proc deserialize*(data: string): RangeKeyDir =
     raise newException(ValueError, fmt("Invalid magic: expected RKDR, got {magic}"))
 
   let version = readUint32(data, 4)
-  if version != RANGEKEYDIR_VERSION:
+  if version != RANGEKEYDIR_VERSION and version != 1:
     raise newException(ValueError, fmt("Unsupported version: {version}"))
 
   let _ = readUint32(data, 8)  # flags (reserved for future use)
@@ -296,9 +302,15 @@ proc deserialize*(data: string): RangeKeyDir =
     if calculatedChecksum != checksum:
       raise newException(ValueError, fmt("Checksum mismatch: expected {checksum}, got {calculatedChecksum}"))
 
+  # Read assignedFileId from reserved space (version 2+)
+  var assignedFileId = 0'u32
+  if version >= 2:
+    assignedFileId = readUint32(data, 28)  # Position after checksum
+
   result = RangeKeyDir(
     minKey: minKey,
     maxKey: maxKey,
+    assignedFileId: assignedFileId,
     data: data,
     entryCount: entryCount,
     offsetTableStart: offsetTableStart,

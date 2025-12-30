@@ -143,7 +143,8 @@ type
   HugeBarrelConfig* = object
     maxEntriesPerRange*: int      # Max entries per RangeKeyDir (default: 100_000)
     rangeCacheSize*: int          # Max RangeKeyDirs in memory (default: 10)
-    maxDataFileSizeMB*: int       # Max Barrel2 data file size (default: 1024)
+    rangesPerFile*: int           # Max RangeKeyDirs per Barrel2 file (default: 100)
+    maxDataFileSizeMB*: int       # Deprecated - file size naturally bounded by rangesPerFile
     autoSplitEnabled*: bool       # Enable automatic range splitting (default: true)
     flushIntervalMs*: int         # Time-based flush interval in ms (default: 1000, 0 = disabled)
     enableBarrel2Recovery*: bool  # Enable Barrel2 recovery on startup (default: true)
