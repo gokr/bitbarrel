@@ -207,12 +207,30 @@ let value = client.getOrDefault("missing", "default_value")
 ## Running Tests
 
 ```bash
-# Unit tests (no server needed)
+# Run all tests
 nimble test
-
-# Integration tests (requires running server)
-nimble testIntegration
 ```
+
+Unit tests run without a server. Integration tests require a BitBarrel server on `localhost:9876` and will automatically skip if not available.
+
+### Starting Test Server
+
+```bash
+# From bitbarrel root
+./bitbarrel --port 9876
+```
+
+### Test Coverage
+
+Tests cover all BitBarrel operations:
+- Connection management
+- Barrel CRUD operations
+- Key-Value operations (get, set, delete, exists, count, list keys)
+- Get-or-default operations
+- Barrel configuration (get/set)
+- Range queries and prefix searches (requires bmCritBit barrel)
+- Range count operations
+- Sequential and concurrent operations
 
 ## Keeping Protocol in Sync
 
