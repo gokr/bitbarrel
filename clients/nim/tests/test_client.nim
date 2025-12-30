@@ -88,22 +88,10 @@ suite "TraverseOptions":
     check options.extractArrays
     check not options.firstOnly
 
-# Integration tests - skip if server not available
-proc checkServer(client: var BitBarrelClient): bool =
-  try:
-    client.connect()
-    return client.isConnected
-  except:
-    return false
-
 suite "Integration: Connection":
   test "connect to server":
     var client = newClient(TestServerHost, TestServerPort)
     defer: client.close()
-
-    if not checkServer(client):
-      echo "Skipping integration test - no server running on localhost:9876"
-      return
 
     check client.isConnected
 
@@ -135,10 +123,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_create")
       defer: discard client.dropBarrel(name)
 
@@ -148,9 +132,7 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
+
 
       let name = uniqueBarrelName("test_dup")
       defer: discard client.dropBarrel(name)
@@ -162,9 +144,7 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
+
 
       let name = uniqueBarrelName("test_use")
       defer: discard client.dropBarrel(name)
@@ -177,9 +157,7 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
+
 
       check not client.useBarrel("nonexistent_barrel_xyz")
 
@@ -187,9 +165,7 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
+
 
       let name1 = uniqueBarrelName("test_list1")
       let name2 = uniqueBarrelName("test_list2")
@@ -208,9 +184,7 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
+
 
       let name = uniqueBarrelName("test_drop")
       check client.createBarrel(name)
@@ -224,9 +198,7 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
+
 
       let name = uniqueBarrelName("test_close")
       defer: discard client.dropBarrel(name)
@@ -242,10 +214,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_config")
       defer: discard client.dropBarrel(name)
 
@@ -258,10 +226,6 @@ suite "Integration: Connection":
     test "set barrel config":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_config_set")
       defer: discard client.dropBarrel(name)
@@ -281,10 +245,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_setget")
       defer: discard client.dropBarrel(name)
 
@@ -298,10 +258,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_notfound")
       defer: discard client.dropBarrel(name)
 
@@ -314,10 +270,6 @@ suite "Integration: Connection":
     test "get or default":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_getdefault")
       defer: discard client.dropBarrel(name)
@@ -333,20 +285,12 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       expect ClientError:
         discard client.set("key", "value")
 
     test "delete":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_delete")
       defer: discard client.dropBarrel(name)
@@ -363,10 +307,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_exists")
       defer: discard client.dropBarrel(name)
 
@@ -380,10 +320,6 @@ suite "Integration: Connection":
     test "count":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_count")
       defer: discard client.dropBarrel(name)
@@ -400,10 +336,6 @@ suite "Integration: Connection":
     test "list keys":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_listkeys")
       defer: discard client.dropBarrel(name)
@@ -425,19 +357,11 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       check client.ping()
 
     test "large value":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_large")
       defer: discard client.dropBarrel(name)
@@ -453,10 +377,6 @@ suite "Integration: Connection":
     test "range query":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_range")
       defer: discard client.dropBarrel(name)
@@ -481,10 +401,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_prefix")
       defer: discard client.dropBarrel(name)
 
@@ -507,10 +423,6 @@ suite "Integration: Connection":
     test "range count":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_count")
       defer: discard client.dropBarrel(name)
@@ -539,10 +451,6 @@ suite "Integration: Connection":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       let name = uniqueBarrelName("test_conc")
       defer: discard client.dropBarrel(name)
 
@@ -565,10 +473,6 @@ suite "Integration: Connection":
     test "concurrent operations":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       let name = uniqueBarrelName("test_concurrent")
       defer: discard client.dropBarrel(name)
@@ -606,10 +510,6 @@ suite "Integration: Connection":
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3JlYWR3cml0ZSIsInJvbGVzIjpbInJlYWR3cml0ZSJdLCJpYXQiOjE3MDQwNjcyMDAsImV4cCI6NDA5OTc2NzIwMH0.test_signature_for_testing")
       defer: client.close()
 
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
-
       # Connection should succeed with valid token format
       # Note: Actual token verification depends on server auth config
       try:
@@ -625,10 +525,6 @@ suite "Integration: Connection":
     test "operations without authentication":
       var client = newClient(TestServerHost, TestServerPort)
       defer: client.close()
-
-      if not checkServer(client):
-        echo "Skipping integration test - no server running on localhost:9876"
-        return
 
       check client.connect()
 
