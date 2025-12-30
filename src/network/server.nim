@@ -884,7 +884,8 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   result.mummyServer = newServer(
     router.toHandler(),
     websocketHandler = proc(ws: WebSocket, event: WebSocketEvent, msg: Message) {.gcsafe.} =
-      websocketHandler(serverRef, ws, event, msg)
+      websocketHandler(serverRef, ws, event, msg),
+    maxMessageLen = 32 * 1024 * 1024  # 32MB to match protocol MaxValueSize
   )
 
 proc start*(server: BitBarrelServer) =
