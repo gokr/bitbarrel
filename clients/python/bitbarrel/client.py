@@ -267,6 +267,26 @@ class Client:
         # But if it returns empty string without error, that's a valid empty value
         return value
 
+    def get_or_default(self, key: str, default: str = "") -> str:
+        """Get value by key, returning default if key doesn't exist.
+
+        Args:
+            key: Key to retrieve
+            default: Default value to return if key not found (default: "")
+
+        Returns:
+            Value associated with key, or default if key not found
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error (other than not found)
+        """
+        self._ensure_barrel()
+        try:
+            return self._send_request(Command.GET, key, "")
+        except NotFoundError:
+            return default
+
     def set(self, key: str, value: str) -> bool:
         """Set key-value pair.
 

@@ -136,6 +136,19 @@ class TestBasicOperations:
         with pytest.raises(NotFoundError):
             client.get("nonexistent_key_12345")
 
+    def test_get_or_default_exists(self, client, temp_barrel):
+        """Test get_or_default with existing key."""
+        client.set("test_key", "test_value")
+        assert client.get_or_default("test_key", "default") == "test_value"
+
+    def test_get_or_default_not_found(self, client, temp_barrel):
+        """Test get_or_default with non-existent key returns default."""
+        assert client.get_or_default("nonexistent_key_12345", "default") == "default"
+
+    def test_get_or_default_empty_default(self, client, temp_barrel):
+        """Test get_or_default with empty default."""
+        assert client.get_or_default("nonexistent_key_12345") == ""
+
     def test_set_without_barrel(self, client):
         """Test setting without selecting a barrel raises error."""
         with pytest.raises(NoBarrelError):
