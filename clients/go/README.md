@@ -103,14 +103,14 @@ func main() {
 
 The Go client includes comprehensive test suites for unit and integration testing.
 
-### Run All Tests (Unit Tests Only)
-
-Unit tests do not require a running server and can be run at any time:
+### Run All Tests
 
 ```bash
-cd clients/go/bitbarrel
-go test -v
+cd clients/go
+go test -v ./...
 ```
+
+Unit tests run without a server. Integration tests require a BitBarrel server on `localhost:9876` and will automatically skip if not available.
 
 ### Run Specific Tests
 
@@ -128,19 +128,17 @@ Integration tests require a running BitBarrel server. Start the server first:
 
 ```bash
 # From the bitbarrel root directory
-./bitbarrel --port 9876 serve
-
-# Or if using nim directly
-nim c -r src/cli/main.nim --port 9876 serve
-
+./bitbarrel --port 9876
 ```
 
-Then run the integration tests with the `BITBARREL_TEST_SERVER` environment variable:
+Then run the tests:
 
 ```bash
-cd clients/go/bitbarrel
-BITBARREL_TEST_SERVER=true go test -v
+cd clients/go
+go test -v ./...
 ```
+
+Integration tests will skip with a message if the server is not available.
 
 ### Run Benchmarks
 
