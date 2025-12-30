@@ -1,7 +1,7 @@
 """WebSocket wrapper using websocket-client library."""
 
 import threading
-from typing import Optional
+from typing import Optional, Dict
 
 import websocket as ws_lib
 
@@ -18,17 +18,20 @@ except ImportError:
 class WebSocket:
     """Simple WebSocket wrapper using websocket-client library."""
 
-    def __init__(self, address: str, connect_timeout: float = 5.0, request_timeout: float = 3.0):
+    def __init__(self, address: str, connect_timeout: float = 5.0, request_timeout: float = 3.0,
+                 headers: Optional[Dict[str, str]] = None):
         """Initialize the WebSocket connection.
 
         Args:
             address: Server address in form "host:port"
             connect_timeout: Timeout for initial connection in seconds
             request_timeout: Timeout for read operations in seconds
+            headers: Optional headers to send during WebSocket handshake
         """
         self.address = address
         self.connect_timeout = connect_timeout
         self.request_timeout = request_timeout
+        self.headers = headers or {}
         self._ws: Optional[ws_lib.WebSocket] = None
         self._lock = threading.Lock()
         self._connected = False
@@ -46,11 +49,15 @@ class WebSocket:
             # Create WebSocket connection
             self._ws = ws_lib.WebSocket()
 
+            # Prepare headers (merge custom headers with default protocol header)
+            connect_headers = {"Sec-WebSocket-Protocol": "bitbarrel"}
+            connect_headers.update(self.headers)
+
             try:
                 self._ws.connect(
                     url,
                     timeout=self.connect_timeout,
-                    header={"Sec-WebSocket-Protocol": "bitbarrel"}
+                    header=connect_headers
                 )
             except ws_lib.WebSocketTimeoutException:
                 raise TimeoutError(f"Connection timeout after {self.connect_timeout}s")

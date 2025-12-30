@@ -42,7 +42,8 @@ class Client:
     """
 
     def __init__(self, host: str = "localhost", port: int = 9876,
-                 connect_timeout: float = 5.0, request_timeout: float = 3.0):
+                 connect_timeout: float = 5.0, request_timeout: float = 3.0,
+                 token: Optional[str] = None):
         """Create a new BitBarrel client.
 
         Args:
@@ -50,11 +51,13 @@ class Client:
             port: Server port
             connect_timeout: Timeout for initial connection in seconds
             request_timeout: Timeout for operations in seconds
+            token: Optional JWT token for authentication
         """
         self.host = host
         self.port = port
         self._connect_timeout = connect_timeout
         self._request_timeout = request_timeout
+        self._token = token
         self._ws: Optional[WebSocket] = None
         self._seq_counter = 0
         self._current_barrel = ""
@@ -69,7 +72,13 @@ class Client:
             TimeoutError: If connection times out
         """
         address = f"{self.host}:{self.port}"
-        self._ws = WebSocket(address, self._connect_timeout, self._request_timeout)
+
+        # Prepare headers including JWT token if provided
+        headers = {}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+
+        self._ws = WebSocket(address, self._connect_timeout, self._request_timeout, headers)
         self._ws.connect()
         self._connected = True
 
