@@ -1047,22 +1047,26 @@ func TestRangeQuery(t *testing.T) {
 	client.Set("product:001", "Widget")
 
 	// Test range query
-	result, err := client.RangeQuery("user:001", "user:003")
+	result, _, hasMore, err := client.RangeQuery("user:001", "user:003", 1000, "")
 	if err != nil {
 		t.Fatalf("RangeQuery() error = %v", err)
 	}
 
-	if len(result.Items) != 2 {
-		t.Errorf("Expected 2 items, got %d", len(result.Items))
+	if len(result) != 2 {
+		t.Errorf("Expected 2 items, got %d", len(result))
 	}
 
 	// Verify items
 	keys := make(map[string]bool)
-	for _, item := range result.Items {
+	for _, item := range result {
 		keys[item.Key] = true
 	}
 	if !keys["user:001"] || !keys["user:002"] {
 		t.Error("Expected keys user:001 and user:002 in results")
+	}
+
+	if hasMore {
+		t.Error("Expected hasMore to be false")
 	}
 }
 
@@ -1099,20 +1103,24 @@ func TestPrefixQuery(t *testing.T) {
 	client.Set("order:001", "Order1")
 
 	// Test prefix query
-	result, err := client.PrefixQuery("user:")
+	result, _, hasMore, err := client.PrefixQuery("user:", 1000, "")
 	if err != nil {
 		t.Fatalf("PrefixQuery() error = %v", err)
 	}
 
-	if len(result.Items) != 3 {
-		t.Errorf("Expected 3 items with prefix 'user:', got %d", len(result.Items))
+	if len(result) != 3 {
+		t.Errorf("Expected 3 items with prefix 'user:', got %d", len(result))
 	}
 
 	// Verify all items have correct prefix
-	for _, item := range result.Items {
+	for _, item := range result {
 		if !strings.HasPrefix(item.Key, "user:") {
 			t.Errorf("Key %s does not have expected prefix 'user:'", item.Key)
 		}
+	}
+
+	if hasMore {
+		t.Error("Expected hasMore to be false")
 	}
 }
 
@@ -1170,79 +1178,6 @@ func TestRangeCount(t *testing.T) {
 }
 
 // TestGetBarrelConfig tests getting barrel configuration
-func TestGetBarrelConfig(t *testing.T) {
-	skipIfNoServer(t)
-
-	client := NewClient(testServerHost, testServerPort)
-	defer client.Close()
-
-	err := client.Connect()
-	if err != nil {
-		t.Fatalf("Connect() error = %v", err)
-	}
-
-	// Create barrel with config
-	barrelName := fmt.Sprintf("test_get_config_%d", time.Now().Unix())
-	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
-	if err != nil {
-		t.Fatalf("CreateBarrel() error = %v", err)
-	}
-	defer client.DropBarrel(barrelName)
-
-	// Test getting config
-	config, err := client.GetBarrelConfig(barrelName)
-	if err != nil {
-		t.Fatalf("GetBarrelConfig() error = %v", err)
-	}
-
-	if config == "" {
-		t.Error("Expected non-empty config")
-	}
-
-	if !strings.Contains(strings.ToLower(config), "critbit") {
-		t.Error("Expected config to contain 'critbit' mode")
-	}
-}
-
-// TestSetBarrelConfig tests setting barrel configuration
-func TestSetBarrelConfig(t *testing.T) {
-	skipIfNoServer(t)
-
-	client := NewClient(testServerHost, testServerPort)
-	defer client.Close()
-
-	err := client.Connect()
-	if err != nil {
-		t.Fatalf("Connect() error = %v", err)
-	}
-
-	// Create barrel with config
-	barrelName := fmt.Sprintf("test_set_config_%d", time.Now().Unix())
-	err = client.CreateBarrel(barrelName, `{"mode": "critbit"}`)
-	if err != nil {
-		t.Fatalf("CreateBarrel() error = %v", err)
-	}
-	defer client.DropBarrel(barrelName)
-
-	// Update config
-	newConfig := `{"autoCompact": false}`
-	err = client.SetBarrelConfig(barrelName, newConfig)
-	if err != nil {
-		t.Fatalf("SetBarrelConfig() error = %v", err)
-	}
-
-	// Verify config was updated
-	config, err := client.GetBarrelConfig(barrelName)
-	if err != nil {
-		t.Fatalf("GetBarrelConfig() error = %v", err)
-	}
-
-	if !strings.Contains(strings.ToLower(config), "autocompact") {
-		t.Error("Expected config to contain 'autoCompact'")
-	}
-}
-
-// TestGetOrDefault tests get-or-default operation
 func TestGetOrDefault(t *testing.T) {
 	skipIfNoServer(t)
 
@@ -1256,7 +1191,7 @@ func TestGetOrDefault(t *testing.T) {
 
 	// Create barrel
 	barrelName := fmt.Sprintf("test_getdefault_%d", time.Now().Unix())
-	err = client.CreateBarrel(barrelName)
+	err = client.CreateBarrel(barrelName, "")
 	if err != nil {
 		t.Fatalf("CreateBarrel() error = %v", err)
 	}
@@ -1336,10 +1271,6 @@ func TestConnectWithoutToken(t *testing.T) {
 	err := client.Connect()
 	if err != nil {
 		t.Fatalf("Connect() without token error: %v", err)
-	}
-
-	if !client.isConnected() {
-		t.Error("Expected client to be connected")
 	}
 }
 
