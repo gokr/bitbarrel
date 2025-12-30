@@ -6,11 +6,12 @@
 ## - Test data builders
 ## - Test configuration utilities
 
-import std/[os, times, strutils, random, net]
+import std/[os, times, strutils, random, net, tables]
 import ../src/bitbarrel/types
 import ../src/bitbarrel/barrel
 import ../src/storage/record
 import ../src/storage/datafile
+import ../src/network/auth
 
 # Random number generator for test uniqueness
 var testRand {.threadvar.}: Rand
@@ -376,8 +377,6 @@ proc getMemoryUsage*(): int =
 # =============================================================================
 # JWT Test Token Generation
 # =============================================================================
-
-import ../../src/network/auth
 
 const
   TestSecret* = "test-secret-key-minimum-32-characters-long-for-jwt"
