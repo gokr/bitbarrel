@@ -373,3 +373,56 @@ proc getMemoryUsage*(): int =
     result = 0
   else:
     result = 0  # Not implemented on this platform
+# =============================================================================
+# JWT Test Token Generation
+# =============================================================================
+
+import ../../src/network/auth
+
+const
+  TestSecret* = "test-secret-key-minimum-32-characters-long-for-jwt"
+  TestExpiryHours* = 24
+
+proc generateTestToken*(username: string, roles: seq[string], secret: string = TestSecret): string =
+  ## Generate a test JWT token for the given username and roles
+  ##
+  ## Args:
+  ##   username: The username to include in the token
+  ##   roles: List of role names ("admin", "readwrite", "readonly")
+  ##   secret: The secret key to sign the token (uses TestSecret by default)
+  ##
+  ## Returns:
+  ##   A signed JWT token
+  var config = AuthConfig(
+    enabled: true,
+    secret: secret,
+    defaultTokenExpiryHours: TestExpiryHours
+  )
+
+  # Add user with roles
+  config.users[username] = @[]
+  for roleStr in roles:
+    config.users[username].add(parseRole(roleStr))
+
+  result = generateToken(config, username)
+
+# Pre-generated test tokens for common scenarios (with sample signatures)
+# Note: These use "signature" as the signature part for testing
+const
+  TestAdminToken* = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X2FkbWluIiwicm9sZXMiOlsiYWRtaW4iXSwiaWF0IjoxNzA0MDY3MjAwLCJleHAiOjQwOTk3NjcyMDB9.test_signature"
+  TestReadWriteToken* = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3JlYWR3cml0ZSIsInJvbGVzIjpbInJlYWR3cml0ZSJdLCJpYXQiOjE3MDQwNjcyMDAsImV4cCI6NDA5OTc2NzIwMH0.test_signature"
+  TestReadOnlyToken* = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3JlYWRvbmx5Iiwicm9sZXMiOlsicmVhZG9ubHkiXSwiaWF0IjoxNzA0MDY3MjAwLCJleHAiOjQwOTk3NjcyMDB9.test_signature"
+  TestInvalidToken* = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.signature"
+
+when isMainModule:
+  ## Generate test tokens when run directly
+  echo "Generating test JWT tokens..."
+  echo ""
+  echo "Admin Token (test_admin):"
+  echo generateTestToken("test_admin", @["admin"])
+  echo ""
+  echo "ReadWrite Token (test_readwrite):"
+  echo generateTestToken("test_readwrite", @["readwrite"])
+  echo ""
+  echo "ReadOnly Token (test_readonly):"
+  echo generateTestToken("test_readonly", @["readonly"])
