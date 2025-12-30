@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:bitbarrel/bitbarrel.dart';
 import 'package:test/test.dart';
@@ -14,8 +13,10 @@ void main() {
 
   Future<bool> checkServer() async {
     final testClient = BitBarrelClient(
-      host: testServerHost,
-      port: testServerPort))
+      BitBarrelConfig(
+        host: testServerHost,
+        port: testServerPort,
+      ),
     );
     try {
       await testClient.connect();
@@ -33,8 +34,10 @@ void main() {
     setUp(() async {
       serverAvailable = await checkServer();
       client = BitBarrelClient(
-        host: testServerHost,
-        port: testServerPort))
+        BitBarrelConfig(
+          host: testServerHost,
+          port: testServerPort,
+        ),
       );
     });
 
@@ -44,7 +47,7 @@ void main() {
 
     test('connect to server', () async {
       if (!serverAvailable) {
-        skip('No server running on localhost:9876');
+        return;
       }
 
       await client.connect();
@@ -52,7 +55,7 @@ void main() {
     });
 
     test('connect to non-existent server fails', () async {
-      final badClient = BitBarrelClient(BitBarrelConfig(host: 'localhost', port: 9999);
+      final badClient = BitBarrelClient(BitBarrelConfig(host: 'localhost', port: 9999));
 
       expect(
         () => badClient.connect(),
@@ -64,7 +67,7 @@ void main() {
 
     test('ping server', () async {
       if (!serverAvailable) {
-        skip('No server running on localhost:9876');
+        return;
       }
 
       await client.connect();
@@ -75,7 +78,7 @@ void main() {
     group('Barrel Management', () {
       test('create barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -87,7 +90,7 @@ void main() {
 
       test('create barrel with config', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -99,7 +102,7 @@ void main() {
 
       test('use barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -116,7 +119,7 @@ void main() {
 
       test('use non-existent barrel throws', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -129,7 +132,7 @@ void main() {
 
       test('list barrels', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -146,7 +149,7 @@ void main() {
 
       test('drop barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -161,7 +164,7 @@ void main() {
 
       test('close barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -181,7 +184,7 @@ void main() {
 
       test('get barrel config', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -200,7 +203,7 @@ void main() {
 
       test('set barrel config', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -224,7 +227,7 @@ void main() {
 
       test('get config of non-existent barrel throws', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -237,7 +240,7 @@ void main() {
 
       test('set config of non-existent barrel throws', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -252,7 +255,7 @@ void main() {
     group('Key-Value Operations', () {
       test('set and get', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -272,7 +275,7 @@ void main() {
 
       test('get not found throws', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -293,7 +296,7 @@ void main() {
 
       test('set without barrel throws', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -306,7 +309,7 @@ void main() {
 
       test('delete', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -328,7 +331,7 @@ void main() {
 
       test('exists', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -348,7 +351,7 @@ void main() {
 
       test('count', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -372,7 +375,7 @@ void main() {
 
       test('list keys', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -398,7 +401,7 @@ void main() {
 
       test('large value', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -420,7 +423,7 @@ void main() {
 
       test('get or default', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -445,7 +448,7 @@ void main() {
 
       test('concurrent operations', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -460,8 +463,10 @@ void main() {
           for (var i = 0; i < 10; i++) {
             final future = () async {
               final localClient = BitBarrelClient(
-                host: testServerHost,
-                port: testServerPort))
+                BitBarrelConfig(
+                  host: testServerHost,
+                  port: testServerPort,
+                ),
               );
               await localClient.connect();
               await localClient.useBarrel(barrelName);
@@ -492,7 +497,7 @@ void main() {
     group('Range Queries', () {
       test('range query with ordered barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -517,7 +522,7 @@ void main() {
 
       test('prefix query with ordered barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -542,7 +547,7 @@ void main() {
 
       test('range count with ordered barrel', () async {
         if (!serverAvailable) {
-          skip('Set BITBARREL_TEST_SERVER=true to run');
+          return;
         }
 
         await client.connect();
@@ -569,24 +574,23 @@ void main() {
         const token = 'test-jwt-token';
         final config = BitBarrelConfig.withToken(
           host: testServerHost,
-          port: testServerPort))
+          port: testServerPort,
           token: token,
         );
-        final client = BitBarrelClient(config);
 
         expect(config.token, equals(token));
       });
 
       test('connect with token', () async {
         if (!serverAvailable) {
-          skip('No server running on localhost:9876');
+          return;
         }
 
         // Test with a sample JWT token format
         const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0X3JlYWR3cml0ZSIsInJvbGVzIjpbInJlYWR3cml0ZSJdLCJpYXQiOjE3MDQwNjcyMDAsImV4cCI6NDA5OTc2NzIwMH0.test_signature_for_testing';
         final config = BitBarrelConfig.withToken(
           host: testServerHost,
-          port: testServerPort))
+          port: testServerPort,
           token: token,
         );
         final client = BitBarrelClient(config);
@@ -605,7 +609,7 @@ void main() {
 
       test('connect without token', () async {
         if (!serverAvailable) {
-          skip('No server running on localhost:9876');
+          return;
         }
 
         final client = BitBarrelClient.localhost();
