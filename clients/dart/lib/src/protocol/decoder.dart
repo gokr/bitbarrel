@@ -48,10 +48,10 @@ class ProtocolDecoder {
       );
     }
 
-    // Value
+    // Value - use Latin1 to preserve binary data for range responses
     final value = valueLen == 0
         ? ''
-        : utf8.decode(data.sublist(offset, offset + valueLen));
+        : Latin1Codec().decode(data.sublist(offset, offset + valueLen));
 
     return (status: status, seq: seq, value: value);
   }
@@ -60,7 +60,7 @@ class ProtocolDecoder {
   /// Format: [count:4][items...][hasMore:1][nextCursorLen:2][nextCursor]
   /// Each item: [keyLen:2][key][valLen:4][value]
   static RangeQueryResponse decodeRangeResponse(String data) {
-    final bytes = utf8.encode(data);
+    final bytes = Latin1Codec().encode(data);
     final buffer = ByteData.sublistView(bytes);
 
     if (bytes.length < 5) {
@@ -148,7 +148,7 @@ class ProtocolDecoder {
   static ({int status, int seq, List<TraverseResult> results}) decodeTraverseResults(
     String data,
   ) {
-    final bytes = utf8.encode(data);
+    final bytes = Latin1Codec().encode(data);
     final buffer = ByteData.sublistView(bytes);
 
     if (bytes.length < 9) {
