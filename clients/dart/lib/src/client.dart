@@ -405,8 +405,7 @@ class BitBarrelClient {
       value: Latin1Codec().decode(encodedParams),
     );
 
-    final response = ProtocolDecoder.decodeRangeResponse(value);
-    return response.items.length;
+    return int.tryParse(value) ?? 0;
   }
 
   /// Perform a reference traversal
