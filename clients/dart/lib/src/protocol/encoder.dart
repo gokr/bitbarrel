@@ -15,18 +15,22 @@ class ProtocolEncoder {
   /// Encode a standard request to binary format
   /// Format: [cmd:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
   /// All multi-byte values are big-endian
+  ///
+  /// For binary protocol data (range query params, etc.), pass [binaryValue].
+  /// For text data (SET values, etc.), pass [value] which will be UTF-8 encoded.
   static Uint8List encodeRequest({
     required int command,
     required int seq,
     required String key,
     String value = '',
+    Uint8List? binaryValue,
   }) {
     if (!Command.isValid(command)) {
       throw ArgumentError('Invalid command: 0x${command.toRadixString(16)}');
     }
 
     final keyBytes = utf8.encode(key);
-    final valueBytes = utf8.encode(value);
+    final valueBytes = binaryValue ?? utf8.encode(value);
 
     if (keyBytes.length > maxKeySize) {
       throw ArgumentError(
