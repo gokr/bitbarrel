@@ -392,10 +392,11 @@ suite "Integration: Connection":
       check client.set("product:001", "Widget")
 
       # Test range query
-      let result = client.rangeQuery("user:001", "user:003")
-      check result.items.len == 2
-      check ("user:001", "Alice") in result.items
-      check ("user:002", "Bob") in result.items
+      let (items, nextCursor, hasMore) = client.rangeQuery("user:001", "user:003")
+      check items.len == 2
+      check ("user:001", "Alice") in items
+      check ("user:002", "Bob") in items
+      check hasMore == false
 
     test "prefix query":
       var client = newClient(TestServerHost, TestServerPort)
@@ -415,10 +416,10 @@ suite "Integration: Connection":
       check client.set("product:001", "Widget")
 
       # Test prefix query
-      let result = client.prefixQuery("user:")
-      check result.items.len == 3
-      for item in result.items:
-        check item.key.startsWith("user:")
+      let (items, nextCursor, hasMore) = client.prefixQuery("user:")
+      check items.len == 3
+      for item in items:
+        check item[0].startsWith("user:")
 
     test "range count":
       var client = newClient(TestServerHost, TestServerPort)
