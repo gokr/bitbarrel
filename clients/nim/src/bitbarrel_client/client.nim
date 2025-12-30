@@ -22,6 +22,7 @@ type
     currentBarrel*: string
     pending*: Table[uint32, Response]
     lock: Lock
+    token*: string             ## JWT authentication token (if any, default: "")
 
   ClientConfig* = object
     ## Configuration for BitBarrel client connections
@@ -29,6 +30,7 @@ type
     port*: Port                ## Server port (default: 9876)
     connectTimeout*: int       ## Connection timeout in ms (default: 5000)
     requestTimeout*: int       ## Request timeout in ms (default: 3000)
+    token*: string             ## JWT authentication token (optional, default: "")
 
   ClientError* = object of CatchableError
     ## Raised when client operations fail
@@ -51,7 +53,8 @@ proc defaultConfig*(): ClientConfig =
     host: DefaultHost,
     port: DefaultPort,
     connectTimeout: DefaultConnectTimeout,
-    requestTimeout: DefaultRequestTimeout
+    requestTimeout: DefaultRequestTimeout,
+    token: ""
   )
 
 proc newClient*(config: ClientConfig): BitBarrelClient =
@@ -62,11 +65,15 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
   ## var config = ClientConfig(
   ##   host: "localhost",
   ##   port: 9876.Port,
-  ##   connectTimeout: 5000
+  ##   connectTimeout: 5000,
+  ##   token: "eyJhbGciOiJIUzI1NiJ9..."
   ## )
   ## var client = newClient(config)
   ## ```
-  let url = fmt"ws://{config.host}:{config.port}/ws"
+  let url = if config.token.len > 0:
+              fmt"ws://{config.host}:{config.port}/ws?token={config.token}"
+            else:
+              fmt"ws://{config.host}:{config.port}/ws"
   result = BitBarrelClient(
     host: config.host,
     port: config.port,
@@ -74,7 +81,8 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
     connected: false,
     seqCounter: 0,
     currentBarrel: "",
-    pending: initTable[uint32, Response]()
+    pending: initTable[uint32, Response](),
+    token: config.token
   )
   initLock(result.lock)
 
@@ -91,7 +99,24 @@ proc newClient*(host: string = DefaultHost, port: Port = DefaultPort): BitBarrel
   ## ```
   newClient(ClientConfig(host: host, port: port,
                          connectTimeout: DefaultConnectTimeout,
-                         requestTimeout: DefaultRequestTimeout))
+                         requestTimeout: DefaultRequestTimeout,
+                         token: ""))
+
+proc newClient*(host: string, port: Port, token: string): BitBarrelClient =
+  ## Create a new BitBarrel client with JWT token authentication
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient("localhost", 9876.Port, "eyJhbGciOiJIUzI1NiJ9...")
+  ## client.connect()
+  ## ```
+  newClient(ClientConfig(
+    host: host,
+    port: port,
+    connectTimeout: DefaultConnectTimeout,
+    requestTimeout: DefaultRequestTimeout,
+    token: token
+  ))
 
 proc isConnected*(client: BitBarrelClient): bool =
   ## Check if client is connected
