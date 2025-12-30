@@ -73,6 +73,8 @@ BitBarrel provides client libraries in multiple languages:
 
 **Python Client**: Feature-complete WebSocket client with support for all protocol commands including barrel config operations, range queries, prefix queries, reference traversal, and context manager support.
 
+**Web Admin Console**: Flutter-based web UI for visual database management. Provides connection management, barrel operations, data explorer with full CRUD, and query interface with JSON visualization. See [webadmin/README.md](../../webadmin/README.md) for details.
+
 ### Testing All Clients
 
 ```bash

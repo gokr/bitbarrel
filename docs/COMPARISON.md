@@ -72,6 +72,15 @@ Client Apps → WebSocket → BitBarrel Server → Barrel Registry → Storage E
 
 **Performance:** ~50K ops/sec local, scales with CPU cores via TaskPools.
 
+**Web Admin Console:** For visual database management, BitBarrel includes a Flutter-based web admin console:
+
+```bash
+cd webadmin
+flutter run -d chrome --web-port 8080
+```
+
+Access at http://localhost:8080 for visual barrel management, data browsing, and query interface.
+
 ### REST API
 
 The server also provides a REST API:
