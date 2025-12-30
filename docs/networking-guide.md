@@ -488,16 +488,15 @@ except ClientError as e:
   else:
     raise e  # Re-raise unexpected errors
 
-# Safe retrieval with default
-proc getOrDefault(client: var BitBarrelClient,
-                  key, defaultValue: string): string =
-  try:
-    result = client.get(key)
-  except ClientError:
-    result = defaultValue
-
-let value = getOrDefault(client, "missing", "default")
+# Safe retrieval with default (built-in method)
+let value = client.getOrDefault("missing", "default")
 echo value  # "default"
+
+# The getOrDefault method is available in all client libraries:
+# - Nim: client.getOrDefault(key, default)
+# - Go: client.GetOrDefault(key, defaultValue)
+# - Python: client.get_or_default(key, default="")
+# - Dart: await client.getOrDefault(key, defaultValue)
 ```
 
 ### Checking Existence (EXISTS)
