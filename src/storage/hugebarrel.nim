@@ -1003,6 +1003,7 @@ proc recoverPendingSplit*(hb: var HugeBarrel) =
     return  # No pending split
 
   echo "Found pending split marker, recovering..."
+  echo fmt"Marker data length: {pendingData.len}"
   let pending = deserializePendingSplit(pendingData)
 
   # Check what state we're in
@@ -1018,13 +1019,13 @@ proc recoverPendingSplit*(hb: var HugeBarrel) =
     hb.rebuildRangesFromBarrel1()
     echo fmt("Recovered completed split: {pending.oldRangeKey} -> {pending.leftRangeKey}, {pending.rightRangeKey}")
   else:
-    # Split incomplete - restore from old range
-    # Old range should still have all data
+    # Split incomplete - keep whatever ranges exist
+    # During split, data is moved to left/right ranges, so we should NOT delete them
     echo fmt("Recovering incomplete split of {pending.oldRangeKey}")
-    if leftExists:
-      discard hb.barrel1.delete(pending.leftRangeKey)
-    if rightExists:
-      discard hb.barrel1.delete(pending.rightRangeKey)
+    echo "Keeping existing ranges (split will be retried on next operation)"
+
+    # Just rebuild metadata from whatever ranges currently exist
+    hb.rebuildRangesFromBarrel1()
 
   # Clear marker
   discard hb.barrel1.delete(PENDING_SPLIT_KEY)
@@ -1115,6 +1116,7 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   discard hb.barrel1.delete(rangeKey)
 
   # Step 7: Clear pending marker (split complete)
+  echo "Clearing pending split marker"
   discard hb.barrel1.delete(PENDING_SPLIT_KEY)
 
   # Update cache
