@@ -265,6 +265,20 @@ class BitBarrelClient {
     );
   }
 
+  /// Retrieve a value by key, returning defaultValue if key doesn't exist
+  Future<String> getOrDefault(String key, String defaultValue) async {
+    _ensureBarrel();
+    try {
+      return await _sendRequest(
+        command: Command.get,
+        key: key,
+        value: '',
+      );
+    } on KeyNotFoundException {
+      return defaultValue;
+    }
+  }
+
   /// Delete a key
   Future<void> delete(String key) async {
     _ensureBarrel();
