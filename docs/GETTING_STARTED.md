@@ -58,6 +58,31 @@ cd clients/go
 go run examples/basic/main.go
 ```
 
+### Quick Start - Web Admin Console
+
+BitBarrel includes a modern web-based admin console for visual database management:
+
+```bash
+# Start the BitBarrel server first
+./bitbarrel serve
+
+# In another terminal, start the web admin
+cd webadmin
+flutter pub get
+flutter run -d chrome --web-port 8080
+
+# Open http://localhost:8080 in your browser
+```
+
+The web admin provides:
+- Visual connection management with JWT authentication
+- Barrel management UI (create, delete, switch)
+- Data explorer with full CRUD operations
+- Query interface for prefix and range queries
+- JSON visualization with syntax highlighting
+
+See [webadmin/README.md](../webadmin/README.md) for detailed documentation.
+
 ### Testing All Clients
 
 ```bash

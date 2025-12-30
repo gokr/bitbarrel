@@ -41,27 +41,31 @@ Detailed documentation for specific BitBarrel features:
   - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
   - [Read-Ahead LRU Buffering](FEATURES/read-buffering.md) - Caching with LRU eviction
 
-### Client Libraries
-BitBarrel provides client libraries for multiple programming languages:
+### Client Libraries and Tools
+BitBarrel provides client libraries for multiple programming languages and a web admin console:
 
 - **[Nim Client](../clients/nim/README.md)** - Full WebSocket protocol implementation
 - **[Go Client](../clients/go/README.md)** - Full WebSocket protocol implementation
 - **[Dart/Flutter Client](../clients/dart/README.md)** - Mobile + Web compatible client
 - **[Python Client](../clients/python/README.md)** - Feature-complete WebSocket client
+- **[Web Admin Console](../webadmin/README.md)** - Flutter-based web UI for database management
 
-| Feature | Nim | Go | Dart/Flutter | Python |
-|---------|-----|----|--------------|--------|
-| WebSocket protocol | ✅ | ✅ | ✅ | ✅ |
-| CRUD operations | ✅ | ✅ | ✅ | ✅ |
-| Barrel management | ✅ | ✅ | ✅ | ✅ |
-| Barrel config ops | ✅ | ✅ | ✅ | ✅ |
-| Range queries | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | ✅ |
-| Reference traversal | ✅ | ✅ | ✅ | ✅ |
-| Cursor pagination | ✅ | ✅ | ✅ | ✅ |
-| Context manager | ✅ | - | - | ✅ |
-| Mobile support | - | - | ✅ | - |
-| Web support | - | - | ✅ | - |
+| Feature | Nim | Go | Dart/Flutter | Python | Web Admin |
+|---------|-----|----|--------------|--------|-----------|
+| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ | - |
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | - | - | - | ✅ |
+| Context manager | ✅ | - | - | ✅ | - |
+| Mobile support | - | - | ✅ | - | - |
+| Web support | - | - | ✅ | - | ✅ |
+| Visual UI | - | - | - | - | ✅ |
+| JSON visualization | - | - | - | - | ✅ |
 
 
 ### Historical and Research
