@@ -379,6 +379,15 @@ func (c *Client) Get(key string) (string, error) {
 	return resp.Value, nil
 }
 
+// GetOrDefault retrieves a value by key, returning defaultValue if key doesn't exist
+func (c *Client) GetOrDefault(key string, defaultValue string) (string, error) {
+	value, err := c.Get(key)
+	if err == ErrNotFound {
+		return defaultValue, nil
+	}
+	return value, err
+}
+
 // Delete deletes a key
 func (c *Client) Delete(key string) error {
 	if err := c.ensureBarrel(); err != nil {

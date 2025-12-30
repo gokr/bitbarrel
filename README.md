@@ -103,6 +103,29 @@ await client.close();
 
 See [`clients/dart/README.md`](clients/dart/README.md) for full documentation.
 
+### Web Admin Console
+
+BitBarrel includes a modern Flutter-based web admin console for visual database management:
+
+```bash
+# Start the BitBarrel server
+./bitbarrel serve
+
+# In another terminal, run the web admin
+cd webadmin
+flutter run -d chrome --web-port 8080
+```
+
+**Features:**
+- Connection management with JWT authentication support
+- Barrel management (create, delete, switch)
+- Data explorer with full CRUD operations
+- Query interface for prefix and range queries (CritBit mode)
+- JSON visualization with syntax highlighting
+- Real-time data browsing with pagination
+
+See [`webadmin/README.md`](webadmin/README.md) for detailed usage instructions.
+
 ### Go Example
 
 ```go
