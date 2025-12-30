@@ -612,6 +612,8 @@ proc openHugeBarrel*(path: string, config: BarrelConfig): HugeBarrel =
   createDir(path / "barrel2")
 
   # Open Barrel1 (CritBit mode)
+  # IMPORTANT: Disable compression for barrel1 to avoid rebuild issues
+  # Compression causes rebuildIndexFromDataFile to calculate wrong record sizes
   var barrel1Config = config
   barrel1Config.mode = bmCritBit
   barrel1Config.autoCompact = false  # We'll handle compaction separately
