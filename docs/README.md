@@ -60,8 +60,10 @@ BitBarrel provides client libraries for multiple programming languages and a web
 | Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Reference traversal | ✅ | ✅ | ✅ | ✅ | - |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | - | - | - | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | - |
 | Context manager | ✅ | - | - | ✅ | - |
+| Thread-safe operations | ✅ | ✅ | ✅ | ✅ | - |
 | Mobile support | - | - | ✅ | - | - |
 | Web support | - | - | ✅ | - | ✅ |
 | Visual UI | - | - | - | - | ✅ |
