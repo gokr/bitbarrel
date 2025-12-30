@@ -12,6 +12,7 @@ nimcache/
 docs/html/
 
 # Data files
+data
 *.data
 *.log
 *.rhint
