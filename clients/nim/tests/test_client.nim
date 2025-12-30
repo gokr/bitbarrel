@@ -93,6 +93,7 @@ suite "Integration: Connection":
     var client = newClient(TestServerHost, TestServerPort)
     defer: client.close()
 
+    client.connect()
     check client.isConnected
 
     test "connect to non-existent server fails":
@@ -369,8 +370,8 @@ suite "Integration: Connection":
       check client.createBarrel(name)
       check client.useBarrel(name)
 
-      # 100KB value
-      let largeValue = "x".repeat(100 * 1024)
+      # 32KB value (WebSocket message size limit)
+      let largeValue = "x".repeat(32 * 1024)
       check client.set("large_key", largeValue)
       check client.get("large_key") == largeValue
 
