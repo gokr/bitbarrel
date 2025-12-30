@@ -6,9 +6,10 @@ A modern Flutter web admin console for BitBarrel key-value store, providing a us
 
 - **Connection Management**: Connect to BitBarrel servers via WebSocket
 - **Barrel Management**: Create, delete, and switch between barrels
-- **Data Browser**: Browse key-value pairs with pagination (coming soon)
-- **Query Interface**: Execute prefix and range queries (coming soon)
-- **JSON Visualization**: View and edit JSON data (coming soon)
+- **Data Explorer**: Browse key-value pairs with pagination, search, and CRUD operations
+- **Query Interface**: Execute prefix and range queries (CritBit mode only)
+- **JSON Visualization**: View formatted JSON with syntax highlighting and collapsible nodes
+- **Full CRUD**: Create, read, update, and delete key-value pairs
 - **Modern UI**: Clean, minimalist design with responsive layout
 
 ## Requirements
@@ -53,14 +54,19 @@ lib/
 ├── screens/                       # UI screens
 │   ├── connection_screen.dart     # Server connection
 │   ├── dashboard_screen.dart      # Barrel management
-│   ├── barrel_explorer_screen.dart # Data browser
-│   └── query_screen.dart          # Query interface
+│   ├── barrel_explorer_screen.dart # Data explorer with CRUD
+│   └── query_screen.dart          # Prefix/range query interface
 ├── services/                      # Business logic
 │   ├── connection_service.dart    # Connection management
-│   └── barrel_service.dart        # Barrel operations
+│   ├── barrel_service.dart        # Barrel operations
+│   └── data_service.dart          # Data CRUD and query operations
 ├── models/                        # Data models
 │   ├── connection_state.dart      # Connection states
-│   └── barrel.dart                # Barrel model
+│   ├── barrel.dart                # Barrel model
+│   └── key_value_item.dart        # Key-value pair model
+├── widgets/                       # Reusable widgets
+│   ├── json_viewer.dart           # JSON visualization with syntax highlighting
+│   └── key_value_editor.dart      # Key-value create/edit dialog
 └── theme/
     └── app_theme.dart             # UI theme configuration
 ```

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:watch_it/watch_it.dart';
 import '../services/barrel_service.dart';
+import '../services/connection_service.dart';
 import '../theme/app_theme.dart';
 
 /// Dashboard screen showing available barrels
@@ -22,7 +23,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _createBarrel(BuildContext context) async {
     final nameController = TextEditingController();
-    String? selectedMode = 'bmHash'; // default
+    String? selectedMode = 'hash'; // default
 
     final result = await showDialog<bool>(
       context: context,
@@ -44,7 +45,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               value: selectedMode,
               decoration: const InputDecoration(
                 labelText: 'Index Mode',
-                helperText: 'bmCritBit enables range queries',
               ),
               items: const [
                 DropdownMenuItem(
@@ -54,6 +54,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 DropdownMenuItem(
                   value: 'critbit',
                   child: Text('CritBit (Range queries)'),
+                ),
+                DropdownMenuItem(
+                  value: 'hugecritbit',
+                  child: Text('HugeCritBit (Massive datasets)'),
                 ),
               ],
               onChanged: (value) {
@@ -181,11 +185,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _disconnect(BuildContext context) async {
+    await di<ConnectionService>().disconnect();
+    if (context.mounted) {
+      context.go('/');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final barrels = watchValue((BarrelService s) => s.barrels);
     final isLoading = watchValue((BarrelService s) => s.isLoading);
     final error = watchValue((BarrelService s) => s.error);
+    final isConnected = watchValue((ConnectionService s) => s.isConnected);
+
+    // If not connected, show prompt to connect
+    if (!isConnected) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('BitBarrel Dashboard'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.cloud_off,
+                size: 64,
+                color: AppTheme.secondaryColor.withValues(alpha: 0.5),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Not connected to server',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppTheme.secondaryColor.withValues(alpha: 0.7),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => context.go('/'),
+                icon: const Icon(Icons.login),
+                label: const Text('Connect'),
+                style: AppTheme.primaryButtonStyle,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -195,6 +242,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: isLoading ? null : () => di<BarrelService>().loadBarrels(),
             tooltip: 'Refresh barrels',
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _disconnect(context),
+            tooltip: 'Disconnect',
           ),
         ],
       ),

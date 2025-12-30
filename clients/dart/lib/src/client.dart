@@ -47,10 +47,19 @@ class BitBarrelClient {
             operation: 'connect');
       }
 
+      // Prepare query parameters with JWT token if provided
+      Map<String, String>? queryParams;
+      if (_config.token != null && _config.token!.isNotEmpty) {
+        queryParams = {
+          'token': _config.token!,
+        };
+      }
+
       _ws = await BitBarrelWebSocket.connect(
         _config.host,
         _config.port,
         _config.path,
+        queryParams,
       );
     });
   }

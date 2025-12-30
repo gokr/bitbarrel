@@ -17,28 +17,41 @@ class BitBarrelWebSocket {
     _broadcastStream = _channel.stream.asBroadcastStream();
   }
 
+  BitBarrelWebSocket._withStream(this._channel, this._host, this._port, this._broadcastStream) {
+    _isConnected = true;
+  }
+
   /// Connect to a BitBarrel server
   static Future<BitBarrelWebSocket> connect(
     String host,
     int port, [
     String path = '/ws',
+    Map<String, String>? queryParams,
   ]) async {
+    // Build URI with query parameters if provided
     final uri = Uri(
       scheme: 'ws',
       host: host,
       port: port,
       path: path,
+      queryParameters: queryParams,
     );
 
     try {
+      // Connect without subprotocol - server doesn't require it
       final channel = WebSocketChannel.connect(uri);
+
+      // Create broadcast stream immediately to not miss welcome message
+      final broadcastStream = channel.stream.asBroadcastStream();
 
       // Wait for connection to be established
       await channel.ready;
 
       // Read welcome message - server sends text on connection
-      final socket = BitBarrelWebSocket._(channel, host, port);
-      final firstMessage = await socket._broadcastStream.first;
+      final firstMessage = await broadcastStream.first.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw ConnectFailedException('Timeout waiting for welcome message'),
+      );
       final welcomeStr = firstMessage is String
           ? firstMessage
           : String.fromCharCodes(firstMessage as List<int>);
@@ -48,7 +61,7 @@ class BitBarrelWebSocket {
         throw ConnectFailedException('Invalid welcome from server: $welcomeStr');
       }
 
-      return socket;
+      return BitBarrelWebSocket._withStream(channel, host, port, broadcastStream);
     } catch (e) {
       if (e is ConnectFailedException) rethrow;
       throw ConnectFailedException('Failed to connect: $e');

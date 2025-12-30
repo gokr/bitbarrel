@@ -15,12 +15,16 @@ class BitBarrelConfig {
   /// WebSocket URI path (default: '/ws')
   final String path;
 
+  /// JWT authorization token (optional)
+  final String? token;
+
   const BitBarrelConfig({
     required this.host,
     required this.port,
     this.connectTimeout = const Duration(seconds: 5),
     this.requestTimeout = const Duration(seconds: 3),
     this.path = '/ws',
+    this.token,
   });
 
   /// Creates a WebSocket URI from the configuration
@@ -35,5 +39,21 @@ class BitBarrelConfig {
   factory BitBarrelConfig.localhost() => const BitBarrelConfig(
         host: 'localhost',
         port: 9876,
+      );
+
+  /// Create configuration with JWT token
+  factory BitBarrelConfig.withToken({
+    required String host,
+    required int port,
+    required String token,
+    Duration connectTimeout = const Duration(seconds: 5),
+    Duration requestTimeout = const Duration(seconds: 3),
+  }) =>
+      BitBarrelConfig(
+        host: host,
+        port: port,
+        connectTimeout: connectTimeout,
+        requestTimeout: requestTimeout,
+        token: token,
       );
 }

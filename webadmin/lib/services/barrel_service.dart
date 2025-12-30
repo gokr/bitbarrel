@@ -56,7 +56,7 @@ class BarrelService extends ChangeNotifier {
   Future<void> createBarrel(String name, {String? config}) async {
     if (_client == null) {
       error.value = 'Not connected to server';
-      return;
+      throw Exception('Not connected to server');
     }
 
     isLoading.value = true;
