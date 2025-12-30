@@ -117,15 +117,37 @@ var client = newClient()
 # Create with custom host/port
 var client = newClient("192.168.1.100", 8080.Port)
 
-# Create with full config
+# Create with JWT authentication
+var client = newClient("localhost", 9876.Port,
+                       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+
+# Create with full config (including token)
 let config = ClientConfig(
   host: "localhost",
   port: 9876.Port,
   connectTimeout: 5000,
-  requestTimeout: 3000
+  requestTimeout: 3000,
+  token: "your-jwt-token-here"
 )
 var client = newClient(config)
 ```
+
+### JWT Authentication
+
+The Nim client supports JWT token authentication for secure server access:
+
+```nim
+# Server must be configured with auth enabled
+# Connect with JWT token
+var client = newClient("localhost", 9876.Port,
+                       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...")
+client.connect()
+
+# Token is automatically passed in the WebSocket URL
+# Server validates token and grants access based on user roles
+```
+
+See the [networking guide](../../docs/networking-guide.md) for server setup instructions.
 
 ### Connection Management
 
