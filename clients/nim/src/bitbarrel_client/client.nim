@@ -313,6 +313,59 @@ proc dropBarrel*(client: var BitBarrelClient, name: string): bool =
     return true
   return false
 
+proc getBarrelConfig*(client: var BitBarrelClient, name: string): string =
+  ## Get the configuration for a barrel
+  ##
+  ## Returns the barrel configuration as a JSON string.
+  ## Raises ClientError if barrel not found.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.connect()
+  ## discard client.createBarrel("mydb", """{"mode": "critbit"}""")
+  ## let config = client.getBarrelConfig("mydb")
+  ## echo config  # {"mode": "critbit"}
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  let req = Request(command: cmdGetBarrelConfig, key: name)
+  let resp = client.sendAndWait(req)
+
+  if resp.status == statusBarrelNotFound:
+    raise newException(ClientError, fmt"Barrel not found: {name}")
+  elif resp.status != statusOk:
+    raise newException(ClientError, fmt"Get barrel config failed: {resp.status}")
+
+  return resp.value
+
+proc setBarrelConfig*(client: var BitBarrelClient, name: string, config: string): bool =
+  ## Set the configuration for a barrel
+  ##
+  ## Returns true if successful.
+  ## Raises ClientError if barrel not found.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.connect()
+  ## discard client.createBarrel("mydb")
+  ## discard client.setBarrelConfig("mydb", """{"autoCompact": false}""")
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  let req = Request(command: cmdSetBarrelConfig, key: name, value: config)
+  let resp = client.sendAndWait(req)
+
+  if resp.status == statusBarrelNotFound:
+    raise newException(ClientError, fmt"Barrel not found: {name}")
+  elif resp.status != statusOk:
+    raise newException(ClientError, fmt"Set barrel config failed: {resp.status}")
+
+  return true
+
 # Key-value operations (require current barrel)
 
 proc get*(client: var BitBarrelClient, key: string): string =
