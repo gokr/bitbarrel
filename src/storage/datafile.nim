@@ -1,6 +1,6 @@
 ## Data file implementation for Bitcask storage model
 
-import std/[os, times, locks, strformat]
+import std/[os, times, locks]
 when defined(posix):
   import std/posix
 import ../bitbarrel/types
@@ -135,7 +135,6 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     file.setFilePos(0, fspEnd)
 
   let size = getFileSize(path).uint64
-  echo fmt("DEBUG DataFile.open: path={path}, fileId={fileId}, size={size}, fileExisted={fileExistsNow}")
 
   result = DataFile(
     file: file,
@@ -171,8 +170,6 @@ proc close*(df: var DataFile) =
   when defined(posix):
     if df.shouldFsync:
       discard fsync(df.file.getFileHandle())
-  let finalSize = getFileSize(df.path)
-  echo fmt("DEBUG DataFile.close: path={df.path}, size={df.size}, actualFileSize={finalSize}")
   deinitLock(df.lock)
   df.file.close()
 
@@ -233,7 +230,6 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     if df.shouldFsync:
       when defined(posix):
         discard fsync(df.file.getFileHandle())
-    echo fmt("DEBUG DataFile: Wrote record key={key}, filePos={df.file.getFilePos()}, size={df.size}")
 
     # Track in write buffer for stats (even if writing immediately)
     discard df.writeBuffer[].addEntry(key, value, timestamp)
@@ -272,7 +268,6 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
       if df.shouldFsync:
         when defined(posix):
           discard fsync(df.file.getFileHandle())
-      echo fmt("DEBUG DataFile: Wrote record key={key}, filePos={df.file.getFilePos()}, size={df.size}")
 
       # Calculate record position (after CRC32)
       let recordDataPos = recordPos + 4  # After CRC32
