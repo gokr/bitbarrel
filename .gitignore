@@ -2,6 +2,7 @@
 *
 !/**/
 !*.*
+tools/check_doc_examples
 
 # Nim build artifacts
 nimcache/
