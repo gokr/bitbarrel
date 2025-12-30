@@ -79,7 +79,7 @@ class BitBarrelClient {
   bool get isConnected => _ws != null && _ws!.isConnected;
 
   /// Get the current barrel name
-  String? get currentBarrel => _currentBarrel;
+  String get currentBarrel => _currentBarrel ?? '';
 
   /// Ensure connected (auto-connect if not connected)
   Future<void> _ensureConnected() async {
