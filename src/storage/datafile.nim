@@ -1,6 +1,6 @@
 ## Data file implementation for Bitcask storage model
 
-import std/[os, times, locks]
+import std/[os, times, locks, strformat]
 when defined(posix):
   import std/posix
 import ../bitbarrel/types
@@ -88,7 +88,7 @@ proc open*(path: string, fileId: uint32): DataFile =
   )
   initLock(result.lock)
 
-proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, bufferSize: int, validateCrc: bool = true): DataFile =
+proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, bufferSize: int, validateCrc: bool = true, compressionConfig: ptr CompressionConfig = nil): DataFile =
   ## Open a data file with configurable sync strategy
 
   # Check if file exists before opening to decide mode
@@ -135,6 +135,7 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     file.setFilePos(0, fspEnd)
 
   let size = getFileSize(path).uint64
+  echo fmt("DEBUG DataFile.open: path={path}, fileId={fileId}, size={size}, fileExisted={fileExistsNow}")
 
   result = DataFile(
     file: file,
@@ -143,7 +144,7 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     size: size,
     syncMode: syncMode,
     shouldFsync: shouldFsync,
-    compressionConfig: nil,
+    compressionConfig: compressionConfig,
     validateCrc: validateCrc
   )
   initLock(result.lock)
@@ -165,6 +166,13 @@ proc close*(df: var DataFile) =
     stopWorker(df.writeBuffer[])
     dealloc(df.writeBuffer)
     df.writeBuffer = nil
+  # Flush file to disk before closing
+  df.file.flushFile()
+  when defined(posix):
+    if df.shouldFsync:
+      discard fsync(df.file.getFileHandle())
+  let finalSize = getFileSize(df.path)
+  echo fmt("DEBUG DataFile.close: path={df.path}, size={df.size}, actualFileSize={finalSize}")
   deinitLock(df.lock)
   df.file.close()
 
@@ -225,6 +233,7 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     if df.shouldFsync:
       when defined(posix):
         discard fsync(df.file.getFileHandle())
+    echo fmt("DEBUG DataFile: Wrote record key={key}, filePos={df.file.getFilePos()}, size={df.size}")
 
     # Track in write buffer for stats (even if writing immediately)
     discard df.writeBuffer[].addEntry(key, value, timestamp)
@@ -263,6 +272,7 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
       if df.shouldFsync:
         when defined(posix):
           discard fsync(df.file.getFileHandle())
+      echo fmt("DEBUG DataFile: Wrote record key={key}, filePos={df.file.getFilePos()}, size={df.size}")
 
       # Calculate record position (after CRC32)
       let recordDataPos = recordPos + 4  # After CRC32
