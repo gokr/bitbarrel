@@ -57,7 +57,7 @@ go get github.com/yourusername/bitbarrel-go
 
 ## Quick Start
 
-```go
+```go.compilable
 package main
 
 import (

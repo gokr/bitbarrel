@@ -14,7 +14,7 @@ Python client for BitBarrel key-value storage using WebSocket connection.
 This design ensures correctness and simplicity for most use cases. If you need high-throughput parallel requests, use multiple client instances.
 
 **Example of concurrent-safe (but serialized) usage:**
-```python
+```python.compilable
 from concurrent.futures import ThreadPoolExecutor
 from bitbarrel import Client
 
