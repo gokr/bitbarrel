@@ -1,4 +1,4 @@
-import std/[os, osproc, strutils, streams, algorithm]
+import std/[os, osproc, strutils, streams, algorithm, tables]
 
 type
   Example = object
@@ -6,6 +6,11 @@ type
     line: int
     code: string
     name: string
+    language: string      # nim, python, go, dart
+    needsWrap: bool
+
+const
+  SupportedLanguages = ["nim", "python", "go", "dart"]
 
 proc findMarkdownFiles(baseDir: string): seq[string] =
   ## Find all markdown files recursively
@@ -16,7 +21,7 @@ proc findMarkdownFiles(baseDir: string): seq[string] =
   result.sort()
 
 proc extractCompilableExamples(filePath: string): seq[Example] =
-  ## Extract all ```nim and ```nim.compilable code blocks from a markdown file
+  ## Extract all ```lang and ```lang.compilable code blocks from a markdown file
   result = @[]
   let content = readFile(filePath)
   let lines = content.splitLines()
@@ -25,40 +30,102 @@ proc extractCompilableExamples(filePath: string): seq[Example] =
   var isCompilable = false
   var currentBlock: seq[string] = @[]
   var blockStartLine = 0
+  var currentLang = ""
 
   for i, line in lines:
     if line.startsWith("```"):
       if not inCodeBlock:
-        # Check for compilable first (must match exact pattern)
-        if line.strip() == "```nim.compilable":
-          inCodeBlock = true
-          isCompilable = true
-          blockStartLine = i + 1
-          currentBlock = @[]
-        elif line.strip() == "```nim":
-          inCodeBlock = true
-          isCompilable = false
-          blockStartLine = i + 1
-          currentBlock = @[]
+        # Extract language from fence
+        let fence = line.strip()
+        # Check for .compilable suffix first
+        for lang in SupportedLanguages:
+          if fence == "```" & lang & ".compilable":
+            inCodeBlock = true
+            isCompilable = true
+            currentLang = lang
+            blockStartLine = i + 1
+            currentBlock = @[]
+            break
+          elif fence == "```" & lang:
+            inCodeBlock = true
+            isCompilable = false
+            currentLang = lang
+            blockStartLine = i + 1
+            currentBlock = @[]
+            break
       else:
         inCodeBlock = false
-        if currentBlock.len > 0:
+        if currentBlock.len > 0 and isCompilable:
           let code = currentBlock.join("\n")
           let relPath = filePath.relativePath(getCurrentDir())
           result.add(Example(
             file: relPath,
             line: blockStartLine,
             code: code,
-            name: if isCompilable: relPath & ":" & $blockStartLine else: ""
+            name: relPath & ":" & $blockStartLine & " (" & currentLang & ")",
+            language: currentLang,
+            needsWrap: false  # Will be determined per language
           ))
         currentBlock = @[]
         isCompilable = false
+        currentLang = ""
     elif inCodeBlock:
       currentBlock.add(line)
 
-proc compileExample(ex: Example, tempDir: string): bool =
-  ## Try to compile a code block and return true if successful
-  let fileName = extractFilename(ex.file).replace(".md", "").replace("-", "_") & "_line" & $ex.line
+proc needsBoilerplate(code: string, language: string): bool =
+  ## Determine if code snippet needs boilerplate wrapping
+  case language:
+  of "nim":
+    # Check if it's a complete program
+    return not (code.contains("import ") and
+                (code.contains("proc main") or code.contains("when isMainModule")))
+  of "python":
+    # Check if it's a complete script or just a snippet
+    return not (code.contains("import ") or code.contains("def ") or code.contains("class ")) and
+           code.count('\n') < 10
+  of "go":
+    # Check if it has package main and main func
+    return not (code.contains("package main") and code.contains("func main"))
+  of "dart":
+    # Check if it has main function or complete class
+    return not (code.contains("void main") or code.contains("Future<void> main"))
+  else:
+    return false
+
+proc getBoilerplate(language: string, code: string): string =
+  ## Get appropriate boilerplate template based on language and code content
+  let templateDir = getCurrentDir() / "tools" / "doc_test_templates"
+
+  case language:
+  of "python":
+    # Use module wrapper for most Python examples
+    let wrapperPath = templateDir / "python" / "wrapper_module.py"
+    if fileExists(wrapperPath):
+      let wrapper = readFile(wrapperPath)
+      return wrapper.replace("{CODE_SNIPPET}", code)
+    else:
+      return code
+  of "go":
+    let wrapperPath = templateDir / "go" / "wrapper_main.go"
+    if fileExists(wrapperPath):
+      let wrapper = readFile(wrapperPath)
+      return wrapper.replace("{CODE_SNIPPET}", code)
+    else:
+      return code
+  of "dart":
+    let wrapperPath = templateDir / "dart" / "wrapper_main.dart"
+    if fileExists(wrapperPath):
+      let wrapper = readFile(wrapperPath)
+      return wrapper.replace("{CODE_SNIPPET}", code)
+    else:
+      return code
+  else:
+    return code
+
+proc compileNimExample(ex: Example, tempDir: string): bool =
+  ## Compile Nim example
+  let fileName = ex.file.extractFilename.replace(".md", "").replace("-", "_") &
+                 "_line" & $ex.line
   let tempFile = tempDir / fileName & ".nim"
 
   try:
@@ -78,18 +145,147 @@ proc compileExample(ex: Example, tempDir: string): bool =
     process.close()
 
     if exitCode != 0:
-      echo "  FAILED: ", output.strip()
+      echo "  FAILED: Nim compilation error"
+      echo output.strip()
       return false
 
-    # Remove compiled files on success
+    # Cleanup
     discard tryRemoveFile(tempDir / fileName)
-    discard tryRemoveFile(tempDir / fileName & ".nim.c")
-    discard tryRemoveFile(tempDir / fileName & ".nim.o")
-    discard tryRemoveFile(tempDir / fileName & ".nim.json.json")
-    discard tryRemoveFile(tempDir / fileName & ".nim.json")
+    for ext in [".nim.c", ".nim.o", ".nim.json", ".nim.json.json"]:
+      discard tryRemoveFile(tempDir / fileName & ext)
     return true
   except IOError:
     echo "  ERROR: ", getCurrentExceptionMsg()
+    return false
+
+proc compilePythonExample(ex: Example, tempDir: string): bool =
+  ## Compile Python example
+  let fileName = ex.file.extractFilename.replace(".md", "").replace("-", "_") &
+                 "_line" & $ex.line
+  let tempFile = tempDir / fileName & ".py"
+
+  # Apply boilerplate if needed
+  let codeToCheck = if ex.needsWrap: getBoilerplate("python", ex.code) else: ex.code
+
+  try:
+    writeFile(tempFile, codeToCheck)
+
+    # Use py_compile for syntax checking
+    let process = startProcess(
+      "python",
+      args = ["-m", "py_compile", tempFile],
+      options = {poUsePath, poStdErrToStdOut}
+    )
+
+    var output = ""
+    var line = ""
+    while process.outputStream.readLine(line):
+      output.add(line & "\n")
+    let exitCode = process.waitForExit()
+    process.close()
+
+    if exitCode != 0:
+      echo "  FAILED: Python syntax error"
+      echo output.strip()
+      return false
+
+    # Cleanup
+    discard tryRemoveFile(tempFile)
+    discard tryRemoveFile(tempDir / "__pycache__")
+    return true
+  except IOError:
+    echo "  ERROR: ", getCurrentExceptionMsg()
+    return false
+
+proc compileGoExample(ex: Example, tempDir: string): bool =
+  ## Compile Go example
+  let fileName = ex.file.extractFilename.replace(".md", "").replace("-", "_") &
+                 "_line" & $ex.line
+  let tempFile = tempDir / fileName & ".go"
+
+  # Apply boilerplate if needed
+  let codeToCheck = if ex.needsWrap: getBoilerplate("go", ex.code) else: ex.code
+
+  try:
+    writeFile(tempFile, codeToCheck)
+
+    # For Go, just check syntax with 'go fmt'
+    let process = startProcess(
+      "go",
+      args = ["fmt", tempFile],
+      options = {poUsePath, poStdErrToStdOut}
+    )
+
+    var output = ""
+    var line = ""
+    while process.outputStream.readLine(line):
+      output.add(line & "\n")
+    let exitCode = process.waitForExit()
+    process.close()
+
+    if exitCode != 0:
+      echo "  FAILED: Go fmt error"
+      echo output.strip()
+      return false
+
+    # Cleanup
+    discard tryRemoveFile(tempFile)
+    return true
+  except IOError:
+    echo "  ERROR: ", getCurrentExceptionMsg()
+    return false
+
+proc compileDartExample(ex: Example, tempDir: string): bool =
+  ## Compile Dart example
+  let fileName = ex.file.extractFilename.replace(".md", "").replace("-", "_") &
+                 "_line" & $ex.line
+  let tempFile = tempDir / fileName & ".dart"
+
+  # Apply boilerplate if needed
+  let codeToCheck = if ex.needsWrap: getBoilerplate("dart", ex.code) else: ex.code
+
+  try:
+    writeFile(tempFile, codeToCheck)
+
+    # Use dart analyze for static checking
+    let process = startProcess(
+      "dart",
+      args = ["analyze", tempFile],
+      options = {poUsePath, poStdErrToStdOut}
+    )
+
+    var output = ""
+    var line = ""
+    while process.outputStream.readLine(line):
+      output.add(line & "\n")
+    let exitCode = process.waitForExit()
+    process.close()
+
+    if exitCode != 0:
+      echo "  FAILED: Dart analysis error"
+      echo output.strip()
+      return false
+
+    # Cleanup
+    discard tryRemoveFile(tempFile)
+    return true
+  except IOError:
+    echo "  ERROR: ", getCurrentExceptionMsg()
+    return false
+
+proc compileExample(ex: Example, tempDir: string): bool =
+  ## Dispatch to language-specific compiler
+  case ex.language:
+  of "nim":
+    return compileNimExample(ex, tempDir)
+  of "python":
+    return compilePythonExample(ex, tempDir)
+  of "go":
+    return compileGoExample(ex, tempDir)
+  of "dart":
+    return compileDartExample(ex, tempDir)
+  else:
+    echo "  ERROR: Unsupported language: ", ex.language
     return false
 
 proc main() =
@@ -114,12 +310,19 @@ proc main() =
       if ex.name.len > 0:
         compilableCount += 1
 
-  echo "Found ", allExamples.len, " Nim code blocks total"
-  echo "Found ", compilableCount, " marked as compilable (nim.compilable)"
+  # Group by language for reporting
+  var langCounts: CountTable[string]
+  for ex in allExamples:
+    if ex.name.len > 0:
+      langCounts.inc(ex.language)
+
+  echo "Found ", allExamples.len, " code blocks total"
+  for lang, count in langCounts:
+    echo "  ", lang, ": ", count, " compilable examples"
   echo ""
 
   if compilableCount == 0:
-    echo "No compilable blocks found. Use ```nim.compilable to mark examples."
+    echo "No compilable blocks found. Use ```lang.compilable to mark examples."
     echo "Goodbye!"
     return
 
@@ -136,8 +339,18 @@ proc main() =
 
   for ex in allExamples:
     if ex.name.len > 0:
+      # Check if needs wrapping
+      let needsWrap = needsBoilerplate(ex.code, ex.language)
+
       echo "Checking: ", ex.name
-      if compileExample(ex, tempDir):
+      if needsWrap:
+        echo "  (using boilerplate wrapper)"
+
+      # Create a mutable copy with updated needsWrap
+      var mutableEx = ex
+      mutableEx.needsWrap = needsWrap
+
+      if compileExample(mutableEx, tempDir):
         successCount += 1
         echo "  ✓ OK"
       else:
@@ -148,7 +361,7 @@ proc main() =
   echo "=========================================="
   echo "Summary"
   echo "=========================================="
-  echo "Compilable blocks: ", compilableCount
+  echo "Total compilable blocks: ", compilableCount
   echo "Passed: ", successCount
   echo "Failed: ", failedCount
   echo ""
@@ -160,6 +373,6 @@ proc main() =
     echo ""
     quit(1)
   else:
-    echo "All doc examples compile successfully!"
+    echo "All doc examples compiled successfully!"
 
 main()
