@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:mutex/mutex.dart';
 
 import 'config.dart';
@@ -103,6 +104,7 @@ class BitBarrelClient {
     required int command,
     required String key,
     String value = '',
+    Uint8List? binaryValue,
   }) async {
     return await _lock.protect(() async {
       await _ensureConnected();
@@ -121,6 +123,7 @@ class BitBarrelClient {
         seq: seq,
         key: key,
         value: value,
+        binaryValue: binaryValue,
       );
 
       // Apply timeout to send
@@ -358,7 +361,7 @@ class BitBarrelClient {
     final value = await _sendRequest(
       command: Command.rangeQuery,
       key: '',
-      value: Latin1Codec().decode(encodedParams),
+      binaryValue: encodedParams,
     );
 
     return ProtocolDecoder.decodeRangeResponse(value);
@@ -382,7 +385,7 @@ class BitBarrelClient {
     final value = await _sendRequest(
       command: Command.prefixQuery,
       key: '',
-      value: Latin1Codec().decode(encodedParams),
+      binaryValue: encodedParams,
     );
 
     return ProtocolDecoder.decodeRangeResponse(value);
@@ -402,7 +405,7 @@ class BitBarrelClient {
     final value = await _sendRequest(
       command: Command.rangeCount,
       key: '',
-      value: Latin1Codec().decode(encodedParams),
+      binaryValue: encodedParams,
     );
 
     return int.tryParse(value) ?? 0;
@@ -428,7 +431,7 @@ class BitBarrelClient {
     final value = await _sendRequest(
       command: Command.traverse,
       key: '',
-      value: Latin1Codec().decode(encodedParams),
+      binaryValue: encodedParams,
     );
 
     final response = ProtocolDecoder.decodeTraverseResults(value);
