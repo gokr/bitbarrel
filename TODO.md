@@ -346,6 +346,25 @@ Some network tests may have a known issue with Nim's ORC garbage collector crash
 **Solution:**
 Ensure threads complete before parent objects are destroyed. See `barrel.nim:close()` for the pattern used to fix compaction tests.
 
+### Compression Format Change (December 2025) - FIXED ✅
+**Issue:** Compression broke data file recovery - barrels with compression recovered 0 records after restart.
+
+**Root Cause:** Old format stored uncompressed size in `valueLen` but wrote compressed data, causing incorrect record size calculations during `rebuildIndexFromDataFile()`.
+
+**Solution:** Implemented Option 2 record format:
+- **Uncompressed**: `[valueLen=actual][flags=0][algo=0][value]` (no change)
+- **Compressed**: `[valueLen=actual][flags=1][algo=X][originalLen][value]` (+4 bytes)
+- `valueLen` now stores actual disk size
+- `originalLen` field added only for compressed records
+
+**Impact:**
+- Uncompressed records: 100% backward compatible
+- Compressed records: +4 bytes per record
+- Data file recovery now works correctly with compression
+- All 31 tests passing
+
+**Commits:** 6db8c01 through 1c9bc6c (December 2025)
+
 ### Experimental Features
 - HugeBarrel (bmHugeCritBit mode) is documented as experimental
 - Full production-grade HugeBarrel implementation is planned, see `/docs/research/HUGECRITBIT.md`

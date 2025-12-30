@@ -19,7 +19,7 @@ BitBarrel is a high-performance Bitcask-style key-value storage engine written i
 ```bash
 nimble install           # Install dependencies
 nimble build             # Build the bitbarrel binary
-nimble test              # Run all tests (25 test files)
+nimble test              # Run all tests (32 test files)
 nimble clean             # Remove generated data files and binaries
 
 # Specific test suites

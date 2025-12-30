@@ -86,19 +86,35 @@ For Snappy support:
 ## Implementation Details
 
 ### Record Format
-The record format has been extended to support compression:
 
+The record format supports compression with an efficient design:
+
+**Uncompressed records:**
 ```
-[CRC32:4][timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:1][value]
+[CRC32:4][timestamp:8][keyLen:4][key][valLen:4][flags:0][algorithm:0][value]
 ```
 
+**Compressed records (+4 bytes for originalLen):**
+```
+[CRC32:4][timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:X][originalLen:4][value]
+```
+
+**Field Descriptions:**
 - **flags**: Bit 0 indicates compression (1 = compressed, 0 = uncompressed)
 - **algorithm**: Algorithm ID (0 = none, 1 = LZ4, 2 = Snappy)
-- **valLen**: Stores the *original* uncompressed size
+- **valLen**: Stores the *actual* bytes on disk (compressed or uncompressed)
+- **originalLen**: Only present when compressed, stores uncompressed size for decompression
 - **value**: May be compressed or uncompressed
 
+**Key Points:**
+- Uncompressed records have no overhead (backward compatible)
+- Compressed records add only 4 bytes (originalLen field)
+- This format enables correct record size calculation during data file recovery
+- `valLen` stores actual disk size, making file parsing straightforward
+
 ### Backward Compatibility
-- Old format records (without flags/algorithm bytes) are read automatically
+- Uncompressed format is identical to original format (100% compatible)
+- Compressed records require new format (Option 2)
 - Mixed formats can coexist in the same data file
 - Future algorithm migration is supported via algorithm IDs
 

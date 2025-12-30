@@ -231,7 +231,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python client libraries |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
 
-**Comprehensive test suite**: 27 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, and network resilience.
+**Comprehensive test suite**: 32 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
 
 ## Performance Highlights
 
