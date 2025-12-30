@@ -156,6 +156,7 @@ type
     compactThreshold*: float
     compactInterval*: int   # Seconds between compaction checks (default: 60)
     validateCrc*: bool  # Validate CRC32 on reads (default: true)
+    compressionConfig*: ptr CompressionConfig  # Compression settings (nil = use defaults)
     # TTL configuration
     defaultTtl*: int        # Default TTL in seconds (0 = no expiration)
     checkExpirationOnRead*: bool  # Check expiration during get() calls
