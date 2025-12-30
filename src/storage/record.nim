@@ -22,7 +22,14 @@ type
 
 proc encode*(record: Record; compressionConfig: ptr CompressionConfig = nil): string =
   ## Encode a record using portable binary format (little-endian)
-  ## Format: ``[timestamp:8][keyLen:4][key][valLen:4][flags:1][algorithm:1][value]``
+  ##
+  ## **Format (Option 2 - valueLen stores actual size on disk):**
+  ## - Uncompressed: ``[timestamp:8][keyLen:4][key][valueLen:4][flags:0][algorithm:0][value]``
+  ## - Compressed: ``[timestamp:8][keyLen:4][key][valueLen:4][flags:1][algorithm:X][originalLen:4][value]``
+  ##
+  ## Where:
+  ## - ``valueLen`` = actual bytes on disk (compressed or uncompressed)
+  ## - ``originalLen`` = only present when compressed, stores uncompressed size for decompression
 
   # Use default compression config if none provided
   var threshold = 256
@@ -60,7 +67,9 @@ proc encode*(record: Record; compressionConfig: ptr CompressionConfig = nil): st
     finalValue = cast[seq[byte]](record.value)
 
   # Calculate total size
-  let totalSize = 8 + 4 + record.key.len + 4 + 1 + 1 + finalValue.len
+  # Add 4 bytes for originalLen when compressed
+  let originalLenSize = if shouldCompressValue: 4 else: 0
+  let totalSize = 8 + 4 + record.key.len + 4 + 1 + 1 + originalLenSize + finalValue.len
   result = newString(totalSize)
   var pos = 0
 
@@ -82,9 +91,10 @@ proc encode*(record: Record; compressionConfig: ptr CompressionConfig = nil): st
     copyMem(addr result[pos], addr record.key[0], record.key.len)
   pos += record.key.len
 
-  # Value length (4 bytes, little-endian) - stores the *original* uncompressed size
+  # Value length (4 bytes, little-endian)
+  # NEW: Stores ACTUAL size on disk (compressed or uncompressed)
   var valLen: uint32
-  var srcValLen = record.value.len.uint32  # Original size, not compressed
+  var srcValLen = finalValue.len.uint32  # Actual size on disk
   littleEndian32(addr valLen, addr srcValLen)
   copyMem(addr result[pos], addr valLen, 4)
   pos += 4
@@ -96,6 +106,14 @@ proc encode*(record: Record; compressionConfig: ptr CompressionConfig = nil): st
   # Algorithm ID (1 byte)
   result[pos] = char(algoId)
   pos += 1
+
+  # Original length (4 bytes, little-endian) - ONLY when compressed
+  if shouldCompressValue:
+    var origLen: uint32
+    var srcOrigLen = record.value.len.uint32  # Original uncompressed size
+    littleEndian32(addr origLen, addr srcOrigLen)
+    copyMem(addr result[pos], addr origLen, 4)
+    pos += 4
 
   # Value (raw bytes - may be compressed)
   if finalValue.len > 0:
@@ -130,14 +148,15 @@ proc decode*(data: string): Record =
   let key = data[pos..<(pos+keyLen.int)]
   pos += keyLen.int
 
-  # Read value length (4 bytes, little-endian) - stores uncompressed size
+  # Read value length (4 bytes, little-endian)
+  # NEW: Stores ACTUAL size on disk (compressed or uncompressed)
   if data.len - pos < 4:
     raise newException(ValueError, "Invalid record: missing value length")
   var valLen: uint32
   var rawValLen: uint32
   copyMem(addr rawValLen, addr data[pos], 4)
   littleEndian32(addr valLen, addr rawValLen)
-  let originalValSize = valLen.int
+  let actualValSize = valLen.int  # Actual bytes on disk
   pos += 4
 
   # Check if we have flags and algorithm (new format)
@@ -157,15 +176,26 @@ proc decode*(data: string): Record =
     # Old format - treat remaining data as uncompressed value
     isCompressed = false
 
+  # Read original length (4 bytes) - ONLY when compressed
+  var originalValSize: int
+  if isCompressed:
+    if data.len - pos < 4:
+      raise newException(ValueError, "Invalid record: missing original length for compressed data")
+    var origLen: uint32
+    var rawOrigLen: uint32
+    copyMem(addr rawOrigLen, addr data[pos], 4)
+    littleEndian32(addr origLen, addr rawOrigLen)
+    originalValSize = origLen.int
+    pos += 4
+  else:
+    # For uncompressed, original size == actual size
+    originalValSize = actualValSize
+
   # Read value (raw bytes - may be compressed)
-  if data.len - pos < 0:
+  if data.len - pos < actualValSize:
     raise newException(ValueError, "Invalid record: value data incomplete")
 
-  # For uncompressed data, validate we have enough bytes
-  if not isCompressed and data.len - pos < originalValSize:
-    raise newException(ValueError, "Invalid record: value data incomplete")
-
-  let storedValue = data[pos..data.high]
+  let storedValue = data[pos..<(pos+actualValSize)]
   var finalValue: string
 
   if isCompressed:
@@ -175,12 +205,7 @@ proc decode*(data: string): Record =
     except CompressionError as e:
       raise newException(ValueError, "Decompression failed: " & e.msg)
   else:
-    # Check if size matches expected for uncompressed data
-    if storedValue.len != originalValSize and algoId == 0:
-      # This might be old format where stored size is actual size
-      finalValue = storedValue
-    else:
-      finalValue = storedValue
+    finalValue = storedValue
 
   result = Record(
     key: key,
