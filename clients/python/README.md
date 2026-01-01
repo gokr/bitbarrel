@@ -83,7 +83,7 @@ pip install -e .
 
 ## Quick Start
 
-```python
+```python.compilable
 from bitbarrel import Client
 
 # Create client
@@ -118,7 +118,7 @@ client.close()
 
 **Using context manager:**
 
-```python
+```python.compilable
 from bitbarrel import Client
 
 with Client() as client:
