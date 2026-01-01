@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  bitbarrel:
+    # Build from local Dockerfile
+    build: .
+
+    # Or use pre-built image (uncomment if using registry)
+    # image: ghcr.io/gokr/bitbarrel:latest
+
+    container_name: bitbarrel
+
+    # Port mapping
+    # 8080: BitBarrel WebSocket/HTTP server
+    # 8081: Flutter web admin
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+
+    # Volume for persistent data storage
+    volumes:
+      # Named volume for data persistence
+      - bitbarrel-data:/data
+
+      # Or use bind mount (uncomment and comment out named volume above)
+      # - ./data:/data
+
+      # Optional: mount custom config file
+      # - ./bitbarrel.yaml:/config/bitbarrel.yaml:ro
+
+    # Environment variables
+    environment:
+      # Server configuration
+      - BITBARREL_SERVER_PORT=8080
+      - BITBARREL_SERVER_ADDRESS=0.0.0.0
+      - BITBARREL_SERVER_MAX_CONNECTIONS=10000
+      - BITBARREL_SERVER_TIMEOUT=30000
+
+      # Storage configuration
+      - BITBARREL_STORAGE_DATA_DIR=/data
+      - BITBARREL_STORAGE_MAX_FILE_SIZE=1073741824  # 1GB
+      - BITBARREL_STORAGE_SYNC_MODE=immediate
+      - BITBARREL_STORAGE_FSYNC_INTERVAL=100
+
+      # Performance configuration
+      - BITBARREL_PERFORMANCE_WORKER_THREADS=4
+      - BITBARREL_PERFORMANCE_WRITE_BUFFER_SIZE=1000
+      - BITBARREL_PERFORMANCE_READ_AHEAD_SIZE=64
+      - BITBARREL_PERFORMANCE_CACHE_SIZE=256
+
+      # Compaction configuration
+      - BITBARREL_COMPACT_ENABLED=true
+      - BITBARREL_COMPACT_TRIGGER_THRESHOLD=0.3
+      - BITBARREL_COMPACT_INTERVAL=60
+
+      # Logging configuration
+      - BITBARREL_LOGGING_LEVEL=info
+      - BITBARREL_LOGGING_FILE=bitbarrel.log
+      - BITBARREL_LOGGING_FORMAT=text
+
+      # Authentication (disabled by default for easy startup)
+      # Set to true and provide a secret to enable JWT authentication
+      - BITBARREL_AUTH_ENABLED=false
+      # Generate a secure secret: openssl rand -base64 32
+      # - BITBARREL_AUTH_SECRET=your-32-character-secret-here
+
+      # Web admin port (internal only, not exposed directly)
+      - BITBARREL_ADMIN_PORT=8081
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits (optional, adjust based on your needs)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2'
+    #       memory: 4G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Named volume for data persistence
+volumes:
+  bitbarrel-data:
+    driver: local

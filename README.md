@@ -424,6 +424,66 @@ server.start()
 - **[docs/network-architecture.md](docs/network-architecture.md)**: Network layer architecture
 - **[docs/research/REFERENCES.md](docs/research/REFERENCES.md)**: Reference model (graph traversal)
 
+## Running with Docker
+
+Get started with BitBarrel in seconds using our official Docker image, which bundles the server with a Flutter web admin interface.
+
+### Quick Start with Docker Compose
+
+```bash
+# Start BitBarrel with all services
+docker-compose up -d
+
+# Access the services:
+# - BitBarrel Server: ws://localhost:8080
+# - Web Admin: http://localhost:8081
+
+# View logs
+docker-compose logs -f
+```
+
+### Quick Start with Docker Run
+
+```bash
+docker run -d \
+  --name bitbarrel \
+  -p 8080:8080 \
+  -p 8081:8081 \
+  -v bitbarrel-data:/data \
+  ghcr.io/gokr/bitbarrel:latest
+```
+
+### Features
+
+- **Single container**: Both server and web admin included
+- **Zero configuration**: Works out of the box with sensible defaults
+- **Environment-driven**: Easy configuration via environment variables
+- **Persistent storage**: Data volume for reliable persistence
+- **Security**: Runs as non-root user with JWT authentication support
+- **Alpine-based**: Small image size (~50MB) with minimal attack surface
+
+### Configuration
+
+Configure BitBarrel using environment variables:
+
+```bash
+docker run -d \
+  -p 8080:8080 -p 8081:8081 \
+  -v bitbarrel-data:/data \
+  -e BITBARREL_AUTH_ENABLED=true \
+  -e BITBARREL_AUTH_SECRET="your-32-char-secret" \
+  -e BITBARREL_SERVER_PORT=8080 \
+  -e BITBARREL_LOGGING_LEVEL=info \
+  ghcr.io/gokr/bitbarrel:latest
+```
+
+See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation including:
+- Advanced configuration options
+- Docker Compose examples
+- Security best practices
+- Troubleshooting guide
+- Production deployment tips
+
 ## Future Enhancements
 
 - **Pub/Sub Messaging**: Real-time messaging system

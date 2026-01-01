@@ -1,0 +1,86 @@
+# Git repository
+.git
+.gitignore
+
+# CI/CD
+.github
+.claude
+
+# Nim build artifacts
+nimcache/
+*.nim.out
+*.exe
+
+# Binary executables (except in src/)
+bitbarrel
+!src/**/
+!*.*
+
+# Data files
+data/
+*.data
+*.log
+*.rhint
+*.hint
+temp_*/
+test_*_data/
+ranges/
+testresults/
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Documentation build output
+docs/html/
+
+# Test files
+tests/
+bench/
+demos/
+tools/
+
+# Flutter/Dart build artifacts
+webadmin/.dart_tool/
+webadmin/.pub-cache/
+webadmin/.build/
+webadmin/build/
+webadmin/.packages.pubspec.lock
+clients/dart/pubspec.lock
+clients/dart/.dart_tool/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+clients/python/.pytest_cache/
+clients/python/.ruff_cache/
+clients/python/bitbarrel.egg-info/
+clients/python/venv/
+
+# CI files (keep these in build)
+# docker-compose.yml
+# Dockerfile
+# .dockerignore
+
+# Shell scripts (but we need docker-entrypoint.sh)
+# *.sh
+
+# Plans and temporary files
+.plan
+*.plan
+*.md~
+
+# Keep entrypoint script
+!docker-entrypoint.sh
