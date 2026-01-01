@@ -131,6 +131,34 @@ task stressCompactStandard, "Run compaction stress test (standard - 100K ops)":
 task stressCompactHeavy, "Run compaction stress test (stress - 1M ops)":
   exec "nim c -d:release -r --path:src bench/compaction_stress.nim stress"
 
+# HugeBarrel stress tests
+
+task stressHugeQuick, "Run HugeBarrel stress test (quick - 1M keys, ~2GB)":
+  exec "nim c -d:release -r --path:src bench/hugebarrel_stress.nim quick"
+
+task stressHugeStandard, "Run HugeBarrel stress test (standard - 10M keys, ~20GB)":
+  exec "nim c -d:release -r --path:src bench/hugebarrel_stress.nim standard"
+
+task stressHugeStress, "Run HugeBarrel stress test (stress - 50M keys, ~50GB)":
+  exec "nim c -d:release -r --path:src bench/hugebarrel_stress.nim stress"
+
+task stressHugeExhaustive, "Run HugeBarrel stress test (exhaustive - full validation)":
+  exec "nim c -d:release -r --path:src bench/hugebarrel_stress.nim exhaustive"
+
+task stressHugeAll, "Run all HugeBarrel stress test profiles":
+  exec """
+    echo "Running HugeBarrel stress tests..."
+    echo ""
+    echo "=== Quick Profile (1M keys) ==="
+    nim c -d:release -r --path:src bench/hugebarrel_stress.nim quick
+    echo ""
+    echo "=== Standard Profile (10M keys) ==="
+    nim c -d:release -r --path:src bench/hugebarrel_stress.nim standard
+    echo ""
+    echo "=== Stress Profile (50M keys) ==="
+    nim c -d:release -r --path:src bench/hugebarrel_stress.nim stress
+  """
+
 # Tasks for network server and client
 
 task client, "Build BitBarrel network client library":
@@ -299,3 +327,26 @@ task buildDefault, "Build with default settings (LZ4 compression)":
 
 task build, "Build with default settings (LZ4 compression)":
   exec "nim c -d:release src/bitbarrel.nim"
+
+# Docker tasks
+
+task dockerBuild, "Build Docker image with web admin":
+  exec "./build_docker.sh"
+
+task dockerBuildNoTest, "Build Docker image without running tests":
+  exec "./build_docker.sh --skip-test"
+
+task dockerRun, "Run BitBarrel in Docker container":
+  exec "docker run -d -p 8080:8080 -p 8081:8081 -v bitbarrel-data:/data bitbarrel:latest"
+
+task dockerComposeUp, "Run BitBarrel using Docker Compose":
+  exec "docker-compose up -d"
+
+task dockerComposeDown, "Stop BitBarrel Docker Compose":
+  exec "docker-compose down"
+
+task dockerComposeLogs, "View BitBarrel logs from Docker Compose":
+  exec "docker-compose logs -f"
+
+task dockerPublish, "Build and publish Docker image to registry":
+  exec "./build_docker.sh --publish"
