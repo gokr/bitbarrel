@@ -51,6 +51,17 @@ with ThreadPoolExecutor(max_workers=4) as executor:
     executor.map(lambda _: worker(), range(4))
 ```
 
+## Features
+
+- Full WebSocket protocol implementation
+- All BitBarrel operations (GET, SET, DELETE, etc.)
+- Barrel management
+- Statistics support: Get comprehensive barrel statistics and metrics
+- Context manager support for automatic resource cleanup
+- Range and prefix queries with cursor-based pagination
+- Reference traversal support
+- Comprehensive test coverage
+
 ## Installation
 
 The client requires Python >= 3.8 and the `websocket-client` library for WebSocket communication.
