@@ -10,6 +10,7 @@ A modern Flutter web admin console for BitBarrel key-value store, providing a us
 - **Query Interface**: Execute prefix and range queries (CritBit mode only)
 - **JSON Visualization**: View formatted JSON with syntax highlighting and collapsible nodes
 - **Full CRUD**: Create, read, update, and delete key-value pairs
+- **Statistics Dashboard**: View comprehensive barrel statistics and metrics
 - **Modern UI**: Clean, minimalist design with responsive layout
 
 ## Requirements
@@ -55,6 +56,7 @@ lib/
 │   ├── connection_screen.dart     # Server connection
 │   ├── dashboard_screen.dart      # Barrel management
 │   ├── barrel_explorer_screen.dart # Data explorer with CRUD
+│   ├── barrel_stats_screen.dart   # Statistics dashboard
 │   └── query_screen.dart          # Prefix/range query interface
 ├── services/                      # Business logic
 │   ├── connection_service.dart    # Connection management
