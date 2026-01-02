@@ -2,6 +2,7 @@
 
 # BitBarrel Docker Build Script
 # Builds Docker image with proper version tagging
+# Flutter web admin must be built FIRST: cd webadmin && flutter build web --release
 
 set -e
 
@@ -32,10 +33,6 @@ check_prerequisites() {
         exit 1
     fi
 
-    if ! command -v flutter &> /dev/null; then
-        echo -e "${YELLOW}Warning: Flutter is not installed. Web admin build will be skipped.${NC}"
-    fi
-
     echo -e "${GREEN}✓ Prerequisites check passed${NC}"
     echo ""
 }
@@ -46,30 +43,41 @@ get_version() {
     echo ${version:-latest}
 }
 
-# Build Flutter web admin if Flutter is available
+# Build Flutter web admin if Flutter is available and directory exists
 build_web_admin() {
-    if command -v flutter &> /dev/null; then
+    if [ -d "webadmin" ] && command -v flutter &> /dev/null; then
         echo "Building Flutter web admin..."
 
-        if [ ! -d "webadmin" ]; then
-            echo -e "${RED}Error: webadmin directory not found${NC}"
-            exit 1
-        fi
-
         cd webadmin
+
+        # Check if already built
+        if [ -d "build/web" ]; then
+            echo -e "${YELLOW}Web admin already built. Skipping build.${NC}"
+            cd ..
+            return 0
+        fi
 
         # Install dependencies
         flutter pub get
 
         # Build for web
-        flutter build web --release
-
-        cd ..
-
-        echo -e "${GREEN}✓ Flutter web admin built successfully${NC}"
-        echo ""
+        if flutter build web --release; then
+            cd ..
+            echo -e "${GREEN}✓ Flutter web admin built successfully${NC}"
+            echo ""
+        else
+            cd ..
+            echo -e "${YELLOW}Warning: Flutter web admin build failed. Continuing without it.${NC}"
+            echo "  To build manually: cd webadmin && flutter build web --release"
+            echo ""
+        fi
     else
-        echo -e "${YELLOW}Warning: Flutter not available, building without web admin${NC}"
+        if [ ! -d "webadmin" ]; then
+            echo -e "${YELLOW}Warning: webadmin directory not found. Skipping web admin build.${NC}"
+        else
+            echo -e "${YELLOW}Warning: Flutter not available. Web admin will not be included.${NC}"
+            echo "  To add web admin: Install Flutter and run: cd webadmin && flutter build web --release"
+        fi
         echo ""
     fi
 }
