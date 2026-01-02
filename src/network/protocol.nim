@@ -27,6 +27,8 @@ type
     ## Configuration commands
     cmdGetBarrelConfig = 0x16
     cmdSetBarrelConfig = 0x17
+    ## Statistics
+    cmdGetBarrelStats = 0x18
     ## Range queries
     cmdRangeQuery = 0x21
     cmdPrefixQuery = 0x22
@@ -54,6 +56,33 @@ type
     status*: ResponseStatus
     seq*: uint32
     value*: string
+
+  ## Statistics structure for barrel metrics
+  BarrelStats* = object
+    totalKeys*: int64          ## Total keys including tombstones
+    activeKeys*: int64         ## Active keys (excluding tombstones)
+    deletedKeys*: int64        ## Tombstone/deleted keys
+
+    fileCount*: int            ## Number of data files
+    totalSize*: int64          ## Total bytes on disk for all files
+    activeFileSize*: int64     ## Size of active data file
+
+    avgKeySize*: float         ## Average key size in bytes
+    avgValueSize*: float       ## Average value size in bytes
+    avgRecordSize*: float      ## Average record size in bytes
+
+    fragmentationRatio*: float ## Fragmentation ratio (0.0 to 1.0)
+    isCompacting*: bool        ## Is compaction currently in progress
+    lastCompactTime*: string   ## ISO timestamp of last compaction
+    recordsScanned*: int64     ## Records scanned in last compaction
+    recordsKept*: int64        ## Records kept in last compaction
+    recordsDropped*: int64     ## Records dropped in last compaction
+
+    indexMode*: string         ## Index mode (hash, critbit, hugecritbit)
+    syncMode*: string          ## Sync mode (none, sync, fsync)
+
+    dataPath*: string          ## Path to data files
+    lastModified*: string      ## ISO timestamp of last modification
 
   ProtocolError* = object of CatchableError
 
@@ -126,7 +155,7 @@ proc decodeRequest*(data: string): Request =
   let cmdByte = readByte(data, pos)
   # Validate command byte - must include all Command enum values
   if cmdByte notin {0x01'u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09,  # Data ops + ping
-                     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,  # Barrel ops + config
+                     0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,  # Barrel ops + config + stats
                      0x20,                                       # Traverse
                      0x21, 0x22, 0x23}:                          # Range queries
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
@@ -459,6 +488,7 @@ proc `$`*(cmd: Command): string =
   of cmdDropBarrel: "DROP_BARREL"
   of cmdGetBarrelConfig: "GET_BARREL_CONFIG"
   of cmdSetBarrelConfig: "SET_BARREL_CONFIG"
+  of cmdGetBarrelStats: "GET_BARREL_STATS"
   of cmdTraverse: "TRAVERSE"
 
 proc `$`*(status: ResponseStatus): string =
@@ -494,3 +524,74 @@ proc `$`*(resp: Response): string =
     else:
       result.add(", value=<" & $resp.value.len & " bytes>")
   result.add(")")
+
+
+## BarrelStats JSON serialization
+
+import std/json
+
+proc encodeBarrelStats*(stats: BarrelStats): string =
+  ## Encode BarrelStats to JSON string
+  var jsonObj = newJObject()
+
+  # Key statistics
+  jsonObj["totalKeys"] = %stats.totalKeys
+  jsonObj["activeKeys"] = %stats.activeKeys
+  jsonObj["deletedKeys"] = %stats.deletedKeys
+
+  # Storage statistics
+  jsonObj["fileCount"] = %stats.fileCount
+  jsonObj["totalSize"] = %stats.totalSize
+  jsonObj["activeFileSize"] = %stats.activeFileSize
+
+  # Performance statistics
+  jsonObj["avgKeySize"] = %stats.avgKeySize
+  jsonObj["avgValueSize"] = %stats.avgValueSize
+  jsonObj["avgRecordSize"] = %stats.avgRecordSize
+
+  # Compaction statistics
+  jsonObj["fragmentationRatio"] = %stats.fragmentationRatio
+  jsonObj["isCompacting"] = %stats.isCompacting
+  jsonObj["lastCompactTime"] = %stats.lastCompactTime
+  jsonObj["recordsScanned"] = %stats.recordsScanned
+  jsonObj["recordsKept"] = %stats.recordsKept
+  jsonObj["recordsDropped"] = %stats.recordsDropped
+
+  # Configuration
+  jsonObj["indexMode"] = %stats.indexMode
+  jsonObj["syncMode"] = %stats.syncMode
+
+  # Additional metadata
+  jsonObj["dataPath"] = %stats.dataPath
+  jsonObj["lastModified"] = %stats.lastModified
+
+  result = $jsonObj
+
+proc decodeBarrelStats*(jsonStr: string): BarrelStats =
+  ## Decode BarrelStats from JSON string
+  let jsonObj = parseJson(jsonStr)
+
+  result.totalKeys = int64(jsonObj["totalKeys"].getInt())
+  result.activeKeys = int64(jsonObj["activeKeys"].getInt())
+  result.deletedKeys = int64(jsonObj["deletedKeys"].getInt())
+
+  result.fileCount = jsonObj["fileCount"].getInt()
+  result.totalSize = int64(jsonObj["totalSize"].getInt())
+  result.activeFileSize = int64(jsonObj["activeFileSize"].getInt())
+
+  result.avgKeySize = jsonObj["avgKeySize"].getFloat()
+  result.avgValueSize = jsonObj["avgValueSize"].getFloat()
+  result.avgRecordSize = jsonObj["avgRecordSize"].getFloat()
+
+  result.fragmentationRatio = jsonObj["fragmentationRatio"].getFloat()
+  result.isCompacting = jsonObj["isCompacting"].getBool()
+  result.lastCompactTime = jsonObj["lastCompactTime"].getStr()
+  result.recordsScanned = int64(jsonObj["recordsScanned"].getInt())
+  result.recordsKept = int64(jsonObj["recordsKept"].getInt())
+  result.recordsDropped = int64(jsonObj["recordsDropped"].getInt())
+
+  result.indexMode = jsonObj["indexMode"].getStr()
+  result.syncMode = jsonObj["syncMode"].getStr()
+
+  result.dataPath = jsonObj["dataPath"].getStr()
+  result.lastModified = jsonObj["lastModified"].getStr()

@@ -299,7 +299,7 @@ proc handleWebSocketMessage*(
             # These commands are handled at the outer level
             discard
 
-          of cmdGetBarrelConfig, cmdSetBarrelConfig:
+          of cmdGetBarrelConfig, cmdSetBarrelConfig, cmdGetBarrelStats:
             # These commands are handled at the outer level
             discard
 
@@ -483,6 +483,34 @@ proc handleWebSocketMessage*(
             except CatchableError as e:
               resp.status = statusError
               resp.value = "Range count error: " & e.msg
+
+  of cmdGetBarrelStats:
+    # Get barrel statistics requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          let b = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Get statistics from the barrel
+              let stats = b.getStats()
+              # Encode to JSON and send response
+              resp.status = statusOk
+              resp.value = encodeBarrelStats(stats)
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Failed to get barrel stats: " & e.msg
 
   else:
     resp.status = statusInvalid
