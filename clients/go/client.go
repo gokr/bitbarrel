@@ -534,6 +534,65 @@ func (c *Client) SetBarrelConfig(name, config string) error {
 	return nil
 }
 
+// GetBarrelStats gets comprehensive statistics for a barrel.
+//
+// Returns JSON string containing metrics:
+//   - totalKeys: Total keys including tombstones
+//   - activeKeys: Active keys (excluding tombstones)
+//   - deletedKeys: Tombstone/deleted keys
+//   - fileCount: Number of data files
+//   - totalSize: Total bytes on disk for all files
+//   - activeFileSize: Size of active data file
+//   - avgKeySize: Average key size in bytes
+//   - avgValueSize: Average value size in bytes
+//   - avgRecordSize: Average record size in bytes
+//   - fragmentationRatio: Fragmentation ratio (0.0 to 1.0)
+//   - isCompacting: Is compaction currently in progress
+//   - lastCompactTime: ISO timestamp of last compaction
+//   - recordsScanned: Records scanned in last compaction
+//   - recordsKept: Records kept in last compaction
+//   - recordsDropped: Records dropped in last compaction
+//   - indexMode: Index mode (hash, critbit, hugecritbit)
+//   - syncMode: Sync mode (none, sync, fsync)
+//   - dataPath: Path to data files
+//   - lastModified: ISO timestamp of last modification
+//
+// Returns ErrBarrelNotFound if barrel doesn't exist.
+// Requires read access authentication if enabled.
+//
+// Example:
+//
+//	statsJSON, err := client.GetBarrelStats("mydb")
+//	if err != nil {
+//	    return err
+//	}
+//
+//	var stats map[string]interface{}
+//	if err := json.Unmarshal([]byte(statsJSON), &stats); err != nil {
+//	    return err
+//	}
+//
+//	fmt.Printf("Total keys: %v\n", stats["totalKeys"])
+//	fmt.Printf("Disk usage: %v bytes\n", stats["totalSize"])
+//	fmt.Printf("Fragmentation: %.1f%%\n", stats["fragmentationRatio"].(float64)*100)
+func (c *Client) GetBarrelStats(name string) (string, error) {
+	req := NewRequest(CmdGetBarrelStats, name, "")
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Status == StatusBarrelNotFound {
+		return "", ErrBarrelNotFound
+	}
+
+	if resp.Status != StatusOk {
+		return "", StatusToError(resp.Status, resp.Value)
+	}
+
+	return resp.Value, nil
+}
+
 // RangeQuery queries key-value pairs in range [startKey, endKey)
 // Requires barrel opened in bmCritBit mode
 func (c *Client) RangeQuery(startKey, endKey string, limit int, cursor string) ([]KeyValue, string, bool, error) {

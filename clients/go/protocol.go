@@ -27,6 +27,7 @@ const (
 	CmdDropBarrel   byte = 0x15
 	CmdGetBarrelConfig byte = 0x16
 	CmdSetBarrelConfig byte = 0x17
+	CmdGetBarrelStats  byte = 0x18
 )
 
 // Status codes - must match BitBarrel protocol
@@ -68,7 +69,7 @@ func IsValidCommand(cmd byte) bool {
 		CmdTraverse, CmdRangeQuery, CmdPrefixQuery, CmdRangeCount,
 		CmdCreateBarrel, CmdOpenBarrel, CmdUseBarrel,
 		CmdCloseBarrel, CmdListBarrels, CmdDropBarrel,
-		CmdGetBarrelConfig, CmdSetBarrelConfig:
+		CmdGetBarrelConfig, CmdSetBarrelConfig, CmdGetBarrelStats:
 		return true
 	default:
 		return false

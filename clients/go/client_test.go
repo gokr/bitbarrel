@@ -971,6 +971,74 @@ func TestSetBarrelConfig(t *testing.T) {
 	}
 }
 
+// TestGetBarrelStats tests getting barrel statistics
+func TestGetBarrelStats(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	barrelName := fmt.Sprintf("test_stats_%d", time.Now().UnixNano())
+	err = client.CreateBarrel(barrelName, `{"mode": "hash"}`)
+	if err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+
+	// Insert some test data
+	err = client.UseBarrel(barrelName)
+	if err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	_ = client.Set("key1", "value1")
+	_ = client.Set("key2", "value2")
+	_ = client.Set("key3", "value3")
+
+	// Get statistics
+	statsJSON, err := client.GetBarrelStats(barrelName)
+	if err != nil {
+		t.Fatalf("GetBarrelStats() error = %v", err)
+	}
+
+	if statsJSON == "" {
+		t.Error("GetBarrelStats() returned empty stats")
+	}
+
+	// Parse JSON and verify structure
+	var stats map[string]interface{}
+	if err := json.Unmarshal([]byte(statsJSON), &stats); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	// Verify required fields exist
+	requiredFields := []string{"totalKeys", "activeKeys", "fileCount", "totalSize", "indexMode"}
+	for _, field := range requiredFields {
+		if _, ok := stats[field]; !ok {
+			t.Errorf("GetBarrelStats() missing required field: %s", field)
+		}
+	}
+
+	// Verify data was inserted
+	if totalKeys, ok := stats["totalKeys"].(float64); !ok || totalKeys < 3 {
+		t.Errorf("GetBarrelStats() totalKeys should be >= 3, got: %v", stats["totalKeys"])
+	}
+
+	if activeKeys, ok := stats["activeKeys"].(float64); !ok || activeKeys < 3 {
+		t.Errorf("GetBarrelStats() activeKeys should be >= 3, got: %v", stats["activeKeys"])
+	}
+
+	// Verify index mode
+	if indexMode, ok := stats["indexMode"].(string); !ok || indexMode != "bmHash" {
+		t.Errorf("GetBarrelStats() indexMode should be 'bmHash', got: %v", stats["indexMode"])
+	}
+}
+
 // BenchmarkRequestEncode benchmarks request encoding
 func BenchmarkRequestEncode(b *testing.B) {
 	req := NewRequest(CmdSet, "test_key", "test_value")
