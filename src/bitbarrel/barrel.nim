@@ -19,6 +19,7 @@ import ../storage/record
 import ../storage/compact
 import ../storage/crc32
 import ../storage/hintfile
+import ../network/protocol
 
 export types, datafile
 
@@ -150,7 +151,7 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
     littleEndian32(addr keyLen, addr rawKeyLen)
 
     # Validate key length
-    if keyLen > MAX_KEY_SIZE.uint32 or keyLen == 0:
+    if keyLen > types.MAX_KEY_SIZE.uint32 or keyLen == 0:
       break
 
     # Read key
@@ -166,7 +167,7 @@ proc rebuildIndexFromDataFile*(barrel: Barrel, validateCrc: bool = true): int =
     littleEndian32(addr valueLen, addr rawValueLen)
 
     # Validate value length
-    if valueLen > MAX_VALUE_SIZE.uint32:
+    if valueLen > types.MAX_VALUE_SIZE.uint32:
       break
 
     # Read flags (1 byte) and algorithm (1 byte) to detect compression
@@ -1149,6 +1150,120 @@ proc deleteBarrel*(path: string): bool =
 proc indexCount*(barrel: Barrel): int =
   ## Get the number of entries in the index (including tombstones)
   barrel.indexLen()
+
+proc getStats*(barrel: Barrel): BarrelStats =
+  ## Get comprehensive statistics for the barrel
+  ##
+  ## Returns detailed metrics about keys, storage, performance,
+  ## compaction status, and configuration.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let stats = barrel.getStats()
+  ## echo "Total keys: ", stats.totalKeys
+  ## echo "Active keys: ", stats.activeKeys
+  ## echo "Disk usage: ", formatSize(stats.totalSize)
+  ## echo "Fragmentation: ", formatFloat(stats.fragmentationRatio * 100)
+  ## ```
+  ##
+  ## This method calculates:
+  ## - Key statistics (total, active, deleted)
+  ## - Storage metrics (file sizes, disk usage)
+  ## - Performance indicators (avg key/value sizes)
+  ## - Compaction status and fragmentation ratio
+  ## - Configuration details
+  ## - Memory usage estimates
+  result.dataPath = barrel.path
+
+  # Get key directory statistics based on index mode
+  case barrel.mode
+  of bmHash:
+    result.totalKeys = int64(barrel.keyDir.len())
+    result.activeKeys = int64(barrel.keyDir.countActive())
+    result.deletedKeys = int64(barrel.keyDir.countDeleted())
+
+    # Calculate average sizes by iterating keydir
+    var totalKeySize = 0
+    var totalValueSize = 0
+    for key, entry in barrel.keyDir.pairs():
+      if not entry.isDeleted():
+        totalKeySize += key.len
+        totalValueSize += int(entry.valueSize)
+
+    if result.activeKeys > 0:
+      result.avgKeySize = totalKeySize.float / result.activeKeys.float
+      result.avgValueSize = totalValueSize.float / result.activeKeys.float
+      result.avgRecordSize = (totalKeySize + totalValueSize).float / result.activeKeys.float
+
+  of bmCritBit:
+    result.totalKeys = int64(barrel.critBit.len())
+    result.activeKeys = int64(barrel.critBit.countActive())
+    result.deletedKeys = int64(barrel.critBit.countDeleted())
+
+    # Calculate average sizes by iterating critbit
+    var totalKeySize = 0
+    var totalValueSize = 0
+    for key, entry in barrel.critBit.pairs():
+      if not entry.isDeleted():
+        totalKeySize += key.len
+        totalValueSize += int(entry.valueSize)
+
+    if result.activeKeys > 0:
+      result.avgKeySize = totalKeySize.float / result.activeKeys.float
+      result.avgValueSize = totalValueSize.float / result.activeKeys.float
+      result.avgRecordSize = (totalKeySize + totalValueSize).float / result.activeKeys.float
+
+  of bmHugeCritBit:
+    result.totalKeys = 0  # TODO: Implement for HugeBarrel
+    result.activeKeys = 0
+    result.deletedKeys = 0
+
+  # Get storage statistics
+  if fileExists(barrel.path):
+    result.activeFileSize = int64(getFileSize(barrel.path))
+
+  # Calculate total directory size and file count
+  let dataDir = parentDir(barrel.path)
+  if dirExists(dataDir):
+    var totalSize = 0'i64
+    var fileCount = 0
+
+    for ext in [".data", ".hint", ".compacted"]:
+      let pattern = dataDir / "*" & ext
+      for filePath in walkPattern(pattern):
+        if fileExists(filePath):
+          totalSize += int64(getFileSize(filePath))
+          inc fileCount
+
+    result.totalSize = totalSize
+    result.fileCount = fileCount
+
+  # Get compaction statistics if available
+  if barrel.compactController != nil:
+    let compactStats = barrel.compactController.getCompactStats()
+    result.isCompacting = barrel.compactController.compactInProgress
+    result.recordsScanned = int64(compactStats.recordsScanned)
+    result.recordsKept = int64(compactStats.recordsKept)
+    result.recordsDropped = int64(compactStats.recordsDropped)
+
+    # Calculate fragmentation ratio from compaction stats
+    if compactStats.recordsScanned > 0:
+      result.fragmentationRatio = 1.0 - (float(compactStats.recordsKept) / float(compactStats.recordsScanned))
+
+    # Get last compaction time
+    if compactStats.timeStarted != Time():
+      result.lastCompactTime = $compactStats.timeStarted
+  else:
+    result.isCompacting = false
+    result.fragmentationRatio = 0.0
+
+  # Get configuration details
+  result.indexMode = $barrel.mode
+  result.syncMode = $barrel.config.syncMode
+
+  # Get last modified time
+  if fileExists(barrel.path):
+    result.lastModified = $getLastModificationTime(barrel.path)
 
 
 # Helper to generate hint file from barrel's index

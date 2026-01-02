@@ -20,6 +20,22 @@ proc len*(keyDir: var KeyDir): int =
   withLock(keyDir.lock):
     result = keyDir.table.len
 
+proc countActive*(keyDir: var KeyDir): int =
+  ## Count active keys (excluding tombstones)
+  withLock(keyDir.lock):
+    result = 0
+    for key, entry in keyDir.table.pairs:
+      if not entry.isDeleted():
+        inc result
+
+proc countDeleted*(keyDir: var KeyDir): int =
+  ## Count deleted keys (tombstones)
+  withLock(keyDir.lock):
+    result = 0
+    for key, entry in keyDir.table.pairs:
+      if entry.isDeleted():
+        inc result
+
 proc add*(keyDir: var KeyDir, key: string, entry: KeyDirEntry) =
   ## Add or update a key in the KeyDir
   withLock(keyDir.lock):

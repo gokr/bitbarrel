@@ -23,6 +23,22 @@ proc len*(index: var CritBitIndex): int =
   withLock(index.lock):
     result = index.tree.len
 
+proc countActive*(index: var CritBitIndex): int =
+  ## Count active keys (excluding tombstones)
+  withLock(index.lock):
+    result = 0
+    for key, entry in index.tree.pairs:
+      if not entry.isDeleted():
+        inc result
+
+proc countDeleted*(index: var CritBitIndex): int =
+  ## Count deleted keys (tombstones)
+  withLock(index.lock):
+    result = 0
+    for key, entry in index.tree.pairs:
+      if entry.isDeleted():
+        inc result
+
 proc add*(index: var CritBitIndex, key: string, entry: KeyDirEntry) =
   ## Add or update a key in the index
   withLock(index.lock):
