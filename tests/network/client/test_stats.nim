@@ -4,14 +4,12 @@ import std/[unittest, os, tables]
 import ../../../src/bitbarrel/barrel
 import ../../../src/network/protocol
 import ../../../src/network/server
-import ../../../src/network/registry
 import ../../../src/network/auth
 import ../../../src/network/session
 import mummy
 
 type
   TestEnv = object
-    registry: BarrelRegistry
     server: BitBarrelServer
     testPath: string
 
@@ -22,9 +20,11 @@ proc setupTestEnv(): TestEnv =
   if fileExists(result.testPath):
     removeFile(result.testPath)
 
-  # Create registry and server
-  result.registry = newBarrelRegistry("./test_data/")
-  result.server = newBitBarrelServer(result.registry, ServerConfig(
+  # Create test data directory
+  createDir("./test_data/")
+
+  # Create server with config
+  result.server = newServer(ServerConfig(
     address: "127.0.0.1",
     port: Port(0),  # Use any available port
     dataDir: "./test_data/",
@@ -71,7 +71,7 @@ suite "Protocol Statistics Tests":
 
     # Verify all fields match
     check decoded.totalKeys == stats.totalKeys
-    check decoded.activeKeys == stats.activeKey
+    check decoded.activeKeys == stats.activeKeys
     check decoded.deletedKeys == stats.deletedKeys
     check decoded.fileCount == stats.fileCount
     check decoded.totalSize == stats.totalSize
@@ -95,8 +95,8 @@ suite "Protocol Statistics Tests":
     defer: teardownTestEnv(env)
 
     # Create a barrel
-    check env.registry.createBarrel("test", defaultBarrelConfig())
-    let barrel = env.registry.getBarrel("test").get()
+    check env.server.registry.createBarrel("test", defaultBarrelConfig())
+    let barrel = env.server.registry.getBarrel("test").get()
 
     # Get stats
     let stats = barrel.getStats()
@@ -112,15 +112,20 @@ suite "Protocol Statistics Tests":
     var env = setupTestEnv()
     defer: teardownTestEnv(env)
 
-    # Create and open barrel
-    check env.registry.createBarrel("test", defaultBarrelConfig())
-    let barrel = env.registry.getBarrel("test").get()
+    # Clean up from previous test
+    if dirExists("./test_data/"):
+      for file in walkFiles("./test_data/test*.data"):
+        removeFile(file)
+
+    # Create and open barrel with different name
+    check env.server.registry.createBarrel("test2", defaultBarrelConfig())
+    let barrel = env.server.registry.getBarrel("test2").get()
 
     # Add some data
     discard barrel.set("key1", "value1")
     discard barrel.set("key2", "value2")
     discard barrel.set("key3", "value3")
-    barrel.delete("key2")  # This creates a tombstone
+    discard barrel.delete("key2")  # This creates a tombstone
 
     # Get stats
     let stats = barrel.getStats()
