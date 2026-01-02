@@ -137,6 +137,10 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
     }
   }
 
+  Future<void> _onViewStats() async {
+    context.go('/stats');
+  }
+
   Future<void> _onDeleteKey(String key) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -247,6 +251,11 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
           onPressed: () => context.go('/dashboard'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.analytics),
+            tooltip: 'Statistics',
+            onPressed: _onViewStats,
+          ),
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Query Interface',

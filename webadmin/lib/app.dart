@@ -4,6 +4,7 @@ import 'screens/connection_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/barrel_explorer_screen.dart';
 import 'screens/query_screen.dart';
+import 'screens/barrel_stats_screen.dart';
 import 'theme/app_theme.dart';
 
 class BitBarrelAdminApp extends StatelessWidget {
@@ -27,6 +28,10 @@ class BitBarrelAdminApp extends StatelessWidget {
       GoRoute(
         path: '/query',
         builder: (context, state) => const QueryScreen(),
+      ),
+      GoRoute(
+        path: '/stats',
+        builder: (context, state) => const BarrelStatsScreen(),
       ),
     ],
   );
