@@ -21,7 +21,7 @@ import ../storage/crc32
 import ../storage/hintfile
 import ../network/protocol
 
-export types, datafile
+export types, datafile, protocol
 
 type
   # Forward declaration for compaction thread args (used in thread pointer)
