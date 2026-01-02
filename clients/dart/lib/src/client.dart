@@ -245,6 +245,31 @@ class BitBarrelClient {
     );
   }
 
+  /// Get comprehensive statistics for a barrel
+  ///
+  /// Returns a [BarrelStats] object with detailed metrics about keys,
+  /// storage usage, performance, compaction status, and configuration.
+  ///
+  /// Example:
+  /// ```dart
+  /// final stats = await client.getBarrelStats('mydb');
+  /// print('Total keys: ${stats.totalKeys}');
+  /// print('Active keys: ${stats.activeKeys}');
+  /// print('Disk usage: ${stats.totalSize} bytes');
+  /// print('Fragmentation: ${(stats.fragmentationRatio * 100).toStringAsFixed(1)}%');
+  /// ```
+  Future<BarrelStats> getBarrelStats(String name) async {
+    final value = await _sendRequest(
+      command: Command.getBarrelStats,
+      key: name,
+      value: '',
+    );
+
+    // Parse JSON response
+    final json = jsonDecode(value) as Map<String, dynamic>;
+    return BarrelStats.fromJson(json);
+  }
+
   // ============ Data Operations ============
 
   /// Store a key-value pair

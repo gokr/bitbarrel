@@ -16,7 +16,8 @@ export 'src/types.dart'
         KeyValue,
         RangeQueryResponse,
         TraverseOptions,
-        TraverseResult;
+        TraverseResult,
+        BarrelStats;
 
 // Exceptions
 export 'src/errors.dart';

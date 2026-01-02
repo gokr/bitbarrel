@@ -27,6 +27,7 @@ class Command {
   static const int dropBarrel = 0x15;
   static const int getBarrelConfig = 0x16;
   static const int setBarrelConfig = 0x17;
+  static const int getBarrelStats = 0x18;
 
   /// All valid command values
   static const Set<int> allValues = {
@@ -49,6 +50,7 @@ class Command {
     dropBarrel,
     getBarrelConfig,
     setBarrelConfig,
+    getBarrelStats,
   };
 
   /// Check if a byte is a valid command
