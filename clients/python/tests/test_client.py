@@ -285,6 +285,35 @@ class TestBarrelConfig:
         finally:
             client.drop_barrel(name)
 
+    def test_get_barrel_stats(self, client):
+        """Test getting barrel statistics."""
+        name = f"test_stats_{int(time.time() * 1000)}"
+        client.create_barrel(name, '{"mode": "hash"}')
+        try:
+            # Insert some data
+            client.use_barrel(name)
+            client.set("key1", "value1")
+            client.set("key2", "value2")
+            client.set("key3", "value3")
+
+            # Get statistics
+            stats_json = client.get_barrel_stats(name)
+            assert isinstance(stats_json, str)
+
+            # Parse JSON and verify structure
+            import json
+            stats = json.loads(stats_json)
+
+            assert "totalKeys" in stats
+            assert "activeKeys" in stats
+            assert stats["totalKeys"] >= 3
+            assert stats["activeKeys"] >= 3
+            assert stats["indexMode"] == "bmHash"
+            assert isinstance(stats["fileCount"], int)
+            assert isinstance(stats["totalSize"], int)
+        finally:
+            client.drop_barrel(name)
+
 
 class TestContextManager:
     """Test context manager usage."""

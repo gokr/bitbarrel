@@ -37,6 +37,7 @@ class Command(IntEnum):
     DROP_BARREL = 0x15
     GET_BARREL_CONFIG = 0x16
     SET_BARREL_CONFIG = 0x17
+    GET_BARREL_STATS = 0x18
 
 
 class Status(IntEnum):
@@ -123,7 +124,7 @@ def decode_request(data: bytes) -> Tuple[int, int, str, str]:
         Command.RANGE_QUERY, Command.PREFIX_QUERY, Command.RANGE_COUNT,
         Command.CREATE_BARREL, Command.OPEN_BARREL, Command.USE_BARREL,
         Command.CLOSE_BARREL, Command.LIST_BARRELS, Command.DROP_BARREL,
-        Command.GET_BARREL_CONFIG, Command.SET_BARREL_CONFIG
+        Command.GET_BARREL_CONFIG, Command.SET_BARREL_CONFIG, Command.GET_BARREL_STATS
     ]
     if cmd not in valid_commands:
         raise ProtocolError(f"Invalid command: 0x{cmd:02x}")

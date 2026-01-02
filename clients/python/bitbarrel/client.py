@@ -245,6 +245,49 @@ class Client:
         self._send_request(Command.SET_BARREL_CONFIG, name, config)
         return True
 
+    def get_barrel_stats(self, name: str) -> str:
+        """Get comprehensive statistics for a barrel.
+
+        Args:
+            name: Barrel name
+
+        Returns:
+            Barrel statistics as JSON string containing metrics like:
+            - totalKeys: Total keys including tombstones
+            - activeKeys: Active keys (excluding tombstones)
+            - deletedKeys: Tombstone/deleted keys
+            - fileCount: Number of data files
+            - totalSize: Total bytes on disk for all files
+            - activeFileSize: Size of active data file
+            - avgKeySize: Average key size in bytes
+            - avgValueSize: Average value size in bytes
+            - avgRecordSize: Average record size in bytes
+            - fragmentationRatio: Fragmentation ratio (0.0 to 1.0)
+            - isCompacting: Is compaction currently in progress
+            - lastCompactTime: ISO timestamp of last compaction
+            - recordsScanned: Records scanned in last compaction
+            - recordsKept: Records kept in last compaction
+            - recordsDropped: Records dropped in last compaction
+            - indexMode: Index mode (hash, critbit, hugecritbit)
+            - syncMode: Sync mode (none, sync, fsync)
+            - dataPath: Path to data files
+            - lastModified: ISO timestamp of last modification
+
+        Raises:
+            BarrelNotFoundError: If barrel doesn't exist
+            ServerError: If server reports an error
+            UnauthorizedError: If read access is required but not available
+
+        Example:
+            stats_json = client.get_barrel_stats("mydb")
+            import json
+            stats = json.loads(stats_json)
+            print(f"Total keys: {stats['totalKeys']}")
+            print(f"Disk usage: {stats['totalSize']} bytes")
+            print(f"Fragmentation: {stats['fragmentationRatio'] * 100:.1f}%")
+        """
+        return self._send_request(Command.GET_BARREL_STATS, name, "")
+
     # Basic key-value operations
 
     def get(self, key: str) -> str:
