@@ -7,6 +7,7 @@ Go client library for BitBarrel key-value store with WebSocket protocol support.
 - Full WebSocket protocol implementation (RFC 6455)
 - All BitBarrel operations (GET, SET, DELETE, etc.)
 - Barrel management
+- Statistics support: Get comprehensive barrel statistics and metrics
 - Context support for timeouts and cancellation
 
 ## Concurrency Model
