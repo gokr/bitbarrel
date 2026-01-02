@@ -48,6 +48,7 @@ client.close()
 - Key-value operations (get, set, delete, exists, count, listKeys)
 - Range queries and prefix searches (requires bmCritBit mode barrel)
 - Reference traversal for graph-like data
+- Statistics support: Get comprehensive barrel statistics and metrics
 - Thread-safe request handling
 
 ## Concurrency Model
