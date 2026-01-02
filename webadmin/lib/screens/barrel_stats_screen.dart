@@ -39,11 +39,30 @@ class _BarrelStatsScreenState extends State<BarrelStatsScreen> {
         throw Exception('Not connected to server');
       }
 
-      final statsJson = await client.getBarrelStats(barrel.name);
-      final stats = jsonDecode(statsJson);
+      final stats = await client.getBarrelStats(barrel.name);
 
       setState(() {
-        _stats = stats;
+        _stats = {
+          'totalKeys': stats.totalKeys,
+          'activeKeys': stats.activeKeys,
+          'deletedKeys': stats.deletedKeys,
+          'fileCount': stats.fileCount,
+          'totalSize': stats.totalSize,
+          'activeFileSize': stats.activeFileSize,
+          'avgKeySize': stats.avgKeySize,
+          'avgValueSize': stats.avgValueSize,
+          'avgRecordSize': stats.avgRecordSize,
+          'fragmentationRatio': stats.fragmentationRatio,
+          'isCompacting': stats.isCompacting,
+          'lastCompactTime': stats.lastCompactTime,
+          'recordsScanned': stats.recordsScanned,
+          'recordsKept': stats.recordsKept,
+          'recordsDropped': stats.recordsDropped,
+          'indexMode': stats.indexMode,
+          'syncMode': stats.syncMode,
+          'dataPath': stats.dataPath,
+          'lastModified': stats.lastModified,
+        };
         _isLoading = false;
       });
     } catch (e) {
@@ -259,7 +278,7 @@ class _BarrelStatsScreenState extends State<BarrelStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final barrel = watchValue((BarrelService s) => s.currentBarrel.value);
+    final barrel = watchValue((BarrelService s) => s.currentBarrel);
 
     if (barrel == null) {
       return Scaffold(
