@@ -104,6 +104,7 @@ All clients now have complete feature parity:
 - ✅ Basic CRUD operations (get, set, delete, exists, count)
 - ✅ Barrel management (create, open, use, close, list, drop)
 - ✅ Barrel configuration (getBarrelConfig, setBarrelConfig)
+- ✅ Statistics support (getBarrelStats)
 - ✅ Range queries and prefix searches (CritBit mode)
 - ✅ Cursor-based pagination
 - ✅ getOrDefault / get_or_default method
@@ -132,6 +133,7 @@ A modern Flutter-based web admin console for visual database management.
 - ✅ Barrel management (create, delete, switch)
 - ✅ Data explorer with full CRUD operations (browse, search, add, edit, delete)
 - ✅ Query interface for prefix and range queries (CritBit mode)
+- ✅ Statistics dashboard with comprehensive metrics
 - ✅ JSON visualization with syntax highlighting and collapsible nodes
 - ✅ Pagination with cursor-based navigation
 - ✅ Split-view layout (key list + value detail)
