@@ -7,6 +7,7 @@ A Dart/Flutter client library for [BitBarrel](../../), a high-performance Bitcas
 - Full WebSocket protocol implementation
 - Cross-platform support: Android, iOS, and Flutter Web
 - All BitBarrel operations: data CRUD, barrel management, range/prefix queries, reference traversal
+- Statistics support: Get comprehensive barrel statistics and metrics
 - Cursor-based pagination for efficient large dataset operations
 - Type-safe exception handling
 - Comprehensive test coverage
