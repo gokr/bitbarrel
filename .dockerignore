@@ -11,8 +11,8 @@ nimcache/
 *.nim.out
 *.exe
 
-# Binary executables (except in src/)
-bitbarrel
+# Binary executables (except the main bitbarrel binary which we need for Docker)
+# bitbarrel - KEEP THIS for Docker image
 !src/**/
 !*.*
 
@@ -51,7 +51,7 @@ tools/
 webadmin/.dart_tool/
 webadmin/.pub-cache/
 webadmin/.build/
-webadmin/build/
+# webadmin/build/ - Keep! Needed for Docker image
 webadmin/.packages.pubspec.lock
 clients/dart/pubspec.lock
 clients/dart/.dart_tool/
