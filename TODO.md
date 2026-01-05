@@ -126,7 +126,7 @@ All clients now have complete feature parity:
 
 ## Web Admin Console ✅ COMPLETED
 
-A modern Flutter-based web admin console for visual database management.
+A modern Flutter-based web admin console for visual database management with integrated server deployment support.
 
 ### Features Implemented
 - ✅ Connection management with JWT authentication
@@ -139,6 +139,8 @@ A modern Flutter-based web admin console for visual database management.
 - ✅ Split-view layout (key list + value detail)
 - ✅ Real-time data browsing
 - ✅ Responsive Material 3 UI design
+- ✅ **Integrated static file serving from BitBarrel server**
+- ✅ **Docker support with pre-built webadmin bundle**
 
 ### Location
 - Located in `/webadmin/`
@@ -147,13 +149,23 @@ A modern Flutter-based web admin console for visual database management.
 - Implements full CRUD via Dart client library
 
 ### Usage
+
+**Option 1: Integrated Server Mode (Recommended)**
+```bash
+cd webadmin
+flutter build web --release
+cd ..
+./bitbarrel serve --webadmin-path=./webadmin/build/web --webadmin-enabled
+# Access at http://localhost:8080/admin/
+```
+
+**Option 2: Separate Development Mode**
 ```bash
 cd webadmin
 flutter pub get
 flutter run -d chrome --web-port 8080
+# Access at http://localhost:8080
 ```
-
-Open http://localhost:8080 and connect to your BitBarrel server.
 
 ## Priority 2: Pub/Sub Messaging System
 

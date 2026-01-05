@@ -60,7 +60,23 @@ go run examples/basic/main.go
 
 ### Quick Start - Web Admin Console
 
-BitBarrel includes a modern web-based admin console for visual database management:
+BitBarrel includes a modern web-based admin console for visual database management. The webadmin can be served directly from the BitBarrel server (recommended for Docker) or run separately during development.
+
+**Option 1: Server-Integrated Webadmin (Recommended for Docker)**
+
+```bash
+# Build webadmin first
+cd webadmin
+flutter build web --release
+cd ..
+
+# Start BitBarrel with integrated webadmin
+./bitbarrel serve --webadmin-path=./webadmin/build/web --webadmin-enabled
+
+# Access at http://localhost:8080/admin/
+```
+
+**Option 2: Separate Development Server**
 
 ```bash
 # Start the BitBarrel server first

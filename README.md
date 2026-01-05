@@ -105,7 +105,21 @@ See [`clients/dart/README.md`](clients/dart/README.md) for full documentation.
 
 ### Web Admin Console
 
-BitBarrel includes a modern Flutter-based web admin console for visual database management:
+BitBarrel includes a modern Flutter-based web admin console for visual database management. The webadmin can be served directly from the BitBarrel server or run separately during development.
+
+**Integrated Server Mode (Recommended):**
+
+```bash
+# Build webadmin
+cd webadmin && flutter build web --release && cd ..
+
+# Start BitBarrel with integrated webadmin
+./bitbarrel serve --webadmin-path=./webadmin/build/web --webadmin-enabled
+
+# Access at http://localhost:8080/admin/
+```
+
+**Separate Development Mode:**
 
 ```bash
 # Start the BitBarrel server
@@ -426,17 +440,17 @@ server.start()
 
 ## Running with Docker
 
-Get started with BitBarrel in seconds using our official Docker image, which bundles the server with a Flutter web admin interface.
+Get started with BitBarrel in seconds using our official Docker image, which bundles the server with a Flutter web admin interface served at `/admin/`.
 
 ### Quick Start with Docker Compose
 
 ```bash
-# Start BitBarrel with all services
+# Start BitBarrel with integrated webadmin
 docker-compose up -d
 
 # Access the services:
-# - BitBarrel Server: ws://localhost:8080
-# - Web Admin: http://localhost:8081
+# - BitBarrel Server: ws://localhost:8080 or http://localhost:8080
+# - Web Admin: http://localhost:8080/admin/
 
 # View logs
 docker-compose logs -f
@@ -445,22 +459,28 @@ docker-compose logs -f
 ### Quick Start with Docker Run
 
 ```bash
+# First, build the bitbarrel binary and webadmin
+nimble build
+cd webadmin && flutter build web --release && cd ..
+
+# Build and run Docker image
+docker build -t bitbarrel:latest .
 docker run -d \
   --name bitbarrel \
   -p 8080:8080 \
-  -p 8081:8081 \
   -v bitbarrel-data:/data \
-  ghcr.io/gokr/bitbarrel:latest
+  bitbarrel:latest
 ```
 
 ### Features
 
-- **Single container**: Both server and web admin included
+- **Integrated webadmin**: Server serves static webadmin files at `/admin/`
+- **Single port**: Both API and webadmin on port 8080
 - **Zero configuration**: Works out of the box with sensible defaults
 - **Environment-driven**: Easy configuration via environment variables
 - **Persistent storage**: Data volume for reliable persistence
 - **Security**: Runs as non-root user with JWT authentication support
-- **Alpine-based**: Small image size (~50MB) with minimal attack surface
+- **Alpine-based**: Small image size with minimal attack surface
 
 ### Configuration
 
@@ -468,16 +488,19 @@ Configure BitBarrel using environment variables:
 
 ```bash
 docker run -d \
-  -p 8080:8080 -p 8081:8081 \
+  -p 8080:8080 \
   -v bitbarrel-data:/data \
   -e BITBARREL_AUTH_ENABLED=true \
   -e BITBARREL_AUTH_SECRET="your-32-char-secret" \
   -e BITBARREL_SERVER_PORT=8080 \
+  -e BITBARREL_WEB_ADMIN_ENABLED=true \
+  -e BITBARREL_WEB_ADMIN_PATH=/opt/bitbarrel/webadmin \
   -e BITBARREL_LOGGING_LEVEL=info \
-  ghcr.io/gokr/bitbarrel:latest
+  bitbarrel:latest
 ```
 
 See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation including:
+- Building Docker images
 - Advanced configuration options
 - Docker Compose examples
 - Security best practices
