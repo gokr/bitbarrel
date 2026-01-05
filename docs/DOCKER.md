@@ -4,7 +4,7 @@ BitBarrel provides official Docker images for easy deployment. The Docker image 
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
+### Using Docker Compose
 
 1. Start BitBarrel with default settings:
 
@@ -14,7 +14,7 @@ docker-compose up -d
 
 2. Access the services:
    - BitBarrel Server: `ws://localhost:8080` (WebSocket) or `http://localhost:8080` (HTTP)
-   - Web Admin: http://localhost:8081
+   - Web Admin: http://localhost:8080/admin/
 
 3. View logs:
 
@@ -34,7 +34,6 @@ docker-compose down
 docker run -d \
   --name bitbarrel \
   -p 8080:8080 \
-  -p 8081:8081 \
   -v bitbarrel-data:/data \
   bitbarrel:latest
 ```
@@ -44,11 +43,26 @@ docker run -d \
 - Docker Engine 20.10 or newer
 - Docker Compose 2.0 or newer (for compose method)
 
+## Building the Docker Image
+
+The Docker image copies pre-built artifacts. First, build the bitbarrel binary and webadmin:
+
+```bash
+# Build bitbarrel
+nimble build
+
+# Build webadmin (requires Flutter)
+cd webadmin && flutter build web --release
+
+# Build Docker image
+docker build -t bitbarrel:latest .
+```
+
 ## Configuration
 
 ### Environment Variables
 
-BitBarrel uses environment variables for configuration. All settings from the YAML config file can be set via environment variables using the pattern `BITBARREL_SECTION_SETTING`.
+BitBarrel uses environment variables for configuration.
 
 #### Server Configuration
 
@@ -56,17 +70,19 @@ BitBarrel uses environment variables for configuration. All settings from the YA
 |----------|---------|-------------|
 | `BITBARREL_SERVER_PORT` | 8080 | Server port |
 | `BITBARREL_SERVER_ADDRESS` | 0.0.0.0 | Bind address |
-| `BITBARREL_SERVER_MAX_CONNECTIONS` | 10000 | Maximum concurrent connections |
-| `BITBARREL_SERVER_TIMEOUT` | 30000 | Connection timeout (ms) |
+
+#### WebAdmin Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BITBARREL_WEB_ADMIN_PATH` | /opt/bitbarrel/webadmin | Path to webadmin build files |
+| `BITBARREL_WEB_ADMIN_ENABLED` | false | Enable webadmin UI |
 
 #### Storage Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `BITBARREL_STORAGE_DATA_DIR` | /data | Data directory |
-| `BITBARREL_STORAGE_MAX_FILE_SIZE` | 1073741824 | Max file size (1GB) |
-| `BITBARREL_STORAGE_SYNC_MODE` | immediate | Sync mode: immediate, buffered, batched, time_based |
-| `BITBARREL_STORAGE_FSYNC_INTERVAL` | 100 | Fsync interval for time_based mode (ms) |
 
 #### Authentication
 
@@ -80,34 +96,26 @@ BitBarrel uses environment variables for configuration. All settings from the YA
 > openssl rand -base64 32
 > ```
 
-#### Performance & Other Settings
-
-See `docker-compose.yml` for all available configuration options with their defaults.
-
 ### Example: Running with Authentication
 
 ```bash
 docker run -d \
   --name bitbarrel-secure \
   -p 8080:8080 \
-  -p 8081:8081 \
   -v bitbarrel-data:/data \
   -e BITBARREL_AUTH_ENABLED=true \
   -e BITBARREL_AUTH_SECRET="your-32-char-secret-here" \
   bitbarrel:latest
 ```
 
-### Example: Custom Port and Data Directory
+### Example: Custom Port
 
 ```bash
 docker run -d \
   --name bitbarrel-custom \
-  -p 9090:9090 \
-  -p 9091:8081 \
-  -v /path/to/your/data:/data \
-  -e BITBARREL_SERVER_PORT=9090 \
-  -e BITBARREL_ADMIN_PORT=9091 \
-  -e BITBARREL_STORAGE_DATA_DIR=/data \
+  -p 9090:8080 \
+  -v bitbarrel-data:/data \
+  -e BITBARREL_SERVER_PORT=8080 \
   bitbarrel:latest
 ```
 
@@ -129,59 +137,6 @@ volumes:
   - ./bitbarrel-data:/data
 ```
 
-Or with docker run:
-
-```bash
--v $(pwd)/data:/data
-```
-
-## Building from Source
-
-### Prerequisites
-
-- Docker
-- Nim >= 2.2.6
-- Nimble
-- Flutter (optional, for web admin)
-
-### Build Steps
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/gokr/bitbarrel.git
-cd bitbarrel
-```
-
-2. Build the Docker image:
-
-```bash
-# Using the build script
-./build_docker.sh
-
-# Or using Nimble
-nimble dockerBuild
-```
-
-The build process:
-- Compiles BitBarrel binary with Nim
-- Builds Flutter web admin (if Flutter available)
-- Creates multi-stage Docker image with Alpine Linux
-- Runs smoke tests
-
-### Build Options
-
-```bash
-# Skip smoke tests
-./build_docker.sh --skip-test
-
-# Build and publish to registry
-./build_docker.sh --publish --registry your-registry.com
-
-# Show help
-./build_docker.sh --help
-```
-
 ## Docker Compose Reference
 
 ### Basic Configuration
@@ -192,14 +147,12 @@ services:
   bitbarrel:
     image: bitbarrel:latest
     ports:
-      - "8080:8080"  # Server
-      - "8081:8081"  # Web Admin
+      - "8080:8080"
     volumes:
       - bitbarrel-data:/data
     environment:
       - BITBARREL_SERVER_PORT=8080
       - BITBARREL_STORAGE_DATA_DIR=/data
-      - BITBARREL_AUTH_ENABLED=false
     restart: unless-stopped
 
 volumes:
@@ -215,19 +168,17 @@ services:
     image: bitbarrel:latest
     ports:
       - "8080:8080"
-      - "8081:8081"
     volumes:
       - bitbarrel-data:/data
     environment:
       - BITBARREL_SERVER_PORT=8080
       - BITBARREL_STORAGE_DATA_DIR=/data
       - BITBARREL_AUTH_ENABLED=true
-      - BITBARREL_AUTH_SECRET=${BITBARREL_AUTH_SECRET}  # Set in .env file
+      - BITBARREL_AUTH_SECRET=${BITBARREL_AUTH_SECRET}
       - BITBARREL_LOGGING_LEVEL=info
-      - BITBARREL_SERVER_MAX_CONNECTIONS=10000
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/status"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -267,18 +218,17 @@ services:
 
 ### Port Mapping
 
-- **8080**: BitBarrel WebSocket/HTTP server
-- **8081**: Flutter web admin interface
+- **8080**: BitBarrel WebSocket/HTTP server and web admin UI
 
 ### Client Connections
 
 Connect to BitBarrel using:
 - WebSocket: `ws://localhost:8080` (or your domain)
-- HTTP: `http://localhost:8080` (for non-streaming operations)
+- HTTP: `http://localhost:8080` (for REST API)
 
 ### Web Admin
 
-Access the web admin at: `http://localhost:8081`
+Access the web admin at: `http://localhost:8080/admin/`
 
 The web admin automatically connects to the BitBarrel server at the same hostname.
 
@@ -299,17 +249,14 @@ docker logs bitbarrel 2>&1 | grep -i error
 
 ### Log Configuration
 
-Set log level and format via environment variables:
+Set log level via environment variable:
 
 ```yaml
 environment:
   - BITBARREL_LOGGING_LEVEL=info  # debug, info, warn, error
-  - BITBARREL_LOGGING_FORMAT=text  # text or json
 ```
 
 ### Health Checks
-
-The Docker image includes a health check that verifies the server is responding. Health status can be viewed with:
 
 ```bash
 docker ps
@@ -374,14 +321,14 @@ docker logs bitbarrel
 ```
 
 Common issues:
-- Port conflict: Ensure ports 8080 and 8081 are available
+- Port conflict: Ensure port 8080 is available
 - Permission issues: Check volume mount permissions
 
 ### Can't Connect to Server
 
 Verify server is running:
 ```bash
-curl -v http://localhost:8080
+curl -v http://localhost:8080/status
 ```
 
 Check container status:
@@ -406,13 +353,12 @@ docker exec bitbarrel ls -la /data
 
 If web admin build was skipped during Docker build:
 1. Ensure Flutter is installed on host
-2. Rebuild with: `./build_docker.sh`
+2. Rebuild webadmin: `cd webadmin && flutter build web --release`
+3. Rebuild Docker image: `docker build -t bitbarrel:latest .`
 
 ### Memory Issues
 
 If experiencing memory issues:
-- Increase cache size: `BITBARREL_PERFORMANCE_CACHE_SIZE=512`
-- Reduce worker threads: `BITBARREL_PERFORMANCE_WORKER_THREADS=2`
 - Set container memory limit (see Resource Limits above)
 
 ## Upgrading
