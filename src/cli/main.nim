@@ -18,6 +18,8 @@ type
     logLevel: string
     daemon: bool
     pidFile: string
+    webadminPath: string
+    webadminEnabled: bool
     help: bool
     version: bool
     command: string  # "server", "client", etc.
@@ -42,14 +44,16 @@ COMMANDS:
   test      Run all tests
 
 OPTIONS:
-  -c=FILE, --config=FILE      Path to configuration file (default: bitbarrel.yaml)
-  -d=DIR, --data-dir=DIR      Override data directory
-  -p=PORT, --port=PORT        Override server port
-  --log-level=LEVEL           Override log level (debug, info, warn, error)
-  -D, --daemon                Run as daemon (no value needed)
-  --pid-file=FILE             PID file path for daemon mode
-  -h, --help                  Show this help message (no value needed)
-  -v, --version               Show version information (no value needed)
+  -c=FILE, --config=FILE       Path to configuration file (default: bitbarrel.yaml)
+  -d=DIR, --data-dir=DIR       Override data directory
+  -p=PORT, --port=PORT         Override server port
+  --log-level=LEVEL            Override log level (debug, info, warn, error)
+  -D, --daemon                 Run as daemon (no value needed)
+  --pid-file=FILE              PID file path for daemon mode
+  --webadmin-path=DIR          Path to webadmin build files
+  --webadmin-enabled           Enable webadmin UI (requires --webadmin-path)
+  -h, --help                   Show this help message (no value needed)
+  -v, --version                Show version information (no value needed)
 
 EXAMPLES:
   bitbarrel init                             # Generate default config file
@@ -58,6 +62,7 @@ EXAMPLES:
   bitbarrel --config=prod.yaml serve         # Long form with equals
   bitbarrel -d=/data -p=9090 serve           # Override data dir and port
   bitbarrel -D serve                         # Daemon flag (no value needed)
+  bitbarrel serve --webadmin-path=/opt/webadmin --webadmin-enabled  # With webadmin
   bitbarrel token                            # Generate JWT tokens for all users
   bitbarrel -h                               # Show help (no value needed)
 """
@@ -75,6 +80,8 @@ proc parseCliArgs*(): CliArgs =
     logLevel: "",
     daemon: false,
     pidFile: "",
+    webadminPath: "",
+    webadminEnabled: false,
     help: false,
     version: false,
     command: ""
@@ -108,6 +115,10 @@ proc parseCliArgs*(): CliArgs =
         result.daemon = true
       of "pid-file":
         result.pidFile = val
+      of "webadmin-path":
+        result.webadminPath = val
+      of "webadmin-enabled":
+        result.webadminEnabled = true
       of "help", "h":
         result.help = true
       of "version", "v":
@@ -129,6 +140,12 @@ proc applyCliOverrides*(config: var BitBarrelConfig, args: CliArgs) =
 
   if args.logLevel.len > 0:
     config.logging.level = args.logLevel
+
+  if args.webadminPath.len > 0:
+    config.webadmin.path = args.webadminPath
+
+  if args.webadminEnabled:
+    config.webadmin.enabled = true
 
 proc runAsDaemon*(pidFile: string) =
   ## Fork process to run as daemon
@@ -204,7 +221,9 @@ proc runServer*(args: CliArgs) =
       secret: config.auth.secret,
       users: authUsers,
       defaultTokenExpiryHours: config.auth.defaultTokenExpiryHours
-    )
+    ),
+    webadminPath: config.webadmin.path,
+    webadminEnabled: config.webadmin.enabled
   )
 
   # Create and start the server
