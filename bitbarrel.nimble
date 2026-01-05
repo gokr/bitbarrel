@@ -330,14 +330,18 @@ task build, "Build with default settings (LZ4 compression)":
 
 # Docker tasks
 
-task dockerBuild, "Build Docker image with web admin":
-  exec "./build_docker.sh"
-
-task dockerBuildNoTest, "Build Docker image without running tests":
-  exec "./build_docker.sh --skip-test"
+task dockerBuild, "Build Docker image (builds bitbarrel and webadmin first)":
+  exec """
+    echo "Building bitbarrel binary..."
+    nimble build
+    echo "Building webadmin..."
+    cd webadmin && flutter build web --release
+    echo "Building Docker image..."
+    docker build -t bitbarrel:latest .
+  """
 
 task dockerRun, "Run BitBarrel in Docker container":
-  exec "docker run -d -p 8080:8080 -p 8081:8081 -v bitbarrel-data:/data bitbarrel:latest"
+  exec "docker run -d -p 8080:8080 -v bitbarrel-data:/data bitbarrel:latest"
 
 task dockerComposeUp, "Run BitBarrel using Docker Compose":
   exec "docker-compose up -d"
@@ -349,4 +353,9 @@ task dockerComposeLogs, "View BitBarrel logs from Docker Compose":
   exec "docker-compose logs -f"
 
 task dockerPublish, "Build and publish Docker image to registry":
-  exec "./build_docker.sh --publish"
+  exec """
+    echo "Building Docker image..."
+    nimble dockerBuild
+    echo "Publishing to registry..."
+    docker push bitbarrel:latest
+  """
