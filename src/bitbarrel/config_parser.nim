@@ -47,6 +47,10 @@ type
     username*: string
     roles*: seq[string]
 
+  WebadminConfig* = object
+    enabled*: bool
+    path*: string
+
   BitBarrelConfig* = object
     server*: ServerConfig
     storage*: StorageConfig
@@ -56,6 +60,7 @@ type
     logging*: LoggingConfig
     auth*: AuthConfig
     users*: seq[UserConfig]
+    webadmin*: WebadminConfig
 
 # YAML field access helpers - works with YamlNode.fields (TableRef[YamlNode, YamlNode])
 proc getYamlString*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: string = ""): string =
@@ -250,6 +255,14 @@ proc parseUsersConfig*(yamlNode: YamlNode): seq[UserConfig] =
   for i in 0 ..< yamlNode.len:
     result.add(parseUserConfig(yamlNode[int(i)]))
 
+proc parseWebadminConfig*(yamlNode: YamlNode): WebadminConfig =
+  if yamlNode != nil and yamlNode.kind != yMapping:
+    raise newException(ValueError, "Webadmin config must be a mapping")
+
+  let fields = if yamlNode != nil: yamlNode.fields else: nil
+  result.enabled = getYamlBool(fields, "enabled", false)
+  result.path = getYamlString(fields, "path", "")
+
 proc getDefaultConfig*(): BitBarrelConfig =
   ## Get default configuration values
   result = BitBarrelConfig(
@@ -299,7 +312,11 @@ proc getDefaultConfig*(): BitBarrelConfig =
       secret: "",
       defaultTokenExpiryHours: 24
     ),
-    users: @[]
+    users: @[],
+    webadmin: WebadminConfig(
+      enabled: false,
+      path: ""
+    )
   )
 
 proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
@@ -333,6 +350,7 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
       of "logging": result.logging = parseLoggingConfig(value)
       of "auth": result.auth = parseAuthConfig(value)
       of "users": result.users = parseUsersConfig(value)
+      of "webadmin": result.webadmin = parseWebadminConfig(value)
       else: discard
 
   except Exception as e:

@@ -145,6 +145,12 @@ proc loadFromEnvironment*(config: var BitBarrelConfig) =
   if existsEnv("BITBARREL_AUTH_DEFAULT_TOKEN_EXPIRY_HOURS"):
     config.auth.defaultTokenExpiryHours = parseInt(getEnv("BITBARREL_AUTH_DEFAULT_TOKEN_EXPIRY_HOURS"))
 
+  # Webadmin settings
+  if existsEnv("BITBARREL_WEB_ADMIN_PATH"):
+    config.webadmin.path = getEnv("BITBARREL_WEB_ADMIN_PATH")
+  if existsEnv("BITBARREL_WEB_ADMIN_ENABLED"):
+    config.webadmin.enabled = parseBool(getEnv("BITBARREL_WEB_ADMIN_ENABLED"))
+
 proc initConfig*(configFile: string = "bitbarrel.yaml"): BitBarrelConfig {.discardable.} =
   ## Initialize configuration with the specified file
   ## Returns the loaded config and stores it in global variable
