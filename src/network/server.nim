@@ -34,6 +34,8 @@ type
     dataDir*: string      ## Base directory for barrels
     workerThreads*: int   ## Default: CPU * 10
     auth*: authjwt.AuthConfig  ## Authentication configuration
+    webadminPath*: string ## Path to webadmin build files
+    webadminEnabled*: bool ## Enable webadmin UI serving
 
 # Note: Avoid thread-local variables for server storage as closures capture them
 # across thread boundaries, causing ORC cleanup issues.
@@ -63,6 +65,98 @@ proc decodeUrl(url: string): string =
       continue
     result.add(url[i])
     i += 1
+
+# Static file serving for webadmin
+proc getContentType*(path: string): string =
+  ## Get MIME type based on file extension
+  if path.endswith(".html"): return "text/html"
+  if path.endswith(".css"): return "text/css"
+  if path.endswith(".js"): return "application/javascript"
+  if path.endswith(".json"): return "application/json"
+  if path.endswith(".png"): return "image/png"
+  if path.endswith(".jpg") or path.endswith(".jpeg"): return "image/jpeg"
+  if path.endswith(".gif"): return "image/gif"
+  if path.endswith(".svg"): return "image svg+xml"
+  if path.endswith(".ico"): return "image/x-icon"
+  if path.endswith(".woff2"): return "font/woff2"
+  if path.endswith(".woff"): return "font/woff"
+  if path.endswith(".ttf"): return "font/ttf"
+  if path.endswith(".eot"): return "application/vnd.ms-fontobject"
+  if path.endswith(".manifest"): return "application/json"
+  if path.endswith(".wasm"): return "application/wasm"
+  return "application/octet-stream"
+
+proc serveStaticFile*(server: BitBarrelServer, request: mummy.Request) =
+  ## Serve static files from webadmin directory
+  {.gcsafe.}:
+    if not server.config.webadminEnabled or server.config.webadminPath.len == 0:
+      request.respond(404, body = "Webadmin not enabled")
+      return
+
+    # Get the file path from request
+    let path = request.path
+    var filePath: string
+
+    # Handle /admin/* requests - strip /admin prefix
+    if path.startsWith("/admin"):
+      let suffix = path[6..^1]  # Remove /admin
+      if suffix.len == 0 or suffix == "/":
+        filePath = server.config.webadminPath / "index.html"
+      else:
+        # Remove leading slash if present
+        let cleanSuffix = if suffix.startsWith("/"): suffix[1..^1] else: suffix
+        filePath = server.config.webadminPath / cleanSuffix
+    else:
+      # Direct access
+      if path == "/":
+        filePath = server.config.webadminPath / "index.html"
+      else:
+        let cleanPath = if path.startsWith("/"): path[1..^1] else: path
+        filePath = server.config.webadminPath / cleanPath
+
+    # Security: verify path stays within webadmin directory
+    let resolvedPath = filePath.replace("\\", "/")  # Normalize slashes
+    let basePath = server.config.webadminPath.replace("\\", "/")
+
+    if not (resolvedPath.startsWith(basePath) and basePath.len < resolvedPath.len):
+      request.respond(403, body = "Forbidden")
+      return
+
+    # Check if file exists
+    if not fileExists(resolvedPath):
+      request.respond(404, body = "Not Found")
+      return
+
+    try:
+      let content = readFile(resolvedPath)
+      var headers: HttpHeaders
+      headers["Content-Type"] = getContentType(resolvedPath)
+      headers["Content-Length"] = $content.len
+      headers["Cache-control"] = "public, max-age=3600"
+      request.respond(200, headers, content)
+    except CatchableError:
+      request.respond(500, body = "Error reading file")
+
+proc serveWebadminRoot*(server: BitBarrelServer, request: mummy.Request) =
+  ## Serve index.html for webadmin root (SPA fallback)
+  {.gcsafe.}:
+    if not server.config.webadminEnabled or server.config.webadminPath.len == 0:
+      # Return simple API info for non-admin requests
+      var statsJson = """
+{
+  "status": "ok",
+  "message": "BitBarrel KVS Server",
+   "webadmin": "disabled"
+}"""
+      var headers: HttpHeaders
+      headers["Content-Type"] = "application/json"
+      request.respond(200, headers, statsJson)
+      return
+
+    # Redirect root to /admin/
+    var headers: HttpHeaders
+    headers["Location"] = "/admin/"
+    request.respond(302, headers)
 
 
 proc handleWebSocketMessage*(
@@ -908,6 +1002,12 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   router.delete("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
   router.head("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
   router.get("/barrels/*/traverse/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+
+  # Webadmin static file routes (only if webadmin is enabled)
+  if config.webadminEnabled and config.webadminPath.len > 0:
+    router.get("/admin/**", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
+    router.get("/favicon.ico", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
+    router.get("/", proc(req: mummy.Request) {.gcsafe.} = serveWebadminRoot(serverRef, req))
 
   result.mummyServer = newServer(
     router.toHandler(),
