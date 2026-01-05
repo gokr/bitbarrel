@@ -21,6 +21,9 @@ dependencies:
   bitbarrel:
     path: ../clients/dart
 
+  # Icons
+  cupertino_icons: ^1.0.8
+
   # State management
   watch_it: ^2.4.0
   get_it: ^9.0.5
