@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   bitbarrel:
-    # Build from local Dockerfile
-    build: .
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/gokr/bitbarrel:latest
 
-    # Or use pre-built image (uncomment if using registry)
-    # image: ghcr.io/gokr/bitbarrel:latest
+    # Or build from local Dockerfile (uncomment to build locally)
+    # build: .
 
     container_name: bitbarrel
 
