@@ -257,6 +257,11 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
             onPressed: _onViewStats,
           ),
           IconButton(
+            icon: const Icon(Icons.account_tree),
+            tooltip: 'Graph Traversal',
+            onPressed: () => context.go('/traversal'),
+          ),
+          IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Query Interface',
             onPressed: supportsRangeQueries ? () => context.go('/query') : null,
