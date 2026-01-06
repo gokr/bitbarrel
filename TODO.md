@@ -37,12 +37,14 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ Range query support over network
 - ✅ Barrel configuration (get/set with YAML persistence)
 
-### HugeBarrel Mode (Experimental)
+### HugeBarrel Mode (Network-Supported)
 - ✅ Basic two-tier storage for massive datasets
 - ✅ Range partitioning with Barrel1 (CritBit)
 - ✅ Barrel2 with multiple data files
 - ✅ LRU caching of RangeKeyDirs
+- ✅ Full network server support via BarrelWrapper
 - ⚠️ Documented as experimental in `/docs/research/HUGECRITBIT.md`
+- ⚠️ Direct API use requires `openHugeBarrel()` (not `openBarrel()`)
 - ⚠️ Lacks coordinated compaction for production use
 
 ### Performance Achieved
@@ -141,6 +143,8 @@ A modern Flutter-based web admin console for visual database management with int
 - ✅ Responsive Material 3 UI design
 - ✅ **Integrated static file serving from BitBarrel server**
 - ✅ **Docker support with pre-built webadmin bundle**
+- ✅ **Graph Traversal UI** - Explore _ref relationships with path specs like "friends->team"
+- ✅ **Barrel Configuration Editor** - Edit sync mode, buffer sizes, compaction settings from UI
 
 ### Location
 - Located in `/webadmin/`
@@ -380,9 +384,10 @@ Ensure threads complete before parent objects are destroyed. See `barrel.nim:clo
 **Commits:** 6db8c01 through 1c9bc6c (December 2025)
 
 ### Experimental Features
-- HugeBarrel (bmHugeCritBit mode) is documented as experimental
-- Full production-grade HugeBarrel implementation is planned, see `/docs/research/HUGECRITBIT.md`
-- Basic CRUD operations work but coordinated compaction is missing
+- HugeBarrel direct API (bmHugeCritBit mode) remains experimental
+- Full production-grade HugeBarrel implementation features planned, see `/docs/research/HUGECRITBIT.md`
+- Coordinated compaction is missing
+- Network server support for HugeBarrel is complete and production-ready
 
 ### Incomplete Features
 - CLI interactive client is a stub only
@@ -478,4 +483,4 @@ For documentation on current features:
 
 ---
 
-**Status**: Core implementation complete and production-ready for embedded scenarios. Network layer and Go client completed. HugeBarrel is experimental. Pub/Sub and clustering planned for future releases.
+**Status**: Core implementation complete and production-ready for embedded scenarios. Network layer (including HugeBarrel support) and Go client completed. HugeBarrel is fully accessible via network protocol, though direct API remains experimental. Pub/Sub and clustering planned for future releases.

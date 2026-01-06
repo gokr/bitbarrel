@@ -438,6 +438,7 @@ echo updatedConfig  # Returns full updated configuration
 **Configurable Fields:**
 | Field | Type | Description |
 |-------|------|-------------|
+| mode | string | Index mode: `"hash"`, `"critbit"`, or `"hugecritbit"` |
 | writeBufferSize | int | Write buffer size in bytes |
 | syncMode | string | "none", "sync", or "fsync" |
 | autoCompact | bool | Enable automatic compaction |
@@ -448,6 +449,30 @@ echo updatedConfig  # Returns full updated configuration
 | deleteExpiredOnRead | bool | Delete expired records on read |
 
 **Note:** The `mode` field (hash, critbit, hugecritbit) cannot be changed at runtime.
+
+**Barrel Mode Configuration:**
+
+You can create barrels with different index modes via the network API:
+
+```nim
+# Create a standard hash-mode barrel (default)
+import json
+discard client.createBarrel("mydb", %*{"mode": "hash"})
+
+# Create a sorted critbit barrel for range queries
+discard client.createBarrel("metrics", %*{"mode": "critbit"})
+
+# Create a HugeBarrel for massive datasets (billions of keys)
+# Note: When using direct API, use openHugeBarrel() instead of openBarrel()
+let hugeConfig = %*{
+  "mode": "hugecritbit",
+  "hugeConfig": {
+    "maxEntriesPerRange": 1000000,
+    "rangeCacheSize": 5
+  }
+}
+discard client.createBarrel("analytics", hugeConfig)
+```
 
 ## Key-Value Operations
 

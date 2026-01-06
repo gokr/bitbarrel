@@ -135,6 +135,9 @@ flutter run -d chrome --web-port 8080
 - Barrel management (create, delete, switch)
 - Data explorer with full CRUD operations
 - Query interface for prefix and range queries (CritBit mode)
+- **Graph Traversal UI** - Explore _ref relationships interactively
+- **Barrel Configuration Editor** - Edit sync mode, buffer sizes, compaction settings
+- Statistics dashboard with comprehensive metrics
 - JSON visualization with syntax highlighting
 - Real-time data browsing with pagination
 
@@ -325,8 +328,12 @@ metricsDb.close()
 ```
 
 ### bmHugeCritBit Mode – Large Analytics Dataset
+
+**Note:** HugeBarrel (`bmHugeCritBit` mode) uses a different API than regular barrels:
+
 ```nim.compilable
 import bitbarrel
+import storage/hugebarrel  # Import the HugeBarrel module
 from bitbarrel/types import BarrelMode
 
 var cfg = defaultBarrelConfig()
@@ -334,7 +341,8 @@ cfg.mode = BarrelMode.bmHugeCritBit
 cfg.hugeConfig.maxEntriesPerRange = 1_000_000  # Split into 1M-key ranges
 cfg.hugeConfig.rangeCacheSize = 5              # Keep 5 ranges in memory
 
-var analyticsDb = openBarrel("/tmp/analytics.db", cfg)
+# Use openHugeBarrel() instead of openBarrel() for HugeBarrel
+var analyticsDb = openHugeBarrel("/tmp/analytics", cfg)
 
 # Store user events (potentially billions)
 discard analyticsDb.set("events:user:123:click:1734800000", """{"page": "/home"}""")
@@ -346,6 +354,8 @@ echo "User 123 has ", userEvents.len, " events"
 
 analyticsDb.close()
 ```
+
+**Network Server:** When using the network server, HugeBarrel is transparently supported through the standard `createBarrel` command with `bmHugeCritBit` mode configured.
 
 ## Configuration Examples
 
@@ -446,14 +456,14 @@ Get started with BitBarrel in seconds using our official Docker image, which bun
 
 ```bash
 # Start BitBarrel with integrated webadmin
-docker-compose up -d
+docker compose up -d
 
 # Access the services:
 # - BitBarrel Server: ws://localhost:8080 or http://localhost:8080
 # - Web Admin: http://localhost:8080/admin/
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ### Quick Start with Docker Run
