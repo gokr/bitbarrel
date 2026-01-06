@@ -191,7 +191,7 @@ suite "Session and Barrel Registry Tests":
     check registry1.createBarrel("persistent", config) == true
 
     # Add some data
-    let barrel = registry1.getBarrel("persistent").get()
+    var barrel = registry1.getBarrel("persistent").get()
     check barrel.set("test_key", "test_value") == true
 
     # Close Barrel properly to ensure sync
