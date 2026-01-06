@@ -23,7 +23,7 @@ RUN chmod +x /usr/local/bin/bitbarrel
 # If webadmin is not built, the server will still work but webadmin won't be available
 # Build webadmin first: cd webadmin && flutter build web --release
 # Using .dockerignore to handle missing webadmin
-ONBUILD COPY --chown=bitbarrel:bitbarrel webadmin/build/web /opt/bitbarrel/webadmin
+COPY --chown=bitbarrel:bitbarrel webadmin/build/web /opt/bitbarrel/webadmin
 
 # Switch to non-root user
 USER bitbarrel
@@ -34,7 +34,4 @@ EXPOSE 8080
 
 # Default command starts the server with webadmin
 # If webadmin dir doesn't exist, it will just run in API-only mode
-ENTRYPOINT ["/usr/local/bin/bitbarrel", "serve"]
-
-# Run with webadmin by default (won't fail if dir missing)
-ONBUILD ENTRYPOINT ["/usr/local/bin/bitbarrel", "serve", "--webadmin-path=/opt/bitbarrel/webadmin", "--webadmin-enabled"]
+ENTRYPOINT ["/usr/local/bin/bitbarrel", "serve", "--webadmin-path=/opt/bitbarrel/webadmin", "--webadmin-enabled"]
