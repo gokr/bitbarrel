@@ -135,8 +135,7 @@ proc serveStaticFile*(server: BitBarrelServer, request: mummy.Request) =
       let content = readFile(resolvedPath)
       var headers = emptyHttpHeaders()
       headers["Content-Type"] = getContentType(resolvedPath)
-      headers["Content-Length"] = $content.len
-      headers["Cache-Control"] = "public, max-age=3600"
+      # Let Mummy calculate Content-Length automatically
       request.respond(200, headers, content)
     except CatchableError:
       request.respond(500, body = "Error reading file")
@@ -1010,6 +1009,8 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   # Webadmin static file routes (only if webadmin is enabled)
   if config.webadminEnabled and config.webadminPath.len > 0:
     router.get("/admin/*", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
+    router.get("/admin/*/*", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
+    router.get("/admin/*/*/*", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
     router.get("/favicon.ico", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
     router.get("/", proc(req: mummy.Request) {.gcsafe.} = serveWebadminRoot(serverRef, req))
 
