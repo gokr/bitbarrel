@@ -2,6 +2,8 @@
 
 BitBarrel provides official Docker images for easy deployment. The Docker image bundles the BitBarrel server with the Flutter web admin interface in a single container.
 
+Images are published to GitHub Container Registry (ghcr.io) and updated automatically on each release.
+
 ## Quick Start
 
 ### Using Docker Compose
@@ -35,7 +37,7 @@ docker run -d \
   --name bitbarrel \
   -p 8080:8080 \
   -v bitbarrel-data:/data \
-  bitbarrel:latest
+  ghcr.io/gokr/bitbarrel:latest
 ```
 
 ## Prerequisites
@@ -105,7 +107,7 @@ docker run -d \
   -v bitbarrel-data:/data \
   -e BITBARREL_AUTH_ENABLED=true \
   -e BITBARREL_AUTH_SECRET="your-32-char-secret-here" \
-  bitbarrel:latest
+  ghcr.io/gokr/bitbarrel:latest
 ```
 
 ### Example: Custom Port
@@ -116,7 +118,7 @@ docker run -d \
   -p 9090:8080 \
   -v bitbarrel-data:/data \
   -e BITBARREL_SERVER_PORT=8080 \
-  bitbarrel:latest
+  ghcr.io/gokr/bitbarrel:latest
 ```
 
 ## Data Persistence
@@ -145,7 +147,7 @@ volumes:
 version: '3.8'
 services:
   bitbarrel:
-    image: bitbarrel:latest
+    image: ghcr.io/gokr/bitbarrel:latest
     ports:
       - "8080:8080"
     volumes:
@@ -165,7 +167,7 @@ volumes:
 version: '3.8'
 services:
   bitbarrel:
-    image: bitbarrel:latest
+    image: ghcr.io/gokr/bitbarrel:latest
     ports:
       - "8080:8080"
     volumes:
@@ -206,7 +208,7 @@ secrets:
 
 services:
   bitbarrel:
-    image: bitbarrel:latest
+    image: ghcr.io/gokr/bitbarrel:latest
     secrets:
       - bitbarrel_secret
     environment:
@@ -384,10 +386,10 @@ docker stop bitbarrel
 docker rm bitbarrel
 
 # Pull latest image
-docker pull bitbarrel:latest
+docker pull ghcr.io/gokr/bitbarrel:latest
 
 # Run new container
-docker run -d ... bitbarrel:latest
+docker run -d ... ghcr.io/gokr/bitbarrel:latest
 ```
 
 ## Support
