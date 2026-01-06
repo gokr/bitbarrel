@@ -1,6 +1,7 @@
 import 'package:bitbarrel/bitbarrel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:bitbarrel_admin/models/barrel.dart';
+import 'package:bitbarrel_admin/models/barrel_config.dart';
 import 'connection_service.dart';
 
 /// Service for managing BitBarrel barrels
@@ -142,6 +143,41 @@ class BarrelService extends ChangeNotifier {
     } catch (e) {
       // Ignore error
     }
+  }
+
+  /// Get barrel configuration as raw JSON string
+  Future<String> getBarrelConfigRaw(String name) async {
+    if (_client == null) {
+      throw Exception('Not connected to server');
+    }
+    return await _client!.getBarrelConfig(name);
+  }
+
+  /// Set barrel configuration from raw JSON string
+  Future<void> setBarrelConfigRaw(String name, String config) async {
+    if (_client == null) {
+      throw Exception('Not connected to server');
+    }
+    await _client!.setBarrelConfig(name, config);
+  }
+
+  /// Get barrel configuration as BarrelConfig model
+  Future<BarrelConfig> getBarrelConfig(String name) async {
+    final jsonStr = await getBarrelConfigRaw(name);
+    return BarrelConfig.fromJsonString(jsonStr);
+  }
+
+  /// Update barrel configuration
+  Future<BarrelConfig> updateBarrelConfig(String name, BarrelConfig config) async {
+    if (_client == null) {
+      throw Exception('Not connected to server');
+    }
+
+    final jsonStr = config.toJsonString();
+    await _client!.setBarrelConfig(name, jsonStr);
+
+    // Reload the config to get any server-side modifications
+    return await getBarrelConfig(name);
   }
 
   /// Clear current barrel selection
