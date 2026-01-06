@@ -344,13 +344,13 @@ task dockerRun, "Run BitBarrel in Docker container":
   exec "docker run -d -p 8080:8080 -v bitbarrel-data:/data bitbarrel:latest"
 
 task dockerComposeUp, "Run BitBarrel using Docker Compose":
-  exec "docker-compose up -d"
+  exec "docker compose up -d"
 
 task dockerComposeDown, "Stop BitBarrel Docker Compose":
-  exec "docker-compose down"
+  exec "docker compose down"
 
 task dockerComposeLogs, "View BitBarrel logs from Docker Compose":
-  exec "docker-compose logs -f"
+  exec "docker compose logs -f"
 
 task dockerPublish, "Build and publish Docker image to registry":
   exec """
