@@ -450,7 +450,7 @@ server.start()
 
 ## Running with Docker
 
-Get started with BitBarrel in seconds using our official Docker image, which bundles the server with a Flutter web admin interface served at `/admin/`.
+Get started with BitBarrel in seconds using our official Docker image from GitHub Container Registry (ghcr.io), which bundles the server with a Flutter web admin interface served at `/admin/`.
 
 ### Quick Start with Docker Compose
 
@@ -467,6 +467,19 @@ docker compose logs -f
 ```
 
 ### Quick Start with Docker Run
+
+The easiest way to get started is using the pre-built image from GitHub Container Registry:
+
+```bash
+# Run BitBarrel directly from GitHub Container Registry
+docker run -d \
+  --name bitbarrel \
+  -p 8080:8080 \
+  -v bitbarrel-data:/data \
+  ghcr.io/gokr/bitbarrel:latest
+```
+
+Or build locally from source:
 
 ```bash
 # First, build the bitbarrel binary and webadmin
@@ -506,7 +519,7 @@ docker run -d \
   -e BITBARREL_WEB_ADMIN_ENABLED=true \
   -e BITBARREL_WEB_ADMIN_PATH=/opt/bitbarrel/webadmin \
   -e BITBARREL_LOGGING_LEVEL=info \
-  bitbarrel:latest
+  ghcr.io/gokr/bitbarrel:latest
 ```
 
 See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation including:
