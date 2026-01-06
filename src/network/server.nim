@@ -8,6 +8,7 @@ import mummy/routers
 import session
 import auth as authjwt
 import ../bitbarrel/barrel
+import ../storage/hugebarrel
 import ../bitbarrel/refs
 import ../bitbarrel/config_json
 
@@ -15,6 +16,103 @@ import ../bitbarrel/config_json
 import protocol
 # Alias to avoid conflict with mummy.Request
 type ProtoRequest = protocol.Request
+
+# Helper procs for working with BarrelWrapper
+proc wrapperGet(wrapper: BarrelWrapper, key: string): string =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.get(key)
+  of bkHuge:
+    wrapper.hugeBarrel.get(key)
+
+proc wrapperSet(wrapper: var BarrelWrapper, key: string, value: string): bool =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.set(key, value)
+  of bkHuge:
+    wrapper.hugeBarrel.set(key, value)
+
+proc wrapperDelete(wrapper: var BarrelWrapper, key: string): bool =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.delete(key)
+  of bkHuge:
+    wrapper.hugeBarrel.delete(key)
+
+proc wrapperExists(wrapper: BarrelWrapper, key: string): bool =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.exists(key)
+  of bkHuge:
+    wrapper.hugeBarrel.exists(key)
+
+proc wrapperCount(wrapper: BarrelWrapper): int =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.count()
+  of bkHuge:
+    # HugeBarrel doesn't have an efficient count operation
+    0
+
+proc wrapperGetConfig(wrapper: BarrelWrapper): BarrelConfig =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.getConfig()
+  of bkHuge:
+    # HugeBarrel stores config differently - return a basic one
+    var config = defaultBarrelConfig()
+    config.mode = bmHugeCritBit
+    config
+
+proc wrapperSetConfig(wrapper: BarrelWrapper, config: BarrelConfig) =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.setConfig(config)
+  of bkHuge:
+    # HugeBarrel doesn't support setConfig - this is a limitation
+    discard
+
+proc wrapperGetStats(wrapper: BarrelWrapper): BarrelStats =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.getStats()
+  of bkHuge:
+    # HugeBarrel doesn't have full stats - return a basic one
+    var stats: BarrelStats
+    stats.indexMode = "bmHugeCritBit"
+    return stats
+
+proc wrapperListKeys(wrapper: BarrelWrapper, limit: int = 1000, offset: int = 0): seq[string] =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.listKeys(limit, offset)
+  of bkHuge:
+    # HugeBarrel doesn't support listKeys - return empty
+    @[]
+
+proc wrapperItemsInRange(wrapper: BarrelWrapper, startKey: string, endKey: string, limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.itemsInRange(startKey, endKey, limit, cursor)
+  of bkHuge:
+    # HugeBarrel doesn't support itemsInRange yet - return empty
+    (@[], "", false)
+
+proc wrapperItemsWithPrefix(wrapper: BarrelWrapper, prefix: string, limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.itemsWithPrefix(prefix, limit, cursor)
+  of bkHuge:
+    # HugeBarrel doesn't support itemsWithPrefix yet - return empty
+    (@[], "", false)
+
+proc wrapperKeysInRange(wrapper: BarrelWrapper, startKey: string, endKey: string, limit: int = 1000, offset: int = 0): seq[string] =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.keysInRange(startKey, endKey, limit, offset)
+  of bkHuge:
+    # HugeBarrel doesn't support keysInRange - return empty
+    @[]
 
 type
   BitBarrelServerObj* = object
@@ -294,7 +392,7 @@ proc handleWebSocketMessage*(
         resp.status = statusBarrelNotFound
       else:
         resp.status = statusOk
-        resp.value = serializeBarrelConfig(barrel.get().config)
+        resp.value = serializeBarrelConfig(wrapperGetConfig(barrel.get()))
     except CatchableError as e:
       resp.status = statusError
       resp.value = e.msg
@@ -310,17 +408,19 @@ proc handleWebSocketMessage*(
           resp.status = statusBarrelNotFound
         else:
           # Parse JSON and apply to current config
-          let newConfig = applyJsonUpdatesToConfig(barrel.get().config, req.value)
+          var wrapper = barrel.get()
+          let currentConfig = wrapperGetConfig(wrapper)
+          let newConfig = applyJsonUpdatesToConfig(currentConfig, req.value)
 
           # Validate mode hasn't changed (not allowed at runtime)
-          if newConfig.mode != barrel.get().config.mode:
+          if newConfig.mode != currentConfig.mode:
             resp.status = statusError
             resp.value = "Cannot change barrel mode at runtime"
           else:
             # Update config and persist to YAML
-            barrel.get().setConfig(newConfig)
+            wrapperSetConfig(wrapper, newConfig)
             resp.status = statusOk
-            resp.value = serializeBarrelConfig(barrel.get().config)
+            resp.value = serializeBarrelConfig(wrapperGetConfig(wrapper))
       except ConfigValidationError as e:
         resp.status = statusError
         resp.value = e.msg
@@ -340,7 +440,7 @@ proc handleWebSocketMessage*(
         if barrel.isNone():
           resp.status = statusBarrelNotFound
         else:
-          let b = barrel.get()
+          var wrapper = barrel.get()
           let authSess = server.sessions[ws.clientId].authSession
 
           case req.command:
@@ -349,7 +449,7 @@ proc handleWebSocketMessage*(
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: read access required"
             else:
-              let value = b.get(req.key)
+              let value = wrapperGet(wrapper, req.key)
               if value.len > 0:
                 resp.status = statusOk
                 resp.value = value
@@ -360,7 +460,7 @@ proc handleWebSocketMessage*(
             if not authSess.canWriteData():
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: write access required"
-            elif b.set(req.key, req.value):
+            elif wrapperSet(wrapper, req.key, req.value):
               resp.status = statusOk
             else:
               resp.status = statusError
@@ -369,13 +469,13 @@ proc handleWebSocketMessage*(
             if not authSess.canWriteData():
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: write access required"
-            elif b.delete(req.key):
+            elif wrapperDelete(wrapper, req.key):
               resp.status = statusOk
             else:
               resp.status = statusError
 
           of cmdExists:
-            if b.exists(req.key):
+            if wrapperExists(wrapper, req.key):
               resp.status = statusOk
               resp.value = "true"
             else:
@@ -384,11 +484,11 @@ proc handleWebSocketMessage*(
 
           of cmdCount:
             resp.status = statusOk
-            resp.value = $b.count()
+            resp.value = $wrapperCount(wrapper)
 
           of cmdListKeys:
             # TODO: Support pagination via req.value
-            let keys = b.listKeys()
+            let keys = wrapperListKeys(wrapper)
             resp.status = statusOk
             resp.value = keys.join(",")
 
@@ -415,7 +515,7 @@ proc handleWebSocketMessage*(
               proc buildResult(key: string, path: string): protocol.TraverseResult =
                 result = protocol.TraverseResult(path: path, key: key)
                 if (tReq.options and 0x01) != 0:  # includeFullData bit
-                  result.value = b.get(key)
+                  result.value = wrapperGet(wrapper, key)
 
               proc followPath(currentKey: string, currentStep: int,
                              currentPath: seq[string]) =
@@ -430,7 +530,7 @@ proc handleWebSocketMessage*(
                   return
                 visited.incl(currentKey)
 
-                let value = b.get(currentKey)
+                let value = wrapperGet(wrapper, currentKey)
                 if value.len == 0:
                   return
 
@@ -490,7 +590,7 @@ proc handleWebSocketMessage*(
         if barrel.isNone():
           resp.status = statusBarrelNotFound
         else:
-          let b = barrel.get()
+          var wrapper = barrel.get()
           let authSess = server.sessions[ws.clientId].authSession
           if not authSess.canReadData():
             resp.status = statusUnauthorized
@@ -501,8 +601,8 @@ proc handleWebSocketMessage*(
               let params = protocol.decodeRangeRequest(req.value)
 
               # Execute range query
-              let (items, nextCursor, hasMore) = b.itemsInRange(
-                params.startKey, params.endKey, params.limit, params.cursor)
+              let (items, nextCursor, hasMore) = wrapperItemsInRange(
+                wrapper, params.startKey, params.endKey, params.limit, params.cursor)
 
               # Encode and send response
               let respData = protocol.encodeRangeResponse(
@@ -527,7 +627,7 @@ proc handleWebSocketMessage*(
         if barrel.isNone():
           resp.status = statusBarrelNotFound
         else:
-          let b = barrel.get()
+          var wrapper = barrel.get()
           let authSess = server.sessions[ws.clientId].authSession
           if not authSess.canReadData():
             resp.status = statusUnauthorized
@@ -538,8 +638,8 @@ proc handleWebSocketMessage*(
               let params = protocol.decodePrefixRequest(req.value)
 
               # Execute prefix query
-              let (items, nextCursor, hasMore) = b.itemsWithPrefix(
-                params.prefix, params.limit, params.cursor)
+              let (items, nextCursor, hasMore) = wrapperItemsWithPrefix(
+                wrapper, params.prefix, params.limit, params.cursor)
 
               # Encode and send response
               let respData = protocol.encodeRangeResponse(
@@ -564,7 +664,7 @@ proc handleWebSocketMessage*(
         if barrel.isNone():
           resp.status = statusBarrelNotFound
         else:
-          let b = barrel.get()
+          var wrapper = barrel.get()
           let authSess = server.sessions[ws.clientId].authSession
           if not authSess.canReadData():
             resp.status = statusUnauthorized
@@ -573,7 +673,7 @@ proc handleWebSocketMessage*(
             try:
               # Decode count request (similar to range query format)
               let params = protocol.decodeRangeRequest(req.value)
-              let count = b.keysInRange(params.startKey, params.endKey).len
+              let count = wrapperKeysInRange(wrapper, params.startKey, params.endKey).len
               resp.status = statusOk
               resp.value = $count
 
@@ -593,7 +693,7 @@ proc handleWebSocketMessage*(
         if barrel.isNone():
           resp.status = statusBarrelNotFound
         else:
-          let b = barrel.get()
+          var wrapper = barrel.get()
           let authSess = server.sessions[ws.clientId].authSession
           if not authSess.canReadData():
             resp.status = statusUnauthorized
@@ -601,7 +701,7 @@ proc handleWebSocketMessage*(
           else:
             try:
               # Get statistics from the barrel
-              let stats = b.getStats()
+              let stats = wrapperGetStats(wrapper)
               # Encode to JSON and send response
               resp.status = statusOk
               resp.value = encodeBarrelStats(stats)
@@ -746,11 +846,11 @@ proc handleRestKV*(server: BitBarrelServer, request: mummy.Request, barrelName: 
     request.respond(404, body = """{"error":"Barrel '""" & barrelName & """' not found"}""")
     return
 
-  let b = barrel.get()
+  var wrapper = barrel.get()
 
   case request.httpMethod:
   of "GET":
-    let value = b.get(key)
+    let value = wrapperGet(wrapper, key)
     if value.len > 0:
       request.respond(200, body = value)
     else:
@@ -758,7 +858,7 @@ proc handleRestKV*(server: BitBarrelServer, request: mummy.Request, barrelName: 
 
   of "PUT":
     let value = request.body
-    if b.set(key, value):
+    if wrapperSet(wrapper, key, value):
       var hdrs: HttpHeaders
       hdrs["Location"] = "/barrels/" & barrelName & "/kv/" & key
       request.respond(201, hdrs)
@@ -766,13 +866,13 @@ proc handleRestKV*(server: BitBarrelServer, request: mummy.Request, barrelName: 
       request.respond(500, body = """{"error":"Failed to set key"}""")
 
   of "DELETE":
-    if b.delete(key):
+    if wrapperDelete(wrapper, key):
       request.respond(204)
     else:
       request.respond(500, body = """{"error":"Failed to delete key"}""")
 
   of "HEAD":
-    if b.exists(key):
+    if wrapperExists(wrapper, key):
       request.respond(200)
     else:
       request.respond(404)
@@ -874,7 +974,7 @@ proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
       request.respond(404, body = fmt("{{\"error\":\"Barrel not found: {barrelName}\"}}"))
       return
 
-    let b = barrel.get()
+    var wrapper = barrel.get()
 
     # Parse query parameters from the URI
     # Mummy doesn't provide queryString directly, so extract from path
@@ -899,7 +999,7 @@ proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
       proc buildResult(key: string, path: string): protocol.TraverseResult =
         result = protocol.TraverseResult(path: path, key: key)
         if includeData:
-          result.value = b.get(key)
+          result.value = wrapperGet(wrapper, key)
 
       proc followPath(currentKey: string, currentStep: int,
                      currentPath: seq[string]) =
@@ -913,7 +1013,7 @@ proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
           return
         visited.incl(currentKey)
 
-        let value = b.get(currentKey)
+        let value = wrapperGet(wrapper, currentKey)
         if value.len == 0:
           return
 
