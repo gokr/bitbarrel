@@ -115,10 +115,14 @@ proc serveStaticFile*(server: BitBarrelServer, request: mummy.Request) =
         filePath = server.config.webadminPath / cleanPath
 
     # Security: verify path stays within webadmin directory
-    let resolvedPath = filePath.replace("\\", "/")  # Normalize slashes
-    let basePath = server.config.webadminPath.replace("\\", "/")
+    # Expand to absolute paths for reliable comparison
+    let resolvedPath = expandFilename(filePath).replace("\\", "/")
+    let basePath = expandFilename(server.config.webadminPath).replace("\\", "/")
 
-    if not (resolvedPath.startsWith(basePath) and basePath.len < resolvedPath.len):
+    # Ensure basePath ends with / for proper prefix matching
+    let basePathWithSlash = if basePath.endsWith("/"): basePath else: basePath & "/"
+
+    if not resolvedPath.startsWith(basePathWithSlash):
       request.respond(403, body = "Forbidden")
       return
 
@@ -1005,7 +1009,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
 
   # Webadmin static file routes (only if webadmin is enabled)
   if config.webadminEnabled and config.webadminPath.len > 0:
-    router.get("/admin/**", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
+    router.get("/admin/*", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
     router.get("/favicon.ico", proc(req: mummy.Request) {.gcsafe.} = serveStaticFile(serverRef, req))
     router.get("/", proc(req: mummy.Request) {.gcsafe.} = serveWebadminRoot(serverRef, req))
 
