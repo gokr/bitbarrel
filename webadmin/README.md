@@ -19,31 +19,69 @@ A modern Flutter web admin console for BitBarrel key-value store, providing a us
 - Dart SDK (>=3.0.0)
 - BitBarrel server running (default port: 9876)
 
-## Setup
+## Deployment Options
 
-1. **Install Flutter dependencies:**
-```bash
-flutter pub get
-```
+### Option 1: Integrated Server Mode (Recommended for Production)
 
-2. **Start BitBarrel server** (if not already running):
+The webadmin can be served directly from the BitBarrel server at `/admin/`:
+
 ```bash
+# Build the webadmin for production
+flutter build web --release --base-href /admin/
+
+# Start BitBarrel with integrated webadmin
 cd ..
-./bitbarrel --port 9876 serve
+./bitbarrel serve --webadmin-path=./webadmin/build/web --webadmin-enabled
+
+# Access at http://localhost:8080/admin/
 ```
 
-3. **Run the admin console in development mode:**
+**Advantages:**
+- Single port for both API and UI
+- No CORS issues
+- Simplified deployment (works great with Docker)
+- Automatic routing
+
+### Option 2: Separate Development Server
+
+For development, run the webadmin as a separate Flutter development server:
+
 ```bash
+# Install dependencies
+flutter pub get
+
+# Start BitBarrel server (if not already running)
+cd ..
+./bitbarrel serve
+
+# Run webadmin development server
+cd webadmin
 flutter run -d chrome --web-port 8080
+
+# Access at http://localhost:8080
 ```
+
+**Advantages:**
+- Hot reload for rapid development
+- Flutter DevTools integration
+- Easy debugging
 
 ## Usage
 
-1. Open the admin console at `http://localhost:8080`
-2. Enter the server host (default: `localhost`) and port (default: `9876`)
-3. Click "Connect"
-4. Manage barrels from the dashboard
-5. Select a barrel to explore its data
+1. **Access the admin console:**
+   - Integrated mode: `http://localhost:8080/admin/`
+   - Development mode: `http://localhost:8080`
+
+2. **Connect to server:**
+   - Enter server host (default: `localhost`)
+   - Enter server port (default: `9876` for dev, `8080` for integrated mode)
+   - Click "Connect"
+
+3. **Manage your data:**
+   - Create, delete, and switch between barrels
+   - Browse key-value pairs with pagination
+   - Execute prefix and range queries (CritBit mode)
+   - View JSON with syntax highlighting
 
 ## Project Structure
 
