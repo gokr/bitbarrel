@@ -260,6 +260,37 @@ class DataService extends ChangeNotifier {
     return await _client!.prefixQuery(prefix, limit: limit, cursor: cursor);
   }
 
+  /// Perform a reference traversal
+  ///
+  /// Traverses relationships between keys using path specs like "friends->team"
+  /// and returns the results with optional full data inclusion.
+  ///
+  /// [key] is the starting key to begin traversal from
+  /// [pathSpec] is the path specification (e.g., "friends", "friends->team", "*->posts[0:5]")
+  /// [includeFullData] if true, includes the full value data in results
+  /// [firstOnly] if true, returns only the first matching result
+  Future<List<bitbarrel.TraverseResult>> traverse(
+    String key,
+    String pathSpec, {
+    bool includeFullData = true,
+    bool firstOnly = false,
+  }) async {
+    if (_client == null) {
+      throw Exception('Not connected to server');
+    }
+
+    if (_barrelService.currentBarrel.value == null) {
+      throw Exception('No barrel selected');
+    }
+
+    final options = bitbarrel.TraverseOptions(
+      includeFullData: includeFullData,
+      firstOnly: firstOnly,
+    );
+
+    return await _client!.traverse(key, pathSpec, options: options);
+  }
+
   /// Clear current data
   void clear() {
     items.value = [];
