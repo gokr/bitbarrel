@@ -1,6 +1,7 @@
 package bitbarrel
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"

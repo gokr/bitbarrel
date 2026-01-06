@@ -244,7 +244,7 @@ void main() {
     });
 
     test('allValues contains all expected commands', () {
-      expect(Command.allValues.length, equals(19));
+      expect(Command.allValues.length, equals(20));
       expect(Command.allValues.contains(Command.get), isTrue);
       expect(Command.allValues.contains(Command.set), isTrue);
       expect(Command.allValues.contains(Command.delete), isTrue);
@@ -252,6 +252,7 @@ void main() {
       expect(Command.allValues.contains(Command.count), isTrue);
       expect(Command.allValues.contains(Command.listKeys), isTrue);
       expect(Command.allValues.contains(Command.ping), isTrue);
+      expect(Command.allValues.contains(Command.traverse), isTrue);
       expect(Command.allValues.contains(Command.rangeQuery), isTrue);
       expect(Command.allValues.contains(Command.prefixQuery), isTrue);
       expect(Command.allValues.contains(Command.createBarrel), isTrue);
