@@ -4,6 +4,7 @@ import 'package:watch_it/watch_it.dart';
 import '../services/barrel_service.dart';
 import '../services/connection_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/barrel_config_dialog.dart';
 
 /// Dashboard screen showing available barrels
 class DashboardScreen extends StatefulWidget with WatchItStatefulWidgetMixin {
@@ -189,6 +190,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await di<ConnectionService>().disconnect();
     if (context.mounted) {
       context.go('/');
+    }
+  }
+
+  Future<void> _configureBarrel(BuildContext context, String name) async {
+    final result = await BarrelConfigDialog.show(
+      context,
+      barrelName: name,
+    );
+
+    if (result != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Configuration updated for "$name"'),
+          backgroundColor: AppTheme.successColor,
+        ),
+      );
     }
   }
 
@@ -394,6 +411,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 icon: const Icon(Icons.visibility),
                                 tooltip: 'Explore',
                                 onPressed: () => _selectBarrel(context, barrel.name),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.settings),
+                                tooltip: 'Configure',
+                                onPressed: () => _configureBarrel(context, barrel.name),
                               ),
                               IconButton(
                                 icon: Icon(Icons.delete, color: AppTheme.errorColor),
