@@ -296,8 +296,11 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
   of bmCritBit:
     result.critBit = critbitindex.init()
   of bmHugeCritBit:
-    # TODO: Initialize HugeBarrel (Phase 3)
-    raise newException(ValueError, "bmHugeCritBit mode not yet implemented")
+    # HugeBarrel uses a different architecture and API
+    # Use storage/hugebarrel.openHugeBarrel() instead of openBarrel()
+    raise newException(ValueError,
+      "bmHugeCritBit mode requires using openHugeBarrel() from storage/hugebarrel module. " &
+      "Example: import storage/hugebarrel; let hb = openHugeBarrel(path, config)")
 
   # Rebuild index from data file (for existing barrels)
   let recoveredCount = rebuildIndexFromDataFile(result, effectiveConfig.validateCrc)
