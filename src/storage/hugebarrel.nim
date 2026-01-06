@@ -926,7 +926,7 @@ proc readRecordForRecovery*(filePath: string, offset: int64, validateCrc: bool =
   littleEndian32(addr keyLen, addr rawKeyLen)
 
   # Validate key length
-  if keyLen > MAX_KEY_SIZE.uint32:
+  if keyLen > types.MAX_KEY_SIZE.uint32:
     return
 
   # Read key
@@ -944,7 +944,7 @@ proc readRecordForRecovery*(filePath: string, offset: int64, validateCrc: bool =
   littleEndian32(addr result.valueSize, addr rawValueLen)
 
   # Validate value length
-  if result.valueSize > MAX_VALUE_SIZE.uint32:
+  if result.valueSize > types.MAX_VALUE_SIZE.uint32:
     return
 
   # Read flags (1 byte) and algorithm (1 byte)
