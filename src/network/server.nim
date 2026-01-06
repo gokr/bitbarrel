@@ -115,9 +115,9 @@ proc serveStaticFile*(server: BitBarrelServer, request: mummy.Request) =
         filePath = server.config.webadminPath / cleanPath
 
     # Security: verify path stays within webadmin directory
-    # Expand to absolute paths for reliable comparison
-    let resolvedPath = expandFilename(filePath).replace("\\", "/")
-    let basePath = expandFilename(server.config.webadminPath).replace("\\", "/")
+    # Use absolute paths for reliable comparison (absolutePath doesn't require file to exist)
+    let resolvedPath = absolutePath(filePath).replace("\\", "/")
+    let basePath = absolutePath(server.config.webadminPath).replace("\\", "/")
 
     # Ensure basePath ends with / for proper prefix matching
     let basePathWithSlash = if basePath.endsWith("/"): basePath else: basePath & "/"
@@ -133,10 +133,10 @@ proc serveStaticFile*(server: BitBarrelServer, request: mummy.Request) =
 
     try:
       let content = readFile(resolvedPath)
-      var headers: HttpHeaders
+      var headers = emptyHttpHeaders()
       headers["Content-Type"] = getContentType(resolvedPath)
       headers["Content-Length"] = $content.len
-      headers["Cache-control"] = "public, max-age=3600"
+      headers["Cache-Control"] = "public, max-age=3600"
       request.respond(200, headers, content)
     except CatchableError:
       request.respond(500, body = "Error reading file")
@@ -152,13 +152,13 @@ proc serveWebadminRoot*(server: BitBarrelServer, request: mummy.Request) =
   "message": "BitBarrel KVS Server",
    "webadmin": "disabled"
 }"""
-      var headers: HttpHeaders
+      var headers = emptyHttpHeaders()
       headers["Content-Type"] = "application/json"
       request.respond(200, headers, statsJson)
       return
 
     # Redirect root to /admin/
-    var headers: HttpHeaders
+    var headers = emptyHttpHeaders()
     headers["Location"] = "/admin/"
     request.respond(302, headers)
 
@@ -803,7 +803,7 @@ proc handleRestStatus*(server: BitBarrelServer, request: mummy.Request) =
   "barrels": """ & $barrelCount & """
 }"""
 
-  var headers: HttpHeaders
+  var headers = emptyHttpHeaders()
   headers["Content-Type"] = "application/json"
   request.respond(200, headers, statsJson)
 
@@ -972,7 +972,7 @@ proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
 
       jsonResponse.add("]}")
 
-      var headers: HttpHeaders
+      var headers = emptyHttpHeaders()
       headers["Content-Type"] = "application/json"
       request.respond(200, headers, jsonResponse)
 
