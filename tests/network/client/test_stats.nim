@@ -96,7 +96,7 @@ suite "Protocol Statistics Tests":
 
     # Create a barrel
     check env.server.registry.createBarrel("test", defaultBarrelConfig())
-    let barrel = env.server.registry.getBarrel("test").get()
+    var barrel = env.server.registry.getBarrel("test").get()
 
     # Get stats
     let stats = barrel.getStats()
@@ -119,7 +119,7 @@ suite "Protocol Statistics Tests":
 
     # Create and open barrel with different name
     check env.server.registry.createBarrel("test2", defaultBarrelConfig())
-    let barrel = env.server.registry.getBarrel("test2").get()
+    var barrel = env.server.registry.getBarrel("test2").get()
 
     # Add some data
     discard barrel.set("key1", "value1")
