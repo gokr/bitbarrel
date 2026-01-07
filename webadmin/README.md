@@ -26,8 +26,8 @@ A modern Flutter web admin console for BitBarrel key-value store, providing a us
 The webadmin can be served directly from the BitBarrel server at `/admin/`:
 
 ```bash
-# Build the webadmin for production
-flutter build web --release --base-href /admin/
+# Build the webadmin for production (uses build.sh for correct base href)
+./build.sh
 
 # Start BitBarrel with integrated webadmin
 cd ..
@@ -47,19 +47,20 @@ cd ..
 For development, run the webadmin as a separate Flutter development server:
 
 ```bash
+# Quick start with helper script
+./start.sh
+
+# Or manually:
 # Install dependencies
 flutter pub get
 
-# Start BitBarrel server (if not already running)
-cd ..
-./bitbarrel serve
-
 # Run webadmin development server
-cd webadmin
 flutter run -d chrome --web-port 8080
 
 # Access at http://localhost:8080
 ```
+
+**Note:** In development mode, you'll need a separate BitBarrel server running.
 
 **Advantages:**
 - Hot reload for rapid development
