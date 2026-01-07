@@ -383,9 +383,14 @@ var analyticsDb = openHugeBarrel("/tmp/analytics", cfg)
 discard analyticsDb.set("events:user:123:click:1734800000", """{"page": "/home"}""")
 discard analyticsDb.set("events:user:456:purchase:1734800100", """{"amount": 99.99}""")
 
-# Query specific user's events (loads only their range into memory)
-let userEvents = analyticsDb.keysWithPrefix("events:user:123:")
-echo "User 123 has ", userEvents.len, " events"
+# Retrieve a specific event
+let clickEvent = analyticsDb.get("events:user:123:click:1734800000")
+if clickEvent != "":
+  echo "Found click event: ", clickEvent
+
+# Check how many ranges the data is split across
+let rangeCount = analyticsDb.getRangeCount()
+echo "Data distributed across ", rangeCount, " ranges"
 
 analyticsDb.close()
 ```
