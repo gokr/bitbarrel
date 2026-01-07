@@ -3,10 +3,11 @@
 ## This module provides the main entry point for the BitBarrel server
 ## using standard library parseopt for argument parsing
 
-import std/[os, parseopt, strformat, strutils, osproc, posix, net, tables]
+import std/[os, parseopt, strformat, strutils, posix, net, tables]
 import ../bitbarrel/[config, config_parser]
 import ../network/auth as authjwt
 import ../network/server
+import bench, smoketest
 
 const BitBarrelVersion* = staticExec("cd " & currentSourcePath().parentDir().parentDir().parentDir() & " && nimble dump | grep '^version:' | cut -d'\"' -f2")
 
@@ -38,9 +39,8 @@ COMMANDS:
   init      Generate default configuration file
   serve     Start the BitBarrel server
   token     Generate JWT tokens for authentication
-  client    Run BitBarrel client interface (coming in Phase 2)
-  bench     Run benchmark tests
-  test      Run all tests
+  bench     Run quick benchmark (100K write + 100K read test)
+  test      Run basic smoke test (1K write, 500 delete verification)
 
 OPTIONS:
   -c=FILE, --config=FILE       Path to configuration file (default: bitbarrel.yaml)
@@ -233,10 +233,6 @@ proc runServer*(args: CliArgs) =
 
   gServer.start()
 
-proc runClient*(args: CliArgs) =
-  ## Run the BitBarrel client
-  echo "Client implementation coming in Phase 2"
-
 proc runInit*(args: CliArgs) =
   ## Generate a default configuration file
   let configFile = args.configFile
@@ -329,14 +325,16 @@ proc runToken*(args: CliArgs) =
 
 
 proc runBenchmark*(args: CliArgs) =
-  ## Run benchmark tests
-  echo "Running benchmark..."
-  discard execCmd(&"cd {getCurrentDir()} && nimble bench")
+  ## Run embedded benchmark tests
+  let success = runEmbeddedBench()
+  if not success:
+    quit(1)
 
 proc runTests*(args: CliArgs) =
-  ## Run all tests
-  echo "Running BitBarrel tests..."
-  discard execCmd(&"cd {getCurrentDir()} && nimble test")
+  ## Run embedded smoke test
+  let success = runEmbeddedTest()
+  if not success:
+    quit(1)
 
 proc main*() =
   ## Main entry point
@@ -365,8 +363,6 @@ proc main*() =
     runServer(args)
   of "token":
     runToken(args)
-  of "client":
-    runClient(args)
   of "bench", "benchmark":
     runBenchmark(args)
   of "test":
