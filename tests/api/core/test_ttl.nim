@@ -4,14 +4,14 @@ import unittest, os, times, strformat
 import ../../../src/bitbarrel/barrel
 import ../../../src/bitbarrel/types
 import ../../../src/storage/record
+import ../../../tests/testutils
 
 suite "TTL Tests":
   var testDir: string
   var barrel: Barrel
 
   setup:
-    testDir = "temp_ttl_" & $now()
-    createDir(testDir)
+    testDir = setupTestDir("ttl")
     var config = defaultBarrelConfig()
     config.defaultTtl = 0
     config.checkExpirationOnRead = true
@@ -21,7 +21,7 @@ suite "TTL Tests":
   teardown:
     if barrel != nil:
       barrel.close()
-    removeDir(testDir, true)
+    cleanupTestDir(testDir)
 
   test "Encode and decode timestamp without TTL":
     let ts = 1640995200000'i64  # 2022-01-01 00:00:00 UTC in ms
@@ -192,8 +192,7 @@ suite "TTL Performance":
   var barrel: Barrel
 
   setup:
-    testDir = "temp_perf_" & $now()
-    createDir(testDir)
+    testDir = setupTestDir("perf")
     var config = defaultBarrelConfig()
     config.checkExpirationOnRead = true
     barrel = openBarrel(testDir / "perf.db", config)
@@ -201,7 +200,7 @@ suite "TTL Performance":
   teardown:
     if barrel != nil:
       barrel.close()
-    removeDir(testDir, true)
+    cleanupTestDir(testDir)
 
   test "TTL encoding/decoding performance":
     let ts = getTime().toUnix() * 1000
