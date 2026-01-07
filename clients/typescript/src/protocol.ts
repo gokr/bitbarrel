@@ -1,0 +1,530 @@
+/**
+ * BitBarrel TypeScript Client - Protocol Implementation
+ *
+ * This file implements the binary protocol encoding and decoding for communicating
+ * with the BitBarrel server. All multi-byte integers use big-endian encoding.
+ */
+
+import { Command, ResponseStatus, MaxKeySize, MaxValueSize } from './types';
+import { ProtocolError } from './errors';
+import type { Request, Response, RangeRequest, PrefixRequest, RangeResponse, TraverseRequest, TraverseResult } from './types';
+
+export class Protocol {
+  /**
+   * Encode a request: [type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
+   * Format: Command (1 byte) | Sequence (4 bytes) | Key Length (2 bytes) | Key (N bytes) | Value Length (4 bytes) | Value (M bytes)
+   * All multi-byte integers are big-endian.
+   */
+  static encodeRequest(req: Request): Buffer {
+    if (req.key.length > MaxKeySize) {
+      throw new ProtocolError(`Key too large: ${req.key.length} bytes (max ${MaxKeySize})`);
+    }
+    if (req.value.length > MaxValueSize) {
+      throw new ProtocolError(`Value too large: ${req.value.length} bytes (max ${MaxValueSize})`);
+    }
+
+    const keyLen = req.key.length;
+    const valLen = req.value.length;
+    const buffer = Buffer.allocUnsafe(1 + 4 + 2 + keyLen + 4 + valLen);
+
+    let offset = 0;
+    buffer.writeUInt8(req.command, offset++);
+    buffer.writeUInt32BE(req.seq, offset);
+    offset += 4;
+    buffer.writeUInt16BE(keyLen, offset);
+    offset += 2;
+    buffer.write(req.key, offset);
+    offset += keyLen;
+    buffer.writeUInt32BE(valLen, offset);
+    offset += 4;
+    buffer.write(req.value, offset);
+
+    return buffer;
+  }
+
+  /**
+   * Decode a request from binary format
+   */
+  static decodeRequest(data: Buffer): Request {
+    if (data.length < 11) {
+      throw new ProtocolError(`Request too short: ${data.length} bytes (min 11)`);
+    }
+
+    let offset = 0;
+
+    const cmdByte = data.readUInt8(offset++);
+    const command = cmdByte as Command;
+
+    const seq = data.readUInt32BE(offset);
+    offset += 4;
+
+    const keyLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (keyLen > MaxKeySize) {
+      throw new ProtocolError(`Key too large: ${keyLen} bytes (max ${MaxKeySize})`);
+    }
+    if (offset + keyLen > data.length) {
+      throw new ProtocolError('Truncated request: key extends beyond buffer');
+    }
+    const key = data.toString('utf8', offset, offset + keyLen);
+    offset += keyLen;
+
+    if (offset + 4 > data.length) {
+      throw new ProtocolError('Truncated request: missing value length');
+    }
+    const valLen = data.readUInt32BE(offset);
+    offset += 4;
+    if (valLen > MaxValueSize) {
+      throw new ProtocolError(`Value too large: ${valLen} bytes (max ${MaxValueSize})`);
+    }
+    if (offset + valLen > data.length) {
+      throw new ProtocolError('Truncated request: value extends beyond buffer');
+    }
+    const value = data.toString('utf8', offset, offset + valLen);
+
+    return { command, seq, key, value };
+  }
+
+  /**
+   * Encode a response: [status:1][seq:4][valLen:4][value:M]
+   * Format: Status (1 byte) | Sequence (4 bytes) | Value Length (4 bytes) | Value (M bytes)
+   * All multi-byte integers are big-endian.
+   */
+  static encodeResponse(resp: Response): Buffer {
+    if (resp.value.length > MaxValueSize) {
+      throw new ProtocolError(`Value too large: ${resp.value.length} bytes (max ${MaxValueSize})`);
+    }
+
+    const valLen = resp.value.length;
+    const buffer = Buffer.allocUnsafe(1 + 4 + 4 + valLen);
+
+    let offset = 0;
+    buffer.writeUInt8(resp.status, offset++);
+    buffer.writeUInt32BE(resp.seq, offset);
+    offset += 4;
+    buffer.writeUInt32BE(valLen, offset);
+    offset += 4;
+    if (valLen > 0) {
+      buffer.write(resp.value, offset);
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Decode a response from binary format
+   */
+  static decodeResponse(data: Buffer): Response {
+    if (data.length < 9) {
+      throw new ProtocolError(`Response too short: ${data.length} bytes (min 9)`);
+    }
+
+    let offset = 0;
+
+    const statusByte = data.readUInt8(offset++);
+    const status = statusByte as ResponseStatus;
+
+    const seq = data.readUInt32BE(offset);
+    offset += 4;
+
+    const valLen = data.readUInt32BE(offset);
+    offset += 4;
+    if (valLen > MaxValueSize) {
+      throw new ProtocolError(`Value too large: ${valLen} bytes (max ${MaxValueSize})`);
+    }
+    if (offset + valLen > data.length) {
+      throw new ProtocolError('Truncated response: value extends beyond buffer');
+    }
+    const value = valLen > 0 ? data.toString('utf8', offset, offset + valLen) : '';
+
+    return { status, seq, value };
+  }
+
+  /**
+   * Encode a range query request: [startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]
+   */
+  static encodeRangeRequest(req: RangeRequest): Buffer {
+    const startKeyLen = req.startKey.length;
+    const endKeyLen = req.endKey.length;
+    const cursorLen = req.cursor.length;
+
+    if (startKeyLen > MaxKeySize) {
+      throw new ProtocolError(`Start key too large: ${startKeyLen} bytes`);
+    }
+    if (endKeyLen > MaxKeySize) {
+      throw new ProtocolError(`End key too large: ${endKeyLen} bytes`);
+    }
+    if (cursorLen > MaxKeySize) {
+      throw new ProtocolError(`Cursor too large: ${cursorLen} bytes`);
+    }
+
+    const buffer = Buffer.allocUnsafe(2 + startKeyLen + 2 + endKeyLen + 4 + 2 + cursorLen);
+
+    let offset = 0;
+    buffer.writeUInt16BE(startKeyLen, offset);
+    offset += 2;
+    buffer.write(req.startKey, offset);
+    offset += startKeyLen;
+
+    buffer.writeUInt16BE(endKeyLen, offset);
+    offset += 2;
+    buffer.write(req.endKey, offset);
+    offset += endKeyLen;
+
+    buffer.writeUInt32BE(req.limit, offset);
+    offset += 4;
+
+    buffer.writeUInt16BE(cursorLen, offset);
+    offset += 2;
+    buffer.write(req.cursor, offset);
+
+    return buffer;
+  }
+
+  /**
+   * Decode a range query request
+   */
+  static decodeRangeRequest(data: Buffer): RangeRequest {
+    if (data.length < 10) {
+      throw new ProtocolError(`Range request too short: ${data.length} bytes (min 10)`);
+    }
+
+    let offset = 0;
+
+    const startKeyLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (startKeyLen > MaxKeySize) {
+      throw new ProtocolError(`Start key too large: ${startKeyLen} bytes`);
+    }
+    if (offset + startKeyLen > data.length) {
+      throw new ProtocolError('Truncated range request: start key extends beyond buffer');
+    }
+    const startKey = data.toString('utf8', offset, offset + startKeyLen);
+    offset += startKeyLen;
+
+    if (offset + 2 > data.length) {
+      throw new ProtocolError('Truncated range request: missing end key length');
+    }
+    const endKeyLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (endKeyLen > MaxKeySize) {
+      throw new ProtocolError(`End key too large: ${endKeyLen} bytes`);
+    }
+    if (offset + endKeyLen > data.length) {
+      throw new ProtocolError('Truncated range request: end key extends beyond buffer');
+    }
+    const endKey = data.toString('utf8', offset, offset + endKeyLen);
+    offset += endKeyLen;
+
+    if (offset + 4 > data.length) {
+      throw new ProtocolError('Truncated range request: missing limit');
+    }
+    const limit = data.readUInt32BE(offset);
+    offset += 4;
+
+    if (offset + 2 > data.length) {
+      throw new ProtocolError('Truncated range request: missing cursor length');
+    }
+    const cursorLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (cursorLen > MaxKeySize) {
+      throw new ProtocolError(`Cursor too large: ${cursorLen} bytes`);
+    }
+    if (offset + cursorLen > data.length) {
+      throw new ProtocolError('Truncated range request: cursor extends beyond buffer');
+    }
+    const cursor = cursorLen > 0 ? data.toString('utf8', offset, offset + cursorLen) : '';
+
+    return { startKey, endKey, limit, cursor };
+  }
+
+  /**
+   * Encode a prefix query request: [prefixLen:2][prefix:N][limit:4][cursorLen:2][cursor:M]
+   */
+  static encodePrefixRequest(req: PrefixRequest): Buffer {
+    const prefixLen = req.prefix.length;
+    const cursorLen = req.cursor.length;
+
+    if (prefixLen > MaxKeySize) {
+      throw new ProtocolError(`Prefix too large: ${prefixLen} bytes`);
+    }
+    if (cursorLen > MaxKeySize) {
+      throw new ProtocolError(`Cursor too large: ${cursorLen} bytes`);
+    }
+
+    const buffer = Buffer.allocUnsafe(2 + prefixLen + 4 + 2 + cursorLen);
+
+    let offset = 0;
+    buffer.writeUInt16BE(prefixLen, offset);
+    offset += 2;
+    buffer.write(req.prefix, offset);
+    offset += prefixLen;
+
+    buffer.writeUInt32BE(req.limit, offset);
+    offset += 4;
+
+    buffer.writeUInt16BE(cursorLen, offset);
+    offset += 2;
+    buffer.write(req.cursor, offset);
+
+    return buffer;
+  }
+
+  /**
+   * Decode a prefix query request
+   */
+  static decodePrefixRequest(data: Buffer): PrefixRequest {
+    if (data.length < 8) {
+      throw new ProtocolError(`Prefix request too short: ${data.length} bytes (min 8)`);
+    }
+
+    let offset = 0;
+
+    const prefixLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (prefixLen > MaxKeySize) {
+      throw new ProtocolError(`Prefix too large: ${prefixLen} bytes`);
+    }
+    if (offset + prefixLen > data.length) {
+      throw new ProtocolError('Truncated prefix request: prefix extends beyond buffer');
+    }
+    const prefix = data.toString('utf8', offset, offset + prefixLen);
+    offset += prefixLen;
+
+    if (offset + 4 > data.length) {
+      throw new ProtocolError('Truncated prefix request: missing limit');
+    }
+    const limit = data.readUInt32BE(offset);
+    offset += 4;
+
+    if (offset + 2 > data.length) {
+      throw new ProtocolError('Truncated prefix request: missing cursor length');
+    }
+    const cursorLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (cursorLen > MaxKeySize) {
+      throw new ProtocolError(`Cursor too large: ${cursorLen} bytes`);
+    }
+    if (offset + cursorLen > data.length) {
+      throw new ProtocolError('Truncated prefix request: cursor extends beyond buffer');
+    }
+    const cursor = cursorLen > 0 ? data.toString('utf8', offset, offset + cursorLen) : '';
+
+    return { prefix, limit, cursor };
+  }
+
+  /**
+   * Encode a range query response: [count:4][items...][hasMore:1][nextCursorLen:2][nextCursor:N]
+   * Items format: [keyLen:2][key:N][valLen:4][val:M]
+   */
+  static encodeRangeResponse(resp: RangeResponse): Buffer {
+    const itemCount = resp.items.length;
+    const nextCursorLen = resp.nextCursor.length;
+
+    // Calculate total size
+    let totalSize = 4 + 1 + 2 + nextCursorLen; // count + hasMore + nextCursor
+    for (const [key, value] of resp.items) {
+      if (key.length > MaxKeySize) {
+        throw new ProtocolError(`Key too large in response: ${key.length} bytes`);
+      }
+      if (value.length > MaxValueSize) {
+        throw new ProtocolError(`Value too large in response: ${value.length} bytes`);
+      }
+      totalSize += 2 + key.length + 4 + value.length;
+    }
+
+    const buffer = Buffer.allocUnsafe(totalSize);
+
+    let offset = 0;
+    buffer.writeUInt32BE(itemCount, offset);
+    offset += 4;
+
+    for (const [key, value] of resp.items) {
+      buffer.writeUInt16BE(key.length, offset);
+      offset += 2;
+      buffer.write(key, offset);
+      offset += key.length;
+
+      buffer.writeUInt32BE(value.length, offset);
+      offset += 4;
+      if (value.length > 0) {
+        buffer.write(value, offset);
+        offset += value.length;
+      }
+    }
+
+    buffer.writeUInt8(resp.hasMore ? 1 : 0, offset++);
+    buffer.writeUInt16BE(nextCursorLen, offset);
+    offset += 2;
+    if (nextCursorLen > 0) {
+      buffer.write(resp.nextCursor, offset);
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Decode a range query response
+   */
+  static decodeRangeResponse(data: Buffer): RangeResponse {
+    if (data.length < 7) {
+      throw new ProtocolError(`Range response too short: ${data.length} bytes (min 7)`);
+    }
+
+    let offset = 0;
+
+    const count = data.readUInt32BE(offset);
+    offset += 4;
+
+    const items: Array<[string, string]> = [];
+    for (let i = 0; i < count; i++) {
+      if (offset + 2 > data.length) {
+        throw new ProtocolError('Truncated range response: missing key length');
+      }
+      const keyLen = data.readUInt16BE(offset);
+      offset += 2;
+      if (keyLen > MaxKeySize) {
+        throw new ProtocolError(`Key too large in response: ${keyLen} bytes`);
+      }
+      if (offset + keyLen > data.length) {
+        throw new ProtocolError('Truncated range response: key extends beyond buffer');
+      }
+      const key = data.toString('utf8', offset, offset + keyLen);
+      offset += keyLen;
+
+      if (offset + 4 > data.length) {
+        throw new ProtocolError('Truncated range response: missing value length');
+      }
+      const valLen = data.readUInt32BE(offset);
+      offset += 4;
+      if (valLen > MaxValueSize) {
+        throw new ProtocolError(`Value too large in response: ${valLen} bytes`);
+      }
+      if (offset + valLen > data.length) {
+        throw new ProtocolError('Truncated range response: value extends beyond buffer');
+      }
+      const value = valLen > 0 ? data.toString('utf8', offset, offset + valLen) : '';
+      offset += valLen;
+
+      items.push([key, value]);
+    }
+
+    if (offset >= data.length) {
+      throw new ProtocolError('Truncated range response: missing hasMore flag');
+    }
+    const hasMore = data.readUInt8(offset++) !== 0;
+
+    if (offset + 2 > data.length) {
+      throw new ProtocolError('Truncated range response: missing next cursor length');
+    }
+    const nextCursorLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (nextCursorLen > MaxKeySize) {
+      throw new ProtocolError(`Next cursor too large: ${nextCursorLen} bytes`);
+    }
+    if (offset + nextCursorLen > data.length) {
+      throw new ProtocolError('Truncated range response: next cursor extends beyond buffer');
+    }
+    const nextCursor = nextCursorLen > 0 ? data.toString('utf8', offset, offset + nextCursorLen) : '';
+
+    return { items, nextCursor, hasMore };
+  }
+
+  /**
+   * Encode a traverse request: [seq:4][keyLen:2][key:N][pathLen:2][path:N][options:1]
+   */
+  static encodeTraverseRequest(req: TraverseRequest): Buffer {
+    const keyLen = req.key.length;
+    const pathLen = req.pathSpec.length;
+
+    if (keyLen > MaxKeySize) {
+      throw new ProtocolError(`Key too large: ${keyLen} bytes`);
+    }
+
+    const buffer = Buffer.allocUnsafe(4 + 2 + keyLen + 2 + pathLen + 1);
+
+    let offset = 0;
+    buffer.writeUInt32BE(req.seq, offset);
+    offset += 4;
+
+    buffer.writeUInt16BE(keyLen, offset);
+    offset += 2;
+    buffer.write(req.key, offset);
+    offset += keyLen;
+
+    buffer.writeUInt16BE(pathLen, offset);
+    offset += 2;
+    buffer.write(req.pathSpec, offset);
+    offset += pathLen;
+
+    buffer.writeUInt8(req.options, offset);
+
+    return buffer;
+  }
+
+  /**
+   * Decode a traverse request
+   */
+  static decodeTraverseRequest(data: Buffer): TraverseRequest {
+    if (data.length < 9) {
+      throw new ProtocolError(`Traverse request too short: ${data.length} bytes (min 9)`);
+    }
+
+    let offset = 0;
+
+    const seq = data.readUInt32BE(offset);
+    offset += 4;
+
+    const keyLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (keyLen > MaxKeySize) {
+      throw new ProtocolError(`Key too large: ${keyLen} bytes`);
+    }
+    if (offset + keyLen > data.length) {
+      throw new ProtocolError('Truncated traverse request: key extends beyond buffer');
+    }
+    const key = data.toString('utf8', offset, offset + keyLen);
+    offset += keyLen;
+
+    if (offset + 2 > data.length) {
+      throw new ProtocolError('Truncated traverse request: missing path length');
+    }
+    const pathLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (offset + pathLen > data.length) {
+      throw new ProtocolError('Truncated traverse request: path extends beyond buffer');
+    }
+    const pathSpec = data.toString('utf8', offset, offset + pathLen);
+    offset += pathLen;
+
+    if (offset >= data.length) {
+      throw new ProtocolError('Truncated traverse request: missing options');
+    }
+    const options = data.readUInt8(offset);
+
+    return { seq, key, pathSpec, options };
+  }
+
+  /**
+   * Utility methods for creating common request/response objects
+   */
+  static newRequest(command: Command, key = '', value = '', seq = 0): Request {
+    return { command, seq, key, value };
+  }
+
+  static newResponse(status: ResponseStatus, seq: number, value = ''): Response {
+    return { status, seq, value };
+  }
+
+  static okResponse(seq: number, value = ''): Response {
+    return this.newResponse(ResponseStatus.Ok, seq, value);
+  }
+
+  static errorResponse(seq: number, message = ''): Response {
+    return this.newResponse(ResponseStatus.Error, seq, message);
+  }
+
+  static notFoundResponse(seq: number, message = 'Not found'): Response {
+    return this.newResponse(ResponseStatus.NotFound, seq, message);
+  }
+}
