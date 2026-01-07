@@ -187,12 +187,21 @@ proc openBarrel*(reg: var BarrelRegistry, name: string): bool =
 
 proc getBarrel*(reg: var BarrelRegistry, name: string): Option[BarrelWrapper] =
   ## Get a barrel wrapper by name.
+  ## Lazy loads the barrel if it exists but isn't open yet.
   ## Returns none if barrel doesn't exist.
   withLock reg.lock:
+    # Already open? Return immediately
     if name in reg.barrels:
       return some(reg.barrels[name])
-    else:
-      return none(BarrelWrapper)
+
+    # Try to open (lazy load) if not already open
+    if reg.openBarrel(name):
+      # After successful open, it should be in reg.barrels
+      if name in reg.barrels:
+        return some(reg.barrels[name])
+
+    # Barrel doesn't exist or failed to open
+    return none(BarrelWrapper)
 
 proc closeBarrel*(reg: var BarrelRegistry, name: string): bool =
   ## Close a barrel.

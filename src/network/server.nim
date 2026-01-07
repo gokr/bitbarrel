@@ -11,7 +11,6 @@ import ../bitbarrel/barrel
 import ../storage/hugebarrel
 import ../bitbarrel/refs
 import ../bitbarrel/config_json
-import ../bitbarrel/config_yaml
 
 # Import protocol module
 import protocol
