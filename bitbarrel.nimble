@@ -335,7 +335,7 @@ task dockerBuild, "Build Docker image (builds bitbarrel and webadmin first)":
     echo "Building bitbarrel binary..."
     nimble build
     echo "Building webadmin..."
-    cd webadmin && flutter build web --release
+    (cd webadmin && flutter build web --release)
     echo "Building Docker image..."
     docker build -t bitbarrel:latest .
   """
