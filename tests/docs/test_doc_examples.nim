@@ -1,4 +1,4 @@
-import std/[osproc, streams]
+import std/osproc
 import unittest
 
 proc checkDocExamples(): bool =
