@@ -175,7 +175,7 @@ task benchNetworkComprehensive, "Run comprehensive network benchmark (100K ops, 
 
 # Test all client libraries - starts server, runs tests, stops server
 
-task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts server on port 9876":
+task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript) - starts server on port 9876":
   exec """
     # Start BitBarrel server in background
     echo "Starting BitBarrel server on port 9876..."
@@ -279,6 +279,24 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim) - starts se
         cd ../..
       else
         echo "⚠ Dart client has no pubspec.yaml, skipping"
+      fi
+    fi
+
+    # Test TypeScript client
+    if [ -d "clients/typescript" ]; then
+      echo ""
+      echo "=== Testing TypeScript client ==="
+      if [ -f "clients/typescript/package.json" ]; then
+        cd clients/typescript
+        if npm test 2>/dev/null; then
+          echo "✓ TypeScript client tests passed"
+        else
+          echo "✗ TypeScript client tests failed"
+          ALL_PASSED=false
+        fi
+        cd ../..
+      else
+        echo "⚠ TypeScript client package.json not found, skipping"
       fi
     fi
 
