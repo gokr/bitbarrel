@@ -127,10 +127,6 @@ All clients now have complete feature parity:
 - ✅ Comprehensive test coverage
 - ✅ Full documentation
 
-### Planned Client Libraries
-- Java client
-- Rust client
-
 ### Client Features (Target)
 - Connection pooling
 - Automatic failover for replicas
