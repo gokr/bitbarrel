@@ -269,7 +269,7 @@ class DataService extends ChangeNotifier {
   /// [pathSpec] is the path specification (e.g., "friends", "friends->team", "*->posts[0:5]")
   /// [includeFullData] if true, includes the full value data in results
   /// [firstOnly] if true, returns only the first matching result
-  Future<List<bitbarrel.TraverseResult>> traverse(
+  Future<List<TraverseResult>> traverse(
     String key,
     String pathSpec, {
     bool includeFullData = true,
@@ -283,7 +283,7 @@ class DataService extends ChangeNotifier {
       throw Exception('No barrel selected');
     }
 
-    final options = bitbarrel.TraverseOptions(
+    final options = TraverseOptions(
       includeFullData: includeFullData,
       firstOnly: firstOnly,
     );
