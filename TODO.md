@@ -424,7 +424,7 @@ Ensure threads complete before parent objects are destroyed. See `barrel.nim:clo
 1. Multi-key transactions
 2. Secondary indexes
 3. Full-text search
-4. Python and JavaScript client libraries
+4. Java and Rust client libraries
 
 ### Long-term (6+ Months)
 1. Clustering and sharding
