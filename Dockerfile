@@ -34,4 +34,4 @@ EXPOSE 8080
 
 # Default command starts the server with webadmin
 # If webadmin dir doesn't exist, it will just run in API-only mode
-ENTRYPOINT ["/usr/local/bin/bitbarrel", "serve", "--webadmin-path=/opt/bitbarrel/webadmin", "--webadmin-enabled"]
+ENTRYPOINT ["/usr/local/bin/bitbarrel", "serve", "--webadmin-path=/opt/bitbarrel/webadmin"]
