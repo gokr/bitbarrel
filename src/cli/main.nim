@@ -19,7 +19,6 @@ type
     daemon: bool
     pidFile: string
     webadminPath: string
-    webadminEnabled: bool
     help: bool
     version: bool
     command: string  # "server", "client", etc.
@@ -50,8 +49,7 @@ OPTIONS:
   --log-level=LEVEL            Override log level (debug, info, warn, error)
   -D, --daemon                 Run as daemon (no value needed)
   --pid-file=FILE              PID file path for daemon mode
-  --webadmin-path=DIR          Path to webadmin build files
-  --webadmin-enabled           Enable webadmin UI (requires --webadmin-path)
+  --webadmin-path=DIR          Path to webadmin build files (auto-enables webadmin)
   -h, --help                   Show this help message (no value needed)
   -v, --version                Show version information (no value needed)
 
@@ -62,7 +60,7 @@ EXAMPLES:
   bitbarrel --config=prod.yaml serve         # Long form with equals
   bitbarrel -d=/data -p=9090 serve           # Override data dir and port
   bitbarrel -D serve                         # Daemon flag (no value needed)
-  bitbarrel serve --webadmin-path=/opt/webadmin --webadmin-enabled  # With webadmin
+  bitbarrel serve --webadmin-path=/opt/webadmin  # With webadmin
   bitbarrel token                            # Generate JWT tokens for all users
   bitbarrel -h                               # Show help (no value needed)
 """
@@ -81,7 +79,6 @@ proc parseCliArgs*(): CliArgs =
     daemon: false,
     pidFile: "",
     webadminPath: "",
-    webadminEnabled: false,
     help: false,
     version: false,
     command: ""
@@ -117,8 +114,6 @@ proc parseCliArgs*(): CliArgs =
         result.pidFile = val
       of "webadmin-path":
         result.webadminPath = val
-      of "webadmin-enabled":
-        result.webadminEnabled = true
       of "help", "h":
         result.help = true
       of "version", "v":
@@ -143,8 +138,6 @@ proc applyCliOverrides*(config: var BitBarrelConfig, args: CliArgs) =
 
   if args.webadminPath.len > 0:
     config.webadmin.path = args.webadminPath
-
-  if args.webadminEnabled:
     config.webadmin.enabled = true
 
 proc runAsDaemon*(pidFile: string) =
