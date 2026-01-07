@@ -46,25 +46,27 @@ BitBarrel provides client libraries in multiple languages:
 | Go | `clients/go/` | Cross-platform |
 | Dart/Flutter | `clients/dart/` | Android, iOS, Web |
 | Python | `clients/python/` | Cross-platform |
+| TypeScript | `clients/typescript/` | Node.js, Browser |
 
 ### Feature Matrix
 
-| Feature | Nim | Go | Dart/Flutter | Python |
-|---------|-----|----|--------------|--------|
-| WebSocket protocol | ✅ | ✅ | ✅ | ✅ |
-| CRUD operations | ✅ | ✅ | ✅ | ✅ |
-| Barrel management | ✅ | ✅ | ✅ | ✅ |
-| Barrel config ops | ✅ | ✅ | ✅ | ✅ |
-| Range queries | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | ✅ |
-| Reference traversal | ✅ | ✅ | ✅ | ✅ |
-| Cursor pagination | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | ✅ | ✅ | ✅ |
-| GetOrDefault method | ✅ | ✅ | ✅ | ✅ |
-| Context manager | ✅ | - | - | ✅ |
-| Thread-safe | ✅ | ✅ | ✅ | ✅ |
-| Mobile support | - | - | ✅ | - |
-| Web support | - | - | ✅ | - |
+| Feature | Nim | Go | Dart/Flutter | Python | TypeScript |
+|---------|-----|----|--------------|--------|------------|
+| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Context manager | ✅ | - | - | ✅ | - |
+| Thread-safe | ✅ | ✅ | ✅ | ✅ | ✅ |
+| TypeScript types | - | - | - | - | ✅ |
+| Mobile support | - | - | ✅ | - | - |
+| Web support | - | - | ✅ | - | - |
 
 **Dart/Flutter Client**: Uses web_socket_channel for cross-platform compatibility. Includes comprehensive API for all 19 protocol commands, cursor-based pagination for efficient large dataset operations, and works on both mobile (iOS/Android) and Flutter Web.
 
@@ -73,6 +75,8 @@ BitBarrel provides client libraries in multiple languages:
 **Nim Client**: Standalone nimble package with full feature parity with the server.
 
 **Python Client**: Feature-complete WebSocket client with support for all protocol commands including barrel config operations, range queries, prefix queries, reference traversal, and context manager support.
+
+**TypeScript Client**: Full WebSocket protocol implementation with complete type safety. Provides TypeScript interfaces for all API methods, automatic connection management with configurable timeouts, EventEmitter-based architecture for connection events, comprehensive error hierarchy, and full support for range queries, barrel management, and JWT authentication. Includes 57 passing tests and extensive documentation.
 
 **Web Admin Console**: Flutter-based web UI for visual database management. Can be served directly from the BitBarrel server at `/admin/` or run separately during development. Provides connection management, barrel operations, data explorer with full CRUD, query interface with JSON visualization, graph traversal for exploring _ref relationships, and barrel configuration editor for runtime tuning. See [webadmin/README.md](../../webadmin/README.md) and [Getting Started](../GETTING_STARTED.md#quick-start---web-admin-console) for details.
 
