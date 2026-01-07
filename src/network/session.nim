@@ -140,6 +140,11 @@ proc openBarrel*(reg: var BarrelRegistry, name: string): bool =
         let dataPath = reg.dataDir / (name & ".data")
         echo fmt"[DEBUG Session] Opening regular barrel at '{dataPath}'"
 
+        # Check if data file exists
+        if not fileExists(dataPath):
+          echo fmt"[DEBUG Session] Barrel file does not exist: {dataPath}"
+          return false
+
         # Load config from YAML if it exists, otherwise use defaults
         let configOpt = loadBarrelConfigYaml(dataPath)
         let config = if configOpt.isSome(): configOpt.get()
@@ -152,6 +157,11 @@ proc openBarrel*(reg: var BarrelRegistry, name: string): bool =
       of bkHuge:
         let hugePath = reg.dataDir / name
         echo fmt"[DEBUG Session] Opening HugeBarrel at '{hugePath}'"
+
+        # Check if directory exists
+        if not dirExists(hugePath):
+          echo fmt"[DEBUG Session] HugeBarrel directory does not exist: {hugePath}"
+          return false
 
         # Load config from YAML if it exists
         let configPath = hugePath & ".yaml"
