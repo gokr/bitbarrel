@@ -77,8 +77,8 @@ BitBarrel uses environment variables for configuration.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BITBARREL_WEB_ADMIN_PATH` | /opt/bitbarrel/webadmin | Path to webadmin build files |
-| `BITBARREL_WEB_ADMIN_ENABLED` | false | Enable webadmin UI |
+| `BITBARREL_WEB_ADMIN_PATH` | /opt/bitbarrel/webadmin | Path to webadmin build files (auto-enables webadmin) |
+| `BITBARREL_WEB_ADMIN_ENABLED` | false | Explicitly enable/disable webadmin (optional, defaults to true if path is set) |
 
 #### Storage Configuration
 

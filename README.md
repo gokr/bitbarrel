@@ -86,6 +86,7 @@ BitBarrel provides client libraries in multiple languages for remote access via 
 | Go | `clients/go/` | Full WebSocket protocol | Token parameter |
 | Dart/Flutter | `clients/dart/` | Mobile + Web compatible | `authToken` in config |
 | Python | `clients/python/` | Feature-complete WebSocket client | `auth_token` parameter, context manager |
+| TypeScript | `clients/typescript/` | Full WebSocket protocol + types | Token in ClientConfig |
 
 ### Dart/Flutter Example
 
@@ -114,7 +115,7 @@ BitBarrel includes a modern Flutter-based web admin console for visual database 
 cd webadmin && flutter build web --release && cd ..
 
 # Start BitBarrel with integrated webadmin
-./bitbarrel serve --webadmin-path=./webadmin/build/web --webadmin-enabled
+./bitbarrel serve --webadmin-path=./webadmin/build/web
 
 # Access at http://localhost:8080/admin/
 ```
@@ -160,6 +161,40 @@ client.Close()
 ```
 
 See [`clients/go/README.md`](clients/go/README.md) for full documentation.
+
+### TypeScript/Node.js Example
+
+```typescript
+import { BitBarrelClient } from '@bitbarrel/client';
+
+const client = new BitBarrelClient({
+  host: 'localhost',
+  port: 9876,
+  autoConnect: true
+});
+
+// Create and use barrel
+await client.createBarrel('mydb');
+await client.useBarrel('mydb');
+
+// Store data
+await client.set('user:1', JSON.stringify({ name: 'Alice', age: 30 }));
+
+// Retrieve data
+const user = JSON.parse(await client.get('user:1'));
+console.log(`User: ${user.name}, Age: ${user.age}`);
+
+// Range queries (requires bmCritBit mode)
+const result = await client.prefixQuery('user:', { limit: 100 });
+for (const [key, value] of result.items) {
+  console.log(`${key}: ${value}`);
+}
+
+// Clean up
+await client.close();
+```
+
+See [`clients/typescript/README.md`](clients/typescript/README.md) for full API documentation.
 
 ### JWT Authentication Example
 
@@ -245,10 +280,10 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (19 commands), REST API, JWT authentication, session management, thread‑safe operations |
-| Clients | Nim, Go, Dart/Flutter (mobile + web), Python client libraries |
+| Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
 
-**Comprehensive test suite**: 32 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
+**Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
 
 ## Performance Highlights
 
@@ -420,6 +455,7 @@ server.start()
 - **[clients/go/README.md](clients/go/README.md)** - Go client documentation
 - **[clients/nim/README.md](clients/nim/README.md)** - Nim client documentation
 - **[clients/python/README.md](clients/python/README.md)** - Python client documentation
+- **[clients/typescript/README.md](clients/typescript/README.md)** - TypeScript/Node.js client documentation
 
 ### Getting Started
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples

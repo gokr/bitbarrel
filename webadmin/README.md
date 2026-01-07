@@ -31,7 +31,7 @@ flutter build web --release --base-href /admin/
 
 # Start BitBarrel with integrated webadmin
 cd ..
-./bitbarrel serve --webadmin-path=./webadmin/build/web --webadmin-enabled
+./bitbarrel serve --webadmin-path=./webadmin/build/web
 
 # Access at http://localhost:8080/admin/
 ```
