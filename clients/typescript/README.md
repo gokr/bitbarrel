@@ -1,0 +1,534 @@
+# BitBarrel TypeScript Client
+
+A TypeScript client library for [BitBarrel](https://github.com/bitbarrel/bitbarrel), a high-performance Bitcask-style key-value storage engine.
+
+## Features
+
+- 🚀 **High Performance**: Binary protocol with WebSocket transport
+- 📝 **Type-Safe**: Full TypeScript support with comprehensive type definitions
+- 🔒 **Authentication**: JWT-based authentication support
+- 📦 **Multiple Operations**: Full CRUD operations, range queries, and barrel management
+- 🎯 **Error Handling**: Comprehensive error hierarchy with detailed messages
+- ⚡ **Automatic Reconnection**: Auto-connect on first operation with configurable timeouts
+- 📊 **Event-Driven**: EventEmitter-based architecture for connection events
+
+## Installation
+
+```bash
+npm install @bitbarrel/client
+```
+
+## Quick Start
+
+```typescript
+import { BitBarrelClient } from '@bitbarrel/client';
+
+const client = new BitBarrelClient({
+  host: 'localhost',
+  port: 9876,
+  autoConnect: true, // Automatically connect on first operation
+});
+
+// Create and use a barrel
+await client.createBarrel('mydb');
+await client.useBarrel('mydb');
+
+// Store data
+await client.set('user:1', JSON.stringify({ name: 'Alice', age: 30 }));
+
+// Retrieve data
+const user = await client.get('user:1');
+console.log(JSON.parse(user)); // { name: 'Alice', age: 30 }
+
+// Clean up
+await client.close();
+```
+
+## API Reference
+
+### Creating a Client
+
+#### Constructor
+
+```typescript
+const client = new BitBarrelClient(config);
+// or
+const client = new BitBarrelClient(host, port, token);
+```
+
+**Config Options:**
+
+```typescript
+interface ClientConfig {
+  host?: string;           // Default: 'localhost'
+  port?: number;           // Default: 9876
+  connectTimeout?: number; // Connection timeout in ms (default: 5000)
+  requestTimeout?: number; // Request timeout in ms (default: 30000)
+  token?: string;          // JWT authentication token
+  autoConnect?: boolean;   // Auto-connect on first operation (default: true)
+}
+```
+
+#### Convenience Function
+
+```typescript
+import { createClient } from '@bitbarrel/client';
+
+const client = createClient('localhost', 9876);
+// or with token authentication
+const client = createClient('localhost', 9876, 'your-jwt-token');
+```
+
+### Connection Management
+
+#### `connect(): Promise<void>`
+
+Establish a WebSocket connection to the BitBarrel server.
+
+```typescript
+await client.connect();
+```
+
+#### `close(): Promise<void>`
+
+Close the connection gracefully.
+
+```typescript
+await client.close();
+```
+
+#### `isConnected(): boolean`
+
+Check if the client is currently connected.
+
+```typescript
+if (client.isConnected()) {
+  console.log('Connected to BitBarrel');
+}
+```
+
+#### Events
+
+The client emits events for connection state changes:
+
+```typescript
+client.on('connected', () => {
+  console.log('Connected to server');
+});
+
+client.on('disconnected', () => {
+  console.log('Disconnected from server');
+});
+
+client.on('error', (error) => {
+  console.error('Error:', error);
+});
+```
+
+### Barrel Management
+
+#### `createBarrel(name: string, config?: string): Promise<boolean>`
+
+Create a new barrel (database).
+
+```typescript
+await client.createBarrel('mydb');
+```
+
+#### `useBarrel(name: string): Promise<boolean>`
+
+Select a barrel for subsequent operations.
+
+```typescript
+await client.useBarrel('mydb');
+```
+
+#### `listBarrels(): Promise<string[]>`
+
+Get a list of all available barrels.
+
+```typescript
+const barrels = await client.listBarrels();
+console.log(barrels); // ['mydb', 'logs', 'cache']
+```
+
+#### `dropBarrel(name: string): Promise<boolean>`
+
+Delete a barrel and all its data.
+
+```typescript
+await client.dropBarrel('tempdb');
+```
+
+#### `getBarrelConfig(name: string): Promise<string>`
+
+Get barrel configuration as JSON string.
+
+```typescript
+const config = await client.getBarrelConfig('mydb');
+```
+
+#### `setBarrelConfig(name: string, config: string): Promise<boolean>`
+
+Set barrel configuration.
+
+```typescript
+await client.setBarrelConfig('mydb', '{"maxSize": "1GB"}');
+```
+
+#### `getBarrelStats(name: string): Promise<BarrelStats>`
+
+Get statistics for a barrel.
+
+```typescript
+const stats = await client.getBarrelStats('mydb');
+console.log(`Total keys: ${stats.totalKeys}`);
+```
+
+### Key-Value Operations
+
+#### `set(key: string, value: string): Promise<boolean>`
+
+Store a key-value pair.
+
+```typescript
+await client.set('user:1', JSON.stringify({ name: 'Alice' }));
+await client.set('total:visits', '1000');
+```
+
+#### `get(key: string): Promise<string>`
+
+Retrieve a value by key. Throws `NotFoundError` if key doesn't exist.
+
+```typescript
+const user = await client.get('user:1');
+console.log(JSON.parse(user)); // { name: 'Alice' }
+```
+
+#### `getOrDefault(key: string, defaultValue?: string): Promise<string>`
+
+Retrieve a value by key with optional default.
+
+```typescript
+const visits = await client.getOrDefault('visits:2024', '0');
+console.log(visits); // Returns '0' if key doesn't exist
+```
+
+#### `delete(key: string): Promise<boolean>`
+
+Delete a key.
+
+```typescript
+await client.delete('temp:key');
+```
+
+#### `exists(key: string): Promise<boolean>`
+
+Check if a key exists.
+
+```typescript
+if (await client.exists('user:1')) {
+  console.log('User exists');
+}
+```
+
+#### `count(): Promise<number>`
+
+Get the total number of keys in the current barrel.
+
+```typescript
+const keyCount = await client.count();
+console.log(`Keys in barrel: ${keyCount}`);
+```
+
+#### `listKeys(): Promise<string[]>`
+
+Get all keys in the current barrel.
+
+```typescript
+const keys = await client.listKeys();
+console.log(`First key: ${keys[0]}`);
+```
+
+### Range Queries
+
+**Note:** Range queries require the barrel to be in `bmCritBit` mode (ordered index).
+
+#### `rangeQuery(startKey: string, endKey: string, options?): Promise<RangeResult>`
+
+Get key-value pairs in a range.
+
+```typescript
+const result = await client.rangeQuery('user:001', 'user:100', {
+  limit: 50,
+  cursor: '',
+});
+
+console.log(`Found ${result.items.length} items`);
+console.log(`Has more: ${result.hasMore}`);
+console.log(`Next cursor: ${result.nextCursor}`);
+
+// Process results
+for (const [key, value] of result.items) {
+  console.log(`${key}: ${value}`);
+}
+```
+
+#### `prefixQuery(prefix: string, options?): Promise<RangeResult>`
+
+Get key-value pairs with a prefix.
+
+```typescript
+const result = await client.prefixQuery('product:', {
+  limit: 100,
+});
+
+for (const [key, value] of result.items) {
+  console.log(`${key}: ${value}`);
+}
+```
+
+#### `rangeCount(startKey: string, endKey: string): Promise<number>`
+
+Count keys in a range without fetching values.
+
+```typescript
+const count = await client.rangeCount('user:001', 'user:100');
+console.log(`Users 001-100: ${count}`);
+```
+
+### Pagination
+
+Range queries support cursor-based pagination:
+
+```typescript
+let cursor = '';
+let allItems: Array<[string, string]> = [];
+
+while (true) {
+  const { items, nextCursor, hasMore } = await client.rangeQuery(
+    'user:001',
+    'user:999',
+    {
+      limit: 100,
+      cursor,
+    }
+  );
+
+  allItems = allItems.concat(items);
+
+  if (!hasMore) {
+    break;
+  }
+
+  cursor = nextCursor;
+}
+
+console.log(`Loaded ${allItems.length} users`);
+```
+
+### Error Handling
+
+The client throws specific error types that you can catch:
+
+```typescript
+import { NotFoundError, BarrelError, ConnectionError } from '@bitbarrel/client';
+
+try {
+  const value = await client.get('nonexistent');
+} catch (error) {
+  if (error instanceof NotFoundError) {
+    console.log('Key does not exist');
+  } else if (error instanceof BarrelError) {
+    console.log('Barrel error:', error.message);
+  } else if (error instanceof ConnectionError) {
+    console.log('Connection error:', error.message);
+  } else {
+    console.error('Unexpected error:', error);
+  }
+}
+```
+
+**Error Classes:**
+
+- `BitBarrelError` - Base error class
+- `ConnectionError` - Connection-related errors
+- `ProtocolError` - Protocol violations
+- `RequestTimeoutError` - Request timeouts
+- `BarrelError` - Barrel-specific errors
+- `AuthenticationError` - Authentication failures
+- `NotFoundError` - Key not found
+
+### Reference Traversal
+
+Traverse references between keys:
+
+```typescript
+// Store reference data
+await client.set('order:1001', JSON.stringify({
+  customer: 'customer:500',
+  items: ['item:1', 'item:2'],
+}));
+
+// Traverse references
+const results = await client.traverse('order:1001', 'customer->*', {
+  includeFullData: true,
+  extractArrays: true,
+});
+
+for (const result of results) {
+  console.log(`Path: ${result.path}`);
+  console.log(`Key: ${result.key}`);
+  console.log(`Value: ${result.value}`);
+}
+```
+
+### Utility Operations
+
+#### `ping(): Promise<boolean>`
+
+Check server connectivity.
+
+```typescript
+const isAlive = await client.ping();
+if (isAlive) {
+  console.log('Server is responding');
+}
+```
+
+## Complete Example
+
+```typescript
+import { BitBarrelClient, NotFoundError } from '@bitbarrel/client';
+
+async function main() {
+  // Create client
+  const client = new BitBarrelClient({
+    host: 'localhost',
+    port: 9876,
+    autoConnect: true,
+  });
+
+  try {
+    // Setup
+    await client.createBarrel('ecommerce');
+    await client.useBarrel('ecommerce');
+
+    // Store products
+    const products = [
+      { id: '001', name: 'Laptop', price: 999.99 },
+      { id: '002', name: 'Mouse', price: 29.99 },
+      { id: '003', name: 'Keyboard', price: 79.99 },
+    ];
+
+    for (const product of products) {
+      await client.set(`product:${product.id}`, JSON.stringify(product));
+    }
+
+    // Retrieve product
+    const laptop = JSON.parse(await client.get('product:001'));
+    console.log(`Laptop: $${laptop.price}`);
+
+    // Store orders
+    const order = {
+      id: '1001',
+      customer: 'customer:001',
+      items: ['product:001', 'product:002'],
+      total: 1029.98,
+    };
+
+    await client.set(`order:${order.id}`, JSON.stringify(order));
+
+    // Check order exists
+    if (await client.exists('order:1001')) {
+      console.log('Order found!');
+    }
+
+    // Clean up
+    await client.dropBarrel('ecommerce');
+
+  } catch (error) {
+    if (error instanceof NotFoundError) {
+      console.log('Key not found');
+    } else {
+      console.error('Error:', error);
+    }
+  } finally {
+    await client.close();
+  }
+}
+
+main().catch(console.error);
+```
+
+## Advanced Usage
+
+### Authentication
+
+```typescript
+const client = new BitBarrelClient({
+  host: 'localhost',
+  port: 9876,
+  token: 'your-jwt-token',
+});
+```
+
+### Custom Timeouts
+
+```typescript
+const client = new BitBarrelClient({
+  host: 'localhost',
+  port: 9876,
+  connectTimeout: 10000, // 10 seconds
+  requestTimeout: 60000, // 60 seconds
+});
+```
+
+### Manual Connection Management
+
+```typescript
+const client = new BitBarrelClient({
+  host: 'localhost',
+  port: 9876,
+  autoConnect: false, // Disable auto-connect
+});
+
+// Connect when ready
+await client.connect();
+
+// Use client...
+
+// Disconnect when done
+await client.close();
+```
+
+## Development
+
+### Building
+
+```bash
+npm run build
+```
+
+### Running Tests
+
+```bash
+npm test                 # Run all tests
+npm run test:coverage   # Run with coverage report
+npm run test:watch      # Run in watch mode
+```
+
+### Running Examples
+
+```bash
+npm run build           # Compile TypeScript first
+node examples/basic.js  # Run basic example
+```
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Contributing
+
+Contributions are welcome! Please read the contributing guidelines in the main BitBarrel repository.
