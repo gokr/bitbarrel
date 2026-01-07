@@ -11,6 +11,7 @@ import ../bitbarrel/barrel
 import ../storage/hugebarrel
 import ../bitbarrel/refs
 import ../bitbarrel/config_json
+import ../bitbarrel/config_yaml
 
 # Import protocol module
 import protocol
@@ -1084,6 +1085,11 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   ## Create a new BitBarrel server instance
   new(result)
   result.registry = newBarrelRegistry(config.dataDir)
+
+  # Discover existing barrels in data directory
+  let (discovered, yamlsCreated) = result.registry.discoverBarrels()
+  echo fmt("BitBarrel discovery: {discovered} barrels available, {yamlsCreated} configs created")
+
   result.sessions = initTable[uint64, Session]()
   result.config = config
   result.sessionsLock = Lock()

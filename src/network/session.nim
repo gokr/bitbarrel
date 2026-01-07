@@ -1,8 +1,9 @@
 ## Session and Barrel Registry management for BitBarrel network server
 
-import std/[tables, locks, os, options, strformat, sequtils]
+import std/[tables, locks, os, options, strformat, sequtils, sets, strutils]
 import ../bitbarrel/types
 import ../bitbarrel/barrel
+import ../bitbarrel/config_yaml
 import ../storage/hugebarrel
 import auth as authjwt
 
@@ -28,6 +29,12 @@ proc exists*(wrapper: BarrelWrapper, key: string): bool
 proc count*(wrapper: BarrelWrapper): int
 
 type
+  BarrelInfo* = object
+    name*: string
+    kind*: BarrelKind
+    hasConfig*: bool
+    discovered*: bool
+
   Session* = object
     id*: uint64               ## WebSocket client ID
     currentBarrel*: string    ## Name of current barrel (empty = none)
@@ -35,9 +42,11 @@ type
 
   BarrelRegistry* = object
     barrels*: Table[string, BarrelWrapper]  ## name -> BarrelWrapper
-    dataDir*: string                  ## Base directory for barrel data
+    availableBarrels*: HashSet[string]      ## NEW: discovered barrel names
+    barrelInfo*: Table[string, BarrelInfo]  ## NEW: metadata for all barrels
+    dataDir*: string                        ## Base directory for barrel data
     lock*: Lock
-    lastError*: string               ## Last error message for debugging
+    lastError*: string                      ## Last error message for debugging
 
   BarrelError* = object of CatchableError
 
@@ -64,6 +73,22 @@ proc createBarrel*(reg: var BarrelRegistry, name: string, config: BarrelConfig):
         let hb = openHugeBarrel(hugeBarrelPath, config)
         reg.barrels[name] = BarrelWrapper(kind: bkHuge, hugeBarrel: hb)
         echo fmt"[DEBUG Session] HugeBarrel created successfully for '{name}'"
+
+        # Track as available and save YAML
+        reg.availableBarrels.incl(name)
+        reg.barrelInfo[name] = BarrelInfo(
+          name: name,
+          kind: bkHuge,
+          hasConfig: true,
+          discovered: false
+        )
+
+        # Create YAML config
+        let configPath = hugeBarrelPath & ".yaml"
+        try:
+          writeFile(configPath, barrelConfigToYaml(config))
+        except CatchableError as e:
+          echo fmt"[DEBUG Session] Warning: Failed to create YAML: {e.msg}"
       else:
         # Regular Barrel uses a .data file
         let dataPath = reg.dataDir / (name & ".data")
@@ -71,6 +96,21 @@ proc createBarrel*(reg: var BarrelRegistry, name: string, config: BarrelConfig):
         let barrel = openBarrel(dataPath, config)
         reg.barrels[name] = BarrelWrapper(kind: bkRegular, regularBarrel: barrel)
         echo fmt"[DEBUG Session] Regular Barrel created successfully for '{name}'"
+
+        # Track as available and save YAML
+        reg.availableBarrels.incl(name)
+        reg.barrelInfo[name] = BarrelInfo(
+          name: name,
+          kind: bkRegular,
+          hasConfig: true,
+          discovered: false
+        )
+
+        # Create YAML config
+        try:
+          saveBarrelConfigYaml(dataPath, config)
+        except CatchableError as e:
+          echo fmt"[DEBUG Session] Warning: Failed to create YAML: {e.msg}"
       return true
     except CatchableError as e:
       reg.lastError = fmt"Failed to create barrel '{name}': {e.msg}"
@@ -79,42 +119,61 @@ proc createBarrel*(reg: var BarrelRegistry, name: string, config: BarrelConfig):
       return false
 
 proc openBarrel*(reg: var BarrelRegistry, name: string): bool =
-  ## Open an existing barrel.
+  ## Open an existing barrel (lazy loading from discovered barrels).
   ## Returns true if successful, false if barrel doesn't exist or fails to open.
   echo fmt"[DEBUG Session] openBarrel called: name='{name}'"
 
   withLock reg.lock:
+    # Already open?
     if name in reg.barrels:
-      return true  # Already open
+      echo fmt"[DEBUG Session] Barrel '{name}' already open"
+      return true
 
-    # Try regular barrel first (.data file)
-    let dataPath = reg.dataDir / (name & ".data")
-    echo fmt"[DEBUG Session] openBarrel dataPath='{dataPath}'"
+    # Get barrel info if we have it
+    let info = if name in reg.barrelInfo: reg.barrelInfo[name]
+               else: BarrelInfo(name: name, kind: bkRegular, hasConfig: false, discovered: false)
 
-    if fileExists(dataPath):
-      try:
-        let barrel = openBarrel(dataPath, defaultBarrelConfig())
+    # Try to open based on kind
+    try:
+      case info.kind
+      of bkRegular:
+        let dataPath = reg.dataDir / (name & ".data")
+        echo fmt"[DEBUG Session] Opening regular barrel at '{dataPath}'"
+
+        # Load config from YAML if it exists, otherwise use defaults
+        let configOpt = loadBarrelConfigYaml(dataPath)
+        let config = if configOpt.isSome(): configOpt.get()
+                     else: defaultBarrelConfig()
+
+        let barrel = openBarrel(dataPath, config)
         reg.barrels[name] = BarrelWrapper(kind: bkRegular, regularBarrel: barrel)
-        echo fmt"[DEBUG Session] Opened regular barrel for '{name}'"
-        return true
-      except CatchableError as e:
-        echo fmt"[DEBUG Session] openBarrel exception: {e.msg}"
-        return false
+        echo fmt"[DEBUG Session] Opened regular barrel '{name}'"
 
-    # Try HugeBarrel (directory-based)
-    let hugePath = reg.dataDir / name
-    if dirExists(hugePath):
-      try:
-        let hb = openHugeBarrel(hugePath, defaultBarrelConfig())
+      of bkHuge:
+        let hugePath = reg.dataDir / name
+        echo fmt"[DEBUG Session] Opening HugeBarrel at '{hugePath}'"
+
+        # Load config from YAML if it exists
+        let configPath = hugePath & ".yaml"
+        let configOpt = if fileExists(configPath):
+                          loadBarrelConfigYaml(configPath)
+                        else:
+                          none(BarrelConfig)
+
+        var config = if configOpt.isSome(): configOpt.get()
+                     else: defaultBarrelConfig()
+        config.mode = bmHugeCritBit  # Ensure mode is correct
+
+        let hb = openHugeBarrel(hugePath, config)
         reg.barrels[name] = BarrelWrapper(kind: bkHuge, hugeBarrel: hb)
-        echo fmt"[DEBUG Session] Opened HugeBarrel for '{name}'"
-        return true
-      except CatchableError as e:
-        echo fmt"[DEBUG Session] openHugeBarrel exception: {e.msg}"
-        return false
+        echo fmt"[DEBUG Session] Opened HugeBarrel '{name}'"
 
-    echo fmt"[DEBUG Session] openBarrel failed: neither file nor directory exists"
-    return false
+      return true
+
+    except CatchableError as e:
+      echo fmt"[DEBUG Session] Failed to open barrel '{name}': {e.msg}"
+      reg.lastError = fmt"Failed to open barrel '{name}': {e.msg}"
+      return false
 
 proc getBarrel*(reg: var BarrelRegistry, name: string): Option[BarrelWrapper] =
   ## Get a barrel wrapper by name.
@@ -162,11 +221,19 @@ proc dropBarrel*(reg: var BarrelRegistry, name: string): bool =
         discard
       reg.barrels.del(name)
 
+    # Remove from tracking
+    reg.availableBarrels.excl(name)
+    reg.barrelInfo.del(name)
+
     # Delete the data file (regular barrel)
     let dataPath = reg.dataDir / (name & ".data")
     if fileExists(dataPath):
       try:
         removeFile(dataPath)
+        # Also remove YAML config if it exists
+        let yamlPath = getBarrelConfigPath(dataPath)
+        if fileExists(yamlPath):
+          removeFile(yamlPath)
         return true
       except CatchableError:
         return false
@@ -176,6 +243,10 @@ proc dropBarrel*(reg: var BarrelRegistry, name: string): bool =
     if dirExists(hugePath):
       try:
         removeDir(hugePath)
+        # Also remove YAML config if it exists
+        let yamlPath = hugePath & ".yaml"
+        if fileExists(yamlPath):
+          removeFile(yamlPath)
         return true
       except CatchableError:
         return false
@@ -183,11 +254,18 @@ proc dropBarrel*(reg: var BarrelRegistry, name: string): bool =
     return false  # Barrel doesn't exist
 
 proc listBarrels*(reg: var BarrelRegistry): seq[string] =
-  ## List all open barrels.
+  ## List all available barrels (both discovered and open).
   result = @[]
   withLock reg.lock:
-    for name in reg.barrels.keys:
+    # Add all available barrels (discovered + manually created)
+    for name in reg.availableBarrels:
       result.add(name)
+
+    # Also add any barrels that are open but weren't discovered
+    # (e.g., created during this session)
+    for name in reg.barrels.keys:
+      if name notin reg.availableBarrels:
+        result.add(name)
 
 proc getAllBarrels*(reg: var BarrelRegistry): Table[string, BarrelWrapper] =
   ## Get a copy of all barrel wrappers (for stats etc.)
@@ -235,11 +313,138 @@ proc newBarrelRegistry*(dataDir: string): BarrelRegistry =
   ## Create a new barrel registry.
   result = BarrelRegistry(
     barrels: initTable[string, BarrelWrapper](),
+    availableBarrels: initHashSet[string](),
+    barrelInfo: initTable[string, BarrelInfo](),
     dataDir: dataDir,
     lock: Lock(),
     lastError: ""
   )
   initLock(result.lock)
+
+# Barrel Discovery
+
+proc inferBarrelKind(dataDir: string, name: string): BarrelKind =
+  ## Infer barrel kind from filesystem structure
+  let dirPath = dataDir / name
+  if dirExists(dirPath):
+    # Check for HugeBarrel structure (barrel1/ and barrel2/ subdirectories)
+    if dirExists(dirPath / "barrel1") and dirExists(dirPath / "barrel2"):
+      return bkHuge
+  return bkRegular
+
+proc inferBarrelMode(dataDir: string, name: string, kind: BarrelKind): BarrelMode =
+  ## Infer barrel mode from structure and config
+  if kind == bkHuge:
+    return bmHugeCritBit
+
+  # For regular barrels, check if YAML config exists
+  let dataPath = dataDir / (name & ".data")
+  let configOpt = loadBarrelConfigYaml(dataPath)
+  if configOpt.isSome():
+    return configOpt.get().mode
+
+  # Default to hash mode (safe assumption)
+  return bmHash
+
+proc discoverBarrels*(reg: var BarrelRegistry): (int, int) =
+  ## Discover barrels in data directory
+  ## Returns: (barrels_discovered, yaml_files_created)
+  var discovered = 0
+  var yamlsCreated = 0
+
+  echo fmt"[BarrelRegistry] Discovering barrels in '{reg.dataDir}'"
+
+  if not dirExists(reg.dataDir):
+    echo "[BarrelRegistry] Data directory does not exist, skipping discovery"
+    return (0, 0)
+
+  # Scan for .data files (regular barrels)
+  for kind, path in walkDir(reg.dataDir):
+    if kind == pcFile and path.endsWith(".data"):
+      let fullName = extractFilename(path)
+      let name = fullName[0..^6]  # Remove ".data" extension
+
+      try:
+        let barrelKind = bkRegular
+        let hasConfig = fileExists(getBarrelConfigPath(path))
+
+        # Create YAML if it doesn't exist
+        if not hasConfig:
+          echo fmt"[BarrelRegistry] Creating YAML config for '{name}'"
+          let mode = inferBarrelMode(reg.dataDir, name, barrelKind)
+          var config = defaultBarrelConfig()
+          config.mode = mode
+
+          try:
+            saveBarrelConfigYaml(path, config)
+            inc yamlsCreated
+          except CatchableError as e:
+            echo fmt"[BarrelRegistry] Warning: Failed to create YAML for '{name}': {e.msg}"
+            continue  # Skip this barrel if we can't create config
+
+        # Track as available
+        withLock(reg.lock):
+          reg.availableBarrels.incl(name)
+          reg.barrelInfo[name] = BarrelInfo(
+            name: name,
+            kind: barrelKind,
+            hasConfig: hasConfig or (not hasConfig and yamlsCreated > 0),
+            discovered: true
+          )
+
+        inc discovered
+        echo fmt"[BarrelRegistry] Discovered regular barrel '{name}'"
+      except CatchableError as e:
+        echo fmt"[BarrelRegistry] Warning: Error processing barrel '{name}': {e.msg}"
+        continue
+
+  # Scan for directories (potential HugeBarrels)
+  for kind, path in walkDir(reg.dataDir):
+    if kind == pcDir:
+      let name = extractFilename(path)
+
+      # Skip special directories
+      if name.startsWith("."):
+        continue
+
+      # Check if it's a HugeBarrel (has barrel1/ and barrel2/ subdirs)
+      if dirExists(path / "barrel1") and dirExists(path / "barrel2"):
+        try:
+          let barrelKind = bkHuge
+          let configPath = path & ".yaml"  # HugeBarrels use {name}.yaml
+          let hasConfig = fileExists(configPath)
+
+          # Create YAML if it doesn't exist
+          if not hasConfig:
+            echo fmt"[BarrelRegistry] Creating YAML config for HugeBarrel '{name}'"
+            var config = defaultBarrelConfig()
+            config.mode = bmHugeCritBit
+
+            try:
+              writeFile(configPath, barrelConfigToYaml(config))
+              inc yamlsCreated
+            except CatchableError as e:
+              echo fmt"[BarrelRegistry] Warning: Failed to create YAML for HugeBarrel '{name}': {e.msg}"
+              continue
+
+          # Track as available
+          withLock(reg.lock):
+            reg.availableBarrels.incl(name)
+            reg.barrelInfo[name] = BarrelInfo(
+              name: name,
+              kind: barrelKind,
+              hasConfig: hasConfig or (not hasConfig and yamlsCreated > 0),
+              discovered: true
+            )
+
+          inc discovered
+          echo fmt"[BarrelRegistry] Discovered HugeBarrel '{name}'"
+        except CatchableError as e:
+          echo fmt"[BarrelRegistry] Warning: Error processing HugeBarrel '{name}': {e.msg}"
+          continue
+
+  echo fmt"[BarrelRegistry] Discovery complete: {discovered} barrels found, {yamlsCreated} YAML configs created"
+  return (discovered, yamlsCreated)
 
 # BarrelWrapper method implementations
 proc getStats*(wrapper: BarrelWrapper): BarrelStats =
