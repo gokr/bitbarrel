@@ -198,7 +198,8 @@ type
 
   # RangeKeyDir entry for bmHugeCritBit mode
   RangeKeyDirEntry* = object
-    key*: string           # The key (stored in range entries)
+    # IMPORTANT: 'key' field removed to avoid duplication
+    # The key is stored separately (in tuple or table key)
     recordPos*: uint64     # Position of record in file
     fileId*: uint32        # Which data file contains the record
     valueSize*: uint32     # Size of value (0 = tombstone/deleted)

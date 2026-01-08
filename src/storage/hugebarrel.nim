@@ -91,6 +91,9 @@ proc cacheGet(cache: var RangeKeyDirCache, rangeKey: string): Option[RangeKeyDir
 proc cachePut(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
   ## Put RangeKeyDir in cache with automatic eviction
   withLock(hb.rangeKeyCache.lock):
+    # DEBUG: Log cache state - print for ALL calls with any key
+    echo fmt"[CACHE DEBUG] cachePut() - rangeKey: '{rangeKey}', len: {rangeKey.len}, cache: {hb.rangeKeyCache.cache.len}, lru: {hb.rangeKeyCache.lruList.len}, max: {hb.rangeKeyCache.maxSize}"
+
     # Check if key already exists in cache (update in place)
     if rangeKey in hb.rangeKeyCache.cache:
       # Update existing entry and move to end of LRU (most recently used)
@@ -103,19 +106,25 @@ proc cachePut(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
 
     # Key is new - evict if at capacity
     while hb.rangeKeyCache.lruList.len >= hb.rangeKeyCache.maxSize:
+      echo fmt"[CACHE DEBUG] EVICTION TRIGGERED! lruList.len={hb.rangeKeyCache.lruList.len} >= maxSize={hb.rangeKeyCache.maxSize}"
       let (evictedKey, evictedRkd, wasDirty) = hb.rangeKeyCache.evictLRU()
       # If we got a stale entry (key not in cache), keep evicting
       if evictedKey == "":
+        echo "[CACHE DEBUG] Evicted stale entry, retrying..."
         continue
+      echo fmt"[CACHE DEBUG] EVICTED range: {evictedKey}, wasDirty: {wasDirty}"
       # Save evicted range if it was dirty
       if wasDirty:
         let evictedSerialized = evictedRkd.serialize()
         discard hb.barrel1.set(evictedKey, evictedSerialized)
+        echo fmt"[CACHE DEBUG] SAVED dirty range to Barrel1: {evictedKey}"
       break  # Successfully evicted a real entry
 
     # Add new entry to cache and LRU list
     hb.rangeKeyCache.cache[rangeKey] = rkd
     hb.rangeKeyCache.lruList.add(rangeKey)
+    if rangeKey.len > 0:
+      echo fmt"[CACHE DEBUG] ADDED to cache: {rangeKey}, new size: {hb.rangeKeyCache.cache.len}"
 
 proc cacheClear*(cache: var RangeKeyDirCache) =
   ## Clear the cache
@@ -204,7 +213,7 @@ proc getOrCreateDataFile(hb: var HugeBarrel, fileId: uint32): ref DataFile =
 
 # --- Range assignment ---
 
-proc assignRangeToFile(hb: var HugeBarrel, rkd: var RangeKeyDir) =
+proc assignRangeToFile(hb: var HugeBarrel, rkd: RangeKeyDir) =
   ## Assign a RangeKeyDir to a Barrel2 datafile
   ## Uses simple counter-based rotation when quota is reached
 
@@ -350,7 +359,7 @@ proc rebuildRangesFromBarrel1*(hb: var HugeBarrel) =
   hb.saveRangeMetadata()
   echo "Saved rebuilt metadata to Barrel1"
 
-proc saveRangeKeyDir(hb: var HugeBarrel, rangeKey: string, rkd: var RangeKeyDir) =
+proc saveRangeKeyDir(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
   ## Save a RangeKeyDir to Barrel1
   let serialized = rkd.serialize()
   let success = hb.barrel1.set(rangeKey, serialized)
@@ -424,19 +433,20 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   var rkd = hb.loadRangeKeyDir(rangeKey)
 
   # Collect all entries (sorted array + pending)
-  var allEntries: seq[RangeKeyDirEntry] = @[]
+  # Store as (key, entry) tuples to avoid key duplication
+  var allEntries: seq[tuple[key: string, entry: RangeKeyDirEntry]] = @[]
 
   # Add from sorted array
   if rkd.entryCount > 0:
     for key, entry in rkd.pairs():
-      allEntries.add(entry)
+      allEntries.add((key, entry))
 
   # Add from pending
   for key, entry in rkd.pendingInserts:
-    allEntries.add(entry)
+    allEntries.add((key, entry))
 
   # Sort by key
-  allEntries.sort(proc(a, b: RangeKeyDirEntry): int = cmp(a.key, b.key))
+  allEntries.sort(proc(a, b: auto): int = cmp(a.key, b.key))
 
   # Find split point (median)
   let splitIndex = allEntries.len div 2
@@ -448,14 +458,14 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   inc(hb.nextFileId)
 
   var leftRkd = newRangeKeyDir(allEntries[0].key, allEntries[splitIndex - 1].key)
-  var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, allEntries[^1].key)
+  var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, "")  # Unbounded maxKey
 
   # Distribute entries
-  for i, entry in allEntries:
+  for i, (key, entry) in allEntries:
     if i < splitIndex:
-      leftRkd.insert(entry.key, entry)
+      leftRkd.insert(key, entry)
     else:
-      rightRkd.insert(entry.key, entry)
+      rightRkd.insert(key, entry)
 
   # Save both to Barrel1
   hb.saveRangeKeyDir(leftRangeKey, leftRkd)
@@ -487,6 +497,10 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
 proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   ## Set a key-value pair
 
+  # DEBUG: Check if set is being called
+  if key.len > 10 and key[0..9] == "stress:key:":  # Filter to our test keys
+    echo fmt"[SET DEBUG] key: {key}", " (first call only)"
+
   if hb.barrel1.isClosed():
     return false
 
@@ -494,14 +508,15 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   var rangeKey = hb.findRangeForKey(key)
 
   if rangeKey == "":
-    # Create new range
+    # Create new unbounded range (should rarely happen after initial split)
+    # New ranges should always be unbounded to accept future keys
     rangeKey = fmt("R{hb.nextFileId:010d}")
     inc(hb.nextFileId)
-    var newRange = newRangeKeyDir(key, key)
+    var newRange = newRangeKeyDir(key, "")  # Unbounded maxKey
     # Assign to a datafile
     hb.assignRangeToFile(newRange)
     hb.saveRangeKeyDir(rangeKey, newRange)
-    hb.ranges.add((minKey: key, maxKey: key, rangeKey: rangeKey))
+    hb.ranges.add((minKey: key, maxKey: "", rangeKey: rangeKey))  # Unbounded
     hb.ranges.sort(proc(a, b: auto): int = cmp(a.minKey, b.minKey))
     # Save metadata since we added a new range
     hb.saveRangeMetadata()
@@ -524,7 +539,6 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
 
   # Update RangeKeyDir
   let entry = RangeKeyDirEntry(
-    key: key,
     recordPos: recordInfo.recordPos,
     fileId: targetFileId,
     valueSize: recordInfo.valueSize,
@@ -815,7 +829,6 @@ proc compactFile*(hb: var HugeBarrel, fileId: uint32): bool =
     if rangeKey in rangeCache:
       var rkd = rangeCache[rangeKey]
       let newEntry = RangeKeyDirEntry(
-        key: key,
         recordPos: newRecordInfo.recordPos,
         fileId: newFileId,  # New file ID!
         valueSize: newRecordInfo.valueSize,
@@ -1033,7 +1046,6 @@ proc rebuildFromBarrel2*(hb: var HugeBarrel, options: Barrel2RecoveryOptions = B
 
       # Build entry for recovery (append-only means later records are always newer)
       let entry = RangeKeyDirEntry(
-        key: key,
         recordPos: offset.uint64 + 4,  # After CRC
         fileId: fileId,
         valueSize: valueSize,
@@ -1162,19 +1174,20 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   var rkd = hb.loadRangeKeyDir(rangeKey)
 
   # Collect all entries (sorted array + pending)
-  var allEntries: seq[RangeKeyDirEntry] = @[]
+  # Store as (key, entry) tuples to avoid key duplication
+  var allEntries: seq[tuple[key: string, entry: RangeKeyDirEntry]] = @[]
 
   # Add from sorted array
   if rkd.entryCount > 0:
     for key, entry in rkd.pairs():
-      allEntries.add(entry)
+      allEntries.add((key, entry))
 
   # Add from pending
   for key, entry in rkd.pendingInserts:
-    allEntries.add(entry)
+    allEntries.add((key, entry))
 
   # Sort by key
-  allEntries.sort(proc(a, b: RangeKeyDirEntry): int = cmp(a.key, b.key))
+  allEntries.sort(proc(a, b: auto): int = cmp(a.key, b.key))
 
   # Guard: Don't split if we don't have enough entries
   if allEntries.len < 2:
@@ -1208,19 +1221,20 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   # Use inclusive bounds for all ranges: [minKey, maxKey]
   # Left range gets entries [0..splitIndex-1]
   # Right range gets entries [splitIndex..end]
+  # IMPORTANT: Right range has unbounded maxKey to accept future keys
   var leftRkd = newRangeKeyDir(allEntries[0].key, allEntries[splitIndex - 1].key)
-  var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, allEntries[^1].key)
+  var rightRkd = newRangeKeyDir(allEntries[splitIndex].key, "")  # Empty maxKey = unbounded
 
   # Preserve parent's file assignment (keep locality)
   leftRkd.assignedFileId = rkd.assignedFileId
   rightRkd.assignedFileId = rkd.assignedFileId
 
   # Distribute entries
-  for i, entry in allEntries:
+  for i, (key, entry) in allEntries:
     if i < splitIndex:
-      leftRkd.insert(entry.key, entry)
+      leftRkd.insert(key, entry)
     else:
-      rightRkd.insert(entry.key, entry)
+      rightRkd.insert(key, entry)
 
   # Step 3: Save both new RangeKeyDirs to Barrel1
   hb.saveRangeKeyDir(leftRangeKey, leftRkd)
@@ -1231,9 +1245,9 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   for r in hb.ranges:
     if r.rangeKey != rangeKey:
       newRanges.add(r)
-  # Use the explicit min/max we set, not from RangeKeyDir which might be empty
+  # Left range has bounded maxKey, right range is unbounded (empty maxKey)
   newRanges.add((minKey: allEntries[0].key, maxKey: allEntries[splitIndex - 1].key, rangeKey: leftRangeKey))
-  newRanges.add((minKey: allEntries[splitIndex].key, maxKey: allEntries[^1].key, rangeKey: rightRangeKey))
+  newRanges.add((minKey: allEntries[splitIndex].key, maxKey: "", rangeKey: rightRangeKey))  # Unbounded
   newRanges.sort(proc(a, b: tuple[minKey: string, maxKey: string, rangeKey: string]): int = cmp(a.minKey, b.minKey))
   hb.ranges = newRanges
 
