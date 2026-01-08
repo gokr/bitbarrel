@@ -4,8 +4,6 @@ import 'dart:typed_data';
 import 'package:bitbarrel/bitbarrel.dart';
 import 'package:bitbarrel/src/protocol/encoder.dart';
 import 'package:bitbarrel/src/protocol/decoder.dart';
-import 'package:bitbarrel/src/protocol/commands.dart';
-import 'package:bitbarrel/src/protocol/status.dart';
 import 'package:test/test.dart';
 
 void main() {

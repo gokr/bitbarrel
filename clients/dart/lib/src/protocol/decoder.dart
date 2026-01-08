@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
 
-import 'commands.dart';
 import 'status.dart';
 import 'encoder.dart';
 import '../types.dart';

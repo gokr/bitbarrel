@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'dart:convert';
 
 import 'commands.dart';
-import '../errors.dart';
 
 /// Binary encoding utilities for the BitBarrel protocol
 class ProtocolEncoder {
