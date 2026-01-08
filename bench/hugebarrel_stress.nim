@@ -10,7 +10,7 @@ import ../src/storage/hugebarrel
 
 # Test profiles
 const
-  PROFILE_QUICK = "quick"       # 1M keys, ~2GB
+  PROFILE_QUICK = "quick"       # 500K keys, ~500MB
   PROFILE_STANDARD = "standard" # 10M keys, ~20GB
   PROFILE_STRESS = "stress"     # 50M keys, ~50GB
   PROFILE_EXHAUSTIVE = "exhaustive" # 50M keys with full validation
@@ -466,9 +466,9 @@ proc configureForProfile(profile: string) =
   ## Configure test parameters based on profile
   case profile
   of PROFILE_QUICK:
-    gTotalKeys = 1_000_000
+    gTotalKeys = 500_000
     gProgressInterval = 10_000
-    echo "Profile: QUICK (1M keys, ~2GB)"
+    echo "Profile: QUICK (500K keys, ~500MB)"
   of PROFILE_STANDARD:
     gTotalKeys = 10_000_000
     gProgressInterval = 50_000
@@ -517,8 +517,8 @@ when isMainModule:
   # Initialize HugeBarrel
   var config = defaultBarrelConfig()
   config.mode = bmHugeCritBit
-  config.hugeConfig.maxEntriesPerRange = 200_000
-  config.hugeConfig.rangeCacheSize = 50
+  config.hugeConfig.maxEntriesPerRange = 50_000  # Smaller ranges for less memory
+  config.hugeConfig.rangeCacheSize = 3  # VERY SMALL: Trigger eviction quickly for testing
   config.hugeConfig.maxDataFileSizeMB = 2048
   config.hugeConfig.autoSplitEnabled = true
   config.hugeConfig.flushIntervalMs = 5000
