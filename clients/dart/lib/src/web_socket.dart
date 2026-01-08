@@ -6,18 +6,10 @@ import 'errors.dart';
 /// Wrapper around web_socket_channel for BitBarrel communication
 class BitBarrelWebSocket {
   final WebSocketChannel _channel;
-  final String _host;
-  final int _port;
   bool _isConnected = false;
   late final Stream<dynamic> _broadcastStream;
 
-  BitBarrelWebSocket._(this._channel, this._host, this._port) {
-    _isConnected = true;
-    // Create broadcast stream early to allow multiple listeners
-    _broadcastStream = _channel.stream.asBroadcastStream();
-  }
-
-  BitBarrelWebSocket._withStream(this._channel, this._host, this._port, this._broadcastStream) {
+  BitBarrelWebSocket._withStream(this._channel, this._broadcastStream) {
     _isConnected = true;
   }
 
@@ -61,7 +53,7 @@ class BitBarrelWebSocket {
         throw ConnectFailedException('Invalid welcome from server: $welcomeStr');
       }
 
-      return BitBarrelWebSocket._withStream(channel, host, port, broadcastStream);
+      return BitBarrelWebSocket._withStream(channel, broadcastStream);
     } catch (e) {
       if (e is ConnectFailedException) rethrow;
       throw ConnectFailedException('Failed to connect: $e');
