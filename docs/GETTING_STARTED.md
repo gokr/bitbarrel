@@ -99,6 +99,33 @@ The web admin provides:
 
 See [webadmin/README.md](../webadmin/README.md) for detailed documentation.
 
+### Automatic Barrel Discovery
+
+When starting the BitBarrel server, it automatically discovers existing barrels in the data directory:
+
+- **Regular barrels** (`.data` files) are detected and made available
+- **HugeBarrels** (directories with `barrel1/` and `barrel2/` subdirectories) are automatically recognized
+- **YAML configuration files** are created automatically for discovered barrels (if they don't exist)
+- **Lazy loading** - barrels are tracked but not opened until first access
+
+Example server startup output:
+```
+[BarrelRegistry] Discovering barrels in './data'
+[BarrelRegistry] Creating YAML config for 'users'
+[BarrelRegistry] Discovered regular barrel 'users'
+[BarrelRegistry] Discovered HugeBarrel 'analytics'
+[BarrelRegistry] Discovery complete: 2 barrels found, 1 YAML configs created
+BitBarrel discovery: 2 barrels available, 1 configs created
+```
+
+To list all available barrels from a client:
+```nim
+# Using the network client
+let client = newNetworkClient("localhost", 9876)
+let barrels = client.listBarrels()
+echo "Available barrels: ", barrels
+```
+
 ### Testing All Clients
 
 ```bash
