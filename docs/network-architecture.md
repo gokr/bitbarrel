@@ -134,11 +134,15 @@ type
 ```
 
 **Barrel Lifecycle:**
-1. CREATE_BARREL: Instantiate new Barrel object
-2. OPEN_BARREL: Load existing barrel from disk
-3. USE_BARREL: Set as current for session
-4. CLOSE_BARREL: Remove from session
-5. DROP_BARREL: Delete barrel and data files
+0. DISCOVERY: Barrels automatically detected on server startup, YAML configs created
+1. CREATE_BARREL: Instantiate new Barrel object (for new barrels)
+2. OPEN_BARREL: Explicitly load barrel from disk (optional for discovered barrels)
+3. Lazy Loading: Discovered barrels opened automatically via `getBarrel()` on first access
+4. USE_BARREL: Set as current for session
+5. CLOSE_BARREL: Remove from session (can be reopened via lazy loading)
+6. DROP_BARREL: Delete barrel and data files
+
+**Note:** Discovered barrels don't require explicit OPEN_BARREL calls - they are lazy-loaded on first access through `getBarrel()`.
 
 ### 5. Barrel Registry
 

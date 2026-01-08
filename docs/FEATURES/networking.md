@@ -11,6 +11,7 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 - Commands (19 total):
   - Data: GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS, PING (7)
   - Barrel: CREATE_BARREL, OPEN_BARREL, USE_BARREL, CLOSE_BARREL, LIST_BARRELS, DROP_BARREL (6)
+    - Note: Discovered barrels are lazy-loaded automatically, OPEN_BARREL optional
   - Config: GET_BARREL_CONFIG, SET_BARREL_CONFIG (2)
   - Query: TRAVERSE, RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT (4)
 - Status codes: OK, NOT_FOUND, ERROR, INVALID, NO_BARREL, BARREL_EXISTS, BARREL_NOT_FOUND, UNAUTHORIZED
@@ -22,6 +23,9 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 - Thread-safe BarrelRegistry with Lock-protected operations
 - Support for multiple concurrent barrels per server
 - Per-session current barrel tracking
+- Automatic barrel discovery on server startup
+- Lazy loading of discovered barrels via `getBarrel()`
+- YAML configuration auto-generation for discovered barrels
 
 ### Network Server (`src/network/server.nim`)
 - Built on MummyX with TaskPools execution model

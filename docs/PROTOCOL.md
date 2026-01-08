@@ -213,6 +213,8 @@ request = Request(
 #### OPEN_BARREL (0x11)
 Open an existing barrel.
 
+Barrels discovered during server startup are lazy-loaded automatically on first access via `getBarrel()`. This command can be used to explicitly open a barrel or verify it exists.
+
 **Request:**
 - Command: 0x11
 - Key: Barrel name
@@ -221,6 +223,8 @@ Open an existing barrel.
 **Response:**
 - Status: OK (0x00) on success, BARREL_NOT_FOUND (0x06) if not exists
 - Value: Empty
+
+**Note:** REST API clients typically don't need to call OPEN_BARREL for discovered barrels, as they are opened automatically on first access.
 
 #### USE_BARREL (0x12)
 Set current barrel for the session.
@@ -685,9 +689,12 @@ except ClientError as e:
 - Review server logs for errors
 
 ### Barrel Not Found
-- Create barrel before use
+- Barrels are automatically discovered on server startup from the data directory
 - Check barrel name spelling
-- Verify barrel was not dropped
+- Verify barrel data files exist in the configured data directory
+- YAML configs are auto-created for discovered barrels
+- Use LIST_BARRELS to see all available barrels
+- Create new barrel with CREATE_BARREL if needed
 
 ## Future Enhancements
 

@@ -465,6 +465,7 @@ server.start()
 ### Getting Started
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**: Quick setup guide
+- **[docs/GETTING_STARTED.md#automatic-barrel-discovery](docs/GETTING_STARTED.md#automatic-barrel-discovery)**: Automatic barrel discovery on startup
 - **[demos/README.md](demos/README.md)**: Demo documentation
 
 ### Test Suite

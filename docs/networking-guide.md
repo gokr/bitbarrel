@@ -420,6 +420,16 @@ else:
 
 You can get and set barrel configuration at runtime. Configuration changes are persisted to a YAML file alongside the data file.
 
+**Automatic Barrel Discovery:**
+
+Barrels are automatically discovered when the server starts:
+- Regular barrels (`.data` files) and HugeBarrels (directory structures) are detected
+- YAML configuration files are auto-created for discovered barrels if they don't exist
+- Discovered barrels are lazy-loaded on first access (no explicit OPEN_BARREL needed)
+- Use `client.listBarrels()` to see all available barrels
+
+This means you can place barrel data files in the server's data directory and they'll be immediately available without manual configuration.
+
 **Get Configuration:**
 ```nim
 # Get current barrel configuration

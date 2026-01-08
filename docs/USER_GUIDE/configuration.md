@@ -3,10 +3,12 @@
 ## Overview
 
 BitBarrel provides a flexible configuration system that supports multiple configuration methods:
-- YAML configuration files
+- YAML configuration files (auto-created for discovered barrels)
 - Environment variables (with `BITBARREL_` prefix)
 - Programmatic configuration via types
 - Default values for all options
+
+**Note:** When the BitBarrel server starts, it automatically discovers existing barrels in the data directory and creates YAML configuration files for them if they don't already exist.
 
 ## Configuration Types
 
