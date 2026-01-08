@@ -287,16 +287,15 @@ PubSubConfig(
 
 ## Priority 4: Monitoring & Observability
 
-### Prometheus Metrics
-- Add `/metrics` endpoint to network server
-- Track key metrics:
-  - Operations per second (reads, writes, deletes)
-  - Latency histograms (p50, p95, p99)
-  - KeyDir size and memory usage
-  - Storage metrics (file sizes, fragmentation)
-  - Cache hit rates (read/write buffers)
-  - Active connections (network server)
-- Built-in profiling with configurable sampling
+### Prometheus Metrics ✅ COMPLETED
+- ✅ `/metrics` endpoint with Prometheus text exposition format
+- ✅ Operation metrics (reads, writes, deletes) with success/failure tracking
+- ✅ Latency histograms with standard buckets (1ms to 1s)
+- ✅ Storage metrics (file count, size, fragmentation)
+- ✅ Key counts (active and deleted)
+- ✅ Server metrics (sessions, barrels, uptime)
+- ✅ Comprehensive documentation with PromQL examples
+- ✅ Test suite for metrics collection
 
 ### Health Checks
 - `/health` endpoint for load balancer integration
@@ -318,7 +317,6 @@ PubSubConfig(
 
 ### Configuration Management
 - ✅ JSON configuration support (COMPLETED)
-- TOML configuration file support
 - Environment variable overrides
 - Configuration validation
 - Hot reload for certain settings
@@ -400,7 +398,6 @@ Ensure threads complete before parent objects are destroyed. See `barrel.nim:clo
 
 ### Incomplete Features
 - CLI interactive client is a stub only
-- Prometheus `/metrics` endpoint is prepared but not implemented
 
 ## Development Priorities
 
@@ -410,12 +407,11 @@ Ensure threads complete before parent objects are destroyed. See `barrel.nim:clo
 3. ✅ Server/client integration tests - COMPLETED
 4. ✅ Go client library - COMPLETED
 5. ✅ Reference traversal - COMPLETED
-6. Prometheus metrics endpoint
+6. ✅ Prometheus metrics endpoint - COMPLETED
 
 ### Short-term (2-3 Releases)
 1. Pub/Sub messaging system
 2. Replication (master-replica)
-3. TOML configuration file support
 
 ### Medium-term (3-6 Months)
 1. Multi-key transactions
