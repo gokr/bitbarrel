@@ -347,16 +347,16 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
               color: AppTheme.errorColor.withValues(alpha: 0.1),
               child: Row(
                 children: [
-                  Icon(Icons.error_outline, color: AppTheme.errorColor),
+                  const Icon(Icons.error_outline, color: AppTheme.errorColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       error,
-                      style: TextStyle(color: AppTheme.errorColor),
+                      style: const TextStyle(color: AppTheme.errorColor),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppTheme.errorColor),
+                    icon: const Icon(Icons.close, color: AppTheme.errorColor),
                     onPressed: () => di<DataService>().error.value = null,
                   ),
                 ],
@@ -477,7 +477,7 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
                   onPressed: () => _onEditKey(item.key, item.value),
                 ),
                 IconButton(
-                  icon: Icon(Icons.delete, size: 18, color: AppTheme.errorColor),
+                  icon: const Icon(Icons.delete, size: 18, color: AppTheme.errorColor),
                   tooltip: 'Delete',
                   onPressed: () => _onDeleteKey(item.key),
                 ),
@@ -556,7 +556,7 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
                     : null,
               ),
               IconButton(
-                icon: Icon(Icons.delete, color: AppTheme.errorColor),
+                icon: const Icon(Icons.delete, color: AppTheme.errorColor),
                 tooltip: 'Delete',
                 onPressed: () => _onDeleteKey(_selectedKey!),
               ),

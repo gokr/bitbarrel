@@ -285,16 +285,16 @@ class _TraversalScreenState extends State<TraversalScreen> {
               color: AppTheme.errorColor.withValues(alpha: 0.1),
               child: Row(
                 children: [
-                  Icon(Icons.error_outline, color: AppTheme.errorColor),
+                  const Icon(Icons.error_outline, color: AppTheme.errorColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: TextStyle(color: AppTheme.errorColor),
+                      style: const TextStyle(color: AppTheme.errorColor),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppTheme.errorColor),
+                    icon: const Icon(Icons.close, color: AppTheme.errorColor),
                     onPressed: () => setState(() => _error = null),
                   ),
                 ],

@@ -77,8 +77,8 @@ class _KeyValueEditorDialogState extends State<KeyValueEditorDialog> {
       _validateJson();
     } catch (_) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Invalid JSON - cannot format'),
+        const SnackBar(
+          content: Text('Invalid JSON - cannot format'),
           backgroundColor: AppTheme.errorColor,
         ),
       );
@@ -93,8 +93,8 @@ class _KeyValueEditorDialogState extends State<KeyValueEditorDialog> {
       _validateJson();
     } catch (_) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Invalid JSON - cannot minify'),
+        const SnackBar(
+          content: Text('Invalid JSON - cannot minify'),
           backgroundColor: AppTheme.errorColor,
         ),
       );
@@ -198,8 +198,8 @@ class _KeyValueEditorDialogState extends State<KeyValueEditorDialog> {
 
             if (key.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Key cannot be empty'),
+                const SnackBar(
+                  content: Text('Key cannot be empty'),
                   backgroundColor: AppTheme.errorColor,
                 ),
               );

@@ -43,7 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: selectedMode,
+              initialValue: selectedMode,
               decoration: const InputDecoration(
                 labelText: 'Index Mode',
               ),
@@ -311,16 +311,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: AppTheme.errorColor.withOpacity(0.1),
               child: Row(
                 children: [
-                  Icon(Icons.error_outline, color: AppTheme.errorColor),
+                  const Icon(Icons.error_outline, color: AppTheme.errorColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      error!,
-                      style: TextStyle(color: AppTheme.errorColor),
+                      error,
+                      style: const TextStyle(color: AppTheme.errorColor),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppTheme.errorColor),
+                    icon: const Icon(Icons.close, color: AppTheme.errorColor),
                     onPressed: () => di<BarrelService>().error.value = null,
                   ),
                 ],
@@ -374,7 +374,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               color: AppTheme.primaryColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: Icon(
+                            child: const Icon(
                               Icons.storage,
                               color: AppTheme.primaryColor,
                             ),
@@ -418,7 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 onPressed: () => _configureBarrel(context, barrel.name),
                               ),
                               IconButton(
-                                icon: Icon(Icons.delete, color: AppTheme.errorColor),
+                                icon: const Icon(Icons.delete, color: AppTheme.errorColor),
                                 tooltip: 'Delete',
                                 onPressed: () => _deleteBarrel(context, barrel.name),
                               ),

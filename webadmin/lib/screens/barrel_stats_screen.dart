@@ -305,7 +305,7 @@ class _BarrelStatsScreenState extends State<BarrelStatsScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error_outline, color: AppTheme.errorColor, size: 64),
+                      const Icon(Icons.error_outline, color: AppTheme.errorColor, size: 64),
                       const SizedBox(height: 16),
                       Text(
                         'Failed to load statistics',
@@ -314,7 +314,7 @@ class _BarrelStatsScreenState extends State<BarrelStatsScreen> {
                       const SizedBox(height: 8),
                       Text(
                         _error!,
-                        style: TextStyle(color: AppTheme.errorColor),
+                        style: const TextStyle(color: AppTheme.errorColor),
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),

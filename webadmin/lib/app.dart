@@ -20,7 +20,7 @@ class BitBarrelAdminApp extends StatelessWidget {
       ),
       GoRoute(
         path: '/dashboard',
-        builder: (context, state) => DashboardScreen(),
+        builder: (context, state) => const DashboardScreen(),
       ),
       GoRoute(
         path: '/explorer',

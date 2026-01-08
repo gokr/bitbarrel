@@ -10,6 +10,8 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
   final _hostController = TextEditingController(text: 'localhost');
   final _portController = TextEditingController(text: '9876');
 
+  ConnectionScreen({super.key});
+
   void _disposeControllers() {
     _hostController.dispose();
     _portController.dispose();
@@ -48,7 +50,7 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
 
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -166,7 +168,7 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
                             ),
                             child: Row(
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.error_outline,
                                   color: AppTheme.errorColor,
                                   size: 20,
@@ -174,8 +176,8 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    error!,
-                                    style: TextStyle(
+                                    error,
+                                    style: const TextStyle(
                                       color: AppTheme.errorColor,
                                       fontSize: 14,
                                     ),
@@ -222,7 +224,7 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
                                 color: AppTheme.successColor.withOpacity(0.3),
                               ),
                             ),
-                            child: Row(
+                            child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
@@ -230,7 +232,7 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
                                   color: AppTheme.successColor,
                                   size: 20,
                                 ),
-                                const SizedBox(width: 8),
+                                SizedBox(width: 8),
                                 Text(
                                   'Connected',
                                   style: TextStyle(

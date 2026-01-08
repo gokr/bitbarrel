@@ -110,7 +110,7 @@ class _JsonNodeState extends State<_JsonNode> {
         if (widget.keyName != null) ...[
           SelectableText(
             '"${widget.keyName}": ',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 13,
               color: _keyColor,
@@ -139,7 +139,7 @@ class _JsonNodeState extends State<_JsonNode> {
           if (widget.keyName != null) ...[
             SelectableText(
               '"${widget.keyName}": ',
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13,
                 color: _keyColor,
@@ -148,7 +148,7 @@ class _JsonNodeState extends State<_JsonNode> {
           ],
           Text(
             '[]${widget.isLast ? '' : ','}',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 13,
               color: _bracketColor,
@@ -175,7 +175,7 @@ class _JsonNodeState extends State<_JsonNode> {
               if (widget.keyName != null) ...[
                 SelectableText(
                   '"${widget.keyName}": ',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 13,
                     color: _keyColor,
@@ -184,7 +184,7 @@ class _JsonNodeState extends State<_JsonNode> {
               ],
               Text(
                 _isExpanded ? '[' : '[...]${widget.isLast ? '' : ','}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
                   color: _bracketColor,
@@ -220,7 +220,7 @@ class _JsonNodeState extends State<_JsonNode> {
           ),
           Text(
             ']${widget.isLast ? '' : ','}',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 13,
               color: _bracketColor,
@@ -239,7 +239,7 @@ class _JsonNodeState extends State<_JsonNode> {
           if (widget.keyName != null) ...[
             SelectableText(
               '"${widget.keyName}": ',
-              style: TextStyle(
+              style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13,
                 color: _keyColor,
@@ -248,7 +248,7 @@ class _JsonNodeState extends State<_JsonNode> {
           ],
           Text(
             '{}${widget.isLast ? '' : ','}',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 13,
               color: _bracketColor,
@@ -277,7 +277,7 @@ class _JsonNodeState extends State<_JsonNode> {
               if (widget.keyName != null) ...[
                 SelectableText(
                   '"${widget.keyName}": ',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: 'monospace',
                     fontSize: 13,
                     color: _keyColor,
@@ -286,7 +286,7 @@ class _JsonNodeState extends State<_JsonNode> {
               ],
               Text(
                 _isExpanded ? '{' : '{...}${widget.isLast ? '' : ','}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 13,
                   color: _bracketColor,
@@ -323,7 +323,7 @@ class _JsonNodeState extends State<_JsonNode> {
           ),
           Text(
             '}${widget.isLast ? '' : ','}',
-            style: TextStyle(
+            style: const TextStyle(
               fontFamily: 'monospace',
               fontSize: 13,
               color: _bracketColor,

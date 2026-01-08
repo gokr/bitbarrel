@@ -164,14 +164,14 @@ class _GraphVisualizerState extends State<GraphVisualizer> {
     if (_isJson(value)) {
       final preview = value.replaceAll(RegExp(r'\s+'), ' ').trim();
       if (preview.length > 50) {
-        return preview.substring(0, 47) + '...';
+        return '${preview.substring(0, 47)}...';
       }
       return preview;
     }
 
     // For plain text, truncate
     if (value.length > 50) {
-      return value.substring(0, 47) + '...';
+      return '${value.substring(0, 47)}...';
     }
     return value;
   }

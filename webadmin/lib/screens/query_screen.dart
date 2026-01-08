@@ -324,7 +324,7 @@ class _QueryScreenState extends State<QueryScreen> with SingleTickerProviderStat
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              const Icon(
                 Icons.block,
                 size: 64,
                 color: AppTheme.warningColor,
@@ -397,16 +397,16 @@ class _QueryScreenState extends State<QueryScreen> with SingleTickerProviderStat
               color: AppTheme.errorColor.withValues(alpha: 0.1),
               child: Row(
                 children: [
-                  Icon(Icons.error_outline, color: AppTheme.errorColor),
+                  const Icon(Icons.error_outline, color: AppTheme.errorColor),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       _error!,
-                      style: TextStyle(color: AppTheme.errorColor),
+                      style: const TextStyle(color: AppTheme.errorColor),
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.close, color: AppTheme.errorColor),
+                    icon: const Icon(Icons.close, color: AppTheme.errorColor),
                     onPressed: () => setState(() => _error = null),
                   ),
                 ],
@@ -654,7 +654,7 @@ class _QueryScreenState extends State<QueryScreen> with SingleTickerProviderStat
                         onPressed: () => _onEditKey(item.key, item.value),
                       ),
                       IconButton(
-                        icon: Icon(Icons.delete, size: 18, color: AppTheme.errorColor),
+                        icon: const Icon(Icons.delete, size: 18, color: AppTheme.errorColor),
                         tooltip: 'Delete',
                         onPressed: () => _onDeleteKey(item.key),
                       ),
@@ -731,7 +731,7 @@ class _QueryScreenState extends State<QueryScreen> with SingleTickerProviderStat
                     : null,
               ),
               IconButton(
-                icon: Icon(Icons.delete, color: AppTheme.errorColor),
+                icon: const Icon(Icons.delete, color: AppTheme.errorColor),
                 tooltip: 'Delete',
                 onPressed: () => _onDeleteKey(_selectedKey!),
               ),

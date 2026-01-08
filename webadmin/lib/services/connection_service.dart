@@ -22,8 +22,8 @@ class ConnectionService extends ChangeNotifier {
       _client = BitBarrelClient(BitBarrelConfig(
         host: host,
         port: port,
-        connectTimeout: Duration(seconds: 10),
-        requestTimeout: Duration(seconds: 30),
+        connectTimeout: const Duration(seconds: 10),
+        requestTimeout: const Duration(seconds: 30),
       ));
 
       // Connect to server
