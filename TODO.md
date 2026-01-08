@@ -33,6 +33,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ REST API endpoints for all operations
 - ✅ Binary protocol (19 command types)
 - ✅ Session management with BarrelRegistry
+- ✅ Automatic barrel discovery on server startup
 - ✅ WebSocket client using whisky library
 - ✅ Range query support over network
 - ✅ Barrel configuration (get/set with YAML persistence)

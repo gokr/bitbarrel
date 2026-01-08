@@ -279,7 +279,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Storage | Append‑only log, three index modes, compression (LZ4 by default, Snappy optional), binary record encoding |
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
-| Network | WebSocket binary protocol (19 commands), REST API, JWT authentication, session management, thread‑safe operations |
+| Network | WebSocket binary protocol (19 commands), REST API, JWT authentication, session management, automatic barrel discovery, thread‑safe operations |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
 
