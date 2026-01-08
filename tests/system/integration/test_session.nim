@@ -96,7 +96,9 @@ suite "Session and Barrel Registry Tests":
     # Close the barrel
     check registry.closeBarrel("test") == true
     check registry.closeBarrel("test") == false  # Already closed
-    check registry.getBarrel("test").isNone()
+
+    # With lazy loading, getBarrel will reopen the closed barrel
+    check registry.getBarrel("test").isSome()
 
     # Check data file still exists
     check fileExists(testDataDir / "test.data")
@@ -164,7 +166,10 @@ suite "Session and Barrel Registry Tests":
     check allBarrels.hasKey("db3")
 
     registry.closeAll()
-    check registry.listBarrels().len == 0
+    # After closing, no barrels should be open
+    check registry.getAllBarrels().len == 0
+    # But they should still be listed as available (data files exist)
+    check registry.listBarrels().len == 3
 
   test "BarrelRegistry - data directory creation":
     let subdir = testDataDir / "subdir"
