@@ -11,6 +11,7 @@ import ../bitbarrel/barrel
 import ../storage/hugebarrel
 import ../bitbarrel/refs
 import ../bitbarrel/config_json
+import metrics
 
 # Import protocol module
 import protocol
@@ -123,6 +124,7 @@ type
     sessionsLock: Lock
     seqCounter: uint64                ## Global seq counter for requests
     startTime: float                  ## Server start time (epochTime)
+    metrics*: MetricsCollector        ## Metrics collector for monitoring
 
   BitBarrelServer* = ref BitBarrelServerObj  # Use ref to avoid ORC cleanup issues
 
@@ -445,33 +447,42 @@ proc handleWebSocketMessage*(
 
           case req.command:
           of cmdGet:
+            let start = epochTime()
             if not authSess.canReadData():
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: read access required"
             else:
               let value = wrapperGet(wrapper, req.key)
               if value.len > 0:
+                server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
                 resp.status = statusOk
                 resp.value = value
               else:
+                server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
                 resp.status = statusNotFound
 
           of cmdSet:
+            let start = epochTime()
             if not authSess.canWriteData():
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: write access required"
             elif wrapperSet(wrapper, req.key, req.value):
+              server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
               resp.status = statusOk
             else:
+              server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
               resp.status = statusError
 
           of cmdDelete:
+            let start = epochTime()
             if not authSess.canWriteData():
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: write access required"
             elif wrapperDelete(wrapper, req.key):
+              server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
               resp.status = statusOk
             else:
+              server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
               resp.status = statusError
 
           of cmdExists:
@@ -850,31 +861,44 @@ proc handleRestKV*(server: BitBarrelServer, request: mummy.Request, barrelName: 
 
   case request.httpMethod:
   of "GET":
+    let start = epochTime()
     let value = wrapperGet(wrapper, key)
+    let duration = (epochTime() - start) * 1000.0
     if value.len > 0:
+      server.metrics.recordOperation(opGet, stSuccess, duration)
       request.respond(200, body = value)
     else:
+      server.metrics.recordOperation(opGet, stFailure, duration)
       request.respond(404)
 
   of "PUT":
+    let start = epochTime()
     let value = request.body
     if wrapperSet(wrapper, key, value):
+      server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
       var hdrs: HttpHeaders
       hdrs["Location"] = "/barrels/" & barrelName & "/kv/" & key
       request.respond(201, hdrs)
     else:
+      server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
       request.respond(500, body = """{"error":"Failed to set key"}""")
 
   of "DELETE":
+    let start = epochTime()
     if wrapperDelete(wrapper, key):
+      server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
       request.respond(204)
     else:
+      server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
       request.respond(500, body = """{"error":"Failed to delete key"}""")
 
   of "HEAD":
+    let start = epochTime()
     if wrapperExists(wrapper, key):
+      server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
       request.respond(200)
     else:
+      server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
       request.respond(404)
 
   else:
@@ -905,6 +929,53 @@ proc handleRestStatus*(server: BitBarrelServer, request: mummy.Request) =
   var headers = emptyHttpHeaders()
   headers["Content-Type"] = "application/json"
   request.respond(200, headers, statsJson)
+
+proc handleRestMetrics*(server: BitBarrelServer, request: mummy.Request) =
+  ## Prometheus-compatible metrics endpoint
+  ## Generate metrics in Prometheus text exposition format
+  {.gcsafe.}:
+    ## Update server metrics before generating
+    var sessionCount: int
+    withLock server.sessionsLock:
+      sessionCount = server.sessions.len
+
+    let barrelNames = server.registry.listBarrels()
+    server.metrics.updateServerMetrics(sessionCount, barrelNames.len)
+
+    ## Aggregate storage metrics from all barrels
+    var totalFiles = 0
+    var totalBytes = 0'i64
+    var totalActiveKeys = 0'i64
+    var totalDeletedKeys = 0'i64
+    var avgFragRatio = 0.0
+    var barrelCount = 0
+
+    for barrelName in barrelNames:
+      let barrel = server.registry.getBarrel(barrelName)
+      if barrel.isSome():
+        var wrapper = barrel.get()
+        let stats = wrapperGetStats(wrapper)
+        totalFiles += stats.fileCount
+        totalBytes += stats.totalSize
+        totalActiveKeys += stats.activeKeys
+        totalDeletedKeys += stats.deletedKeys
+        avgFragRatio += stats.fragmentationRatio
+        barrelCount += 1
+
+    if barrelCount > 0:
+      avgFragRatio = avgFragRatio / float64(barrelCount)
+
+    server.metrics.updateStorageMetrics(
+      totalFiles, totalBytes, avgFragRatio,
+      totalActiveKeys, totalDeletedKeys
+    )
+
+    ## Generate Prometheus format metrics
+    let metricsText = server.metrics.generatePrometheusFormat()
+
+    var headers = emptyHttpHeaders()
+    headers["Content-Type"] = "text/plain; version=0.0.4"
+    request.respond(200, headers, metricsText)
 
 proc restHandler*(server: BitBarrelServer, request: mummy.Request) =
   ## Dispatch REST API requests
@@ -1094,6 +1165,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   result.sessionsLock = Lock()
   result.seqCounter = 0
   result.startTime = epochTime()
+  result.metrics = newMetricsCollector(persistEnabled = false, retentionHours = 168)
   initLock(result.sessionsLock)
 
   # Create MummyX router with server reference captured
@@ -1110,6 +1182,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   router.delete("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
   router.head("/barrels/*/kv/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
   router.get("/barrels/*/traverse/*", proc(req: mummy.Request) {.gcsafe.} = restHandler(serverRef, req))
+  router.get("/metrics", proc(req: mummy.Request) {.gcsafe.} = handleRestMetrics(serverRef, req))
 
   # Webadmin static file routes (only if webadmin is enabled)
   if config.webadminEnabled and config.webadminPath.len > 0:
