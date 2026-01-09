@@ -63,7 +63,7 @@ proc hugeConfigFromJson*(node: JsonNode): HugeBarrelConfig =
   result.rangeCacheSize = 10
   result.maxDataFileSizeMB = 1024
   result.autoSplitEnabled = true
-  result.flushIntervalMs = 1000
+  result.flushIntervalMs = 0
   result.enableBarrel2Recovery = true
 
   for key, value in node.pairs:

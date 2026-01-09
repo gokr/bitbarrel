@@ -20,6 +20,7 @@ import ../storage/compact
 import ../storage/crc32
 import ../storage/hintfile
 import ../network/protocol
+import ../pubsub/barrel_hooks
 
 export types, datafile, protocol
 
@@ -77,7 +78,7 @@ proc defaultBarrelConfig*(): BarrelConfig =
       rangeCacheSize: 10,
       maxDataFileSizeMB: 1024,
       autoSplitEnabled: true,
-      flushIntervalMs: 1000,
+      flushIntervalMs: 0,
       enableBarrel2Recovery: true
     )
   )
@@ -489,8 +490,11 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
       recordSize: info.recordSize,
       keyLen: info.keyLen
     )
-    barrel.indexAdd(key, entry)
-    return true
+    if barrel.indexAdd(key, entry):
+      # Trigger pub/sub k/v change event
+      triggerBarrelHooks(barrel.path, key, kvSet, value)
+      return true
+    return false
   except:
     return false
 
@@ -602,8 +606,11 @@ proc delete*(barrel: Barrel, key: string): bool =
       recordSize: info.recordSize,
       keyLen: info.keyLen
     )
-    barrel.indexAdd(key, entry)
-    return true
+    if barrel.indexAdd(key, entry):
+      # Trigger pub/sub k/v change event
+      triggerBarrelHooks(barrel.path, key, kvDelete, "")
+      return true
+    return false
   except:
     return false
 

@@ -105,7 +105,7 @@ proc parseHugeConfig(node: YamlNode): HugeBarrelConfig =
     rangeCacheSize: 10,
     maxDataFileSizeMB: 1024,
     autoSplitEnabled: true,
-    flushIntervalMs: 1000,
+    flushIntervalMs: 0,
     enableBarrel2Recovery: true
   )
 
