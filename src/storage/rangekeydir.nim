@@ -10,7 +10,7 @@ const
   RANGEKEYDIR_MAGIC* = ['R', 'K', 'D', 'R']
   RANGEKEYDIR_VERSION* = 2'u32
   HEADER_SIZE = 48
-  DEFAULT_MAX_PENDING = 1000
+  DEFAULT_MAX_PENDING = 50000
   CRC32_POLYNOMIAL = 0xEDB88320'u32
 
 type
@@ -50,6 +50,8 @@ type
     # When true, pending inserts are already sorted and can be appended directly
     sequentialMode*: bool
     lastInsertedKey*: string    # Track last key for sequential detection
+    sequentialStreak*: int      # Count of consecutive ordered inserts
+    outOfOrderCount*: int       # Count of out-of-order inserts (for tolerance)
 
     # State
     isDirty*: bool
@@ -149,6 +151,8 @@ proc newRangeKeyDir*(minKey: string = "", maxKey: string = "",
     maxPendingInserts: maxPending,
     sequentialMode: true,    # Start in sequential mode (optimistic)
     lastInsertedKey: "",
+    sequentialStreak: 0,
+    outOfOrderCount: 0,
     isDirty: false
   )
 
@@ -420,11 +424,21 @@ proc insert*(rkd: RangeKeyDir, key: string, entry: RangeKeyDirEntry) =
   rkd.pendingInserts[key] = entry
   rkd.isDirty = true
 
-  # Detect if we're still in sequential mode
-  if rkd.sequentialMode and rkd.lastInsertedKey.len > 0:
-    # If this key is not after the last one, we're not sequential
-    if key <= rkd.lastInsertedKey:
-      rkd.sequentialMode = false
+  # Detect sequential write patterns with tolerance for occasional out-of-order writes
+  if rkd.lastInsertedKey.len > 0:
+    if key > rkd.lastInsertedKey:
+      # Key is in order, increase sequential streak
+      rkd.sequentialStreak += 1
+      rkd.outOfOrderCount = max(0, rkd.outOfOrderCount - 10)  # Forgive some out-of-order
+      # Enable sequential mode after 100+ consecutive ordered inserts
+      rkd.sequentialMode = rkd.sequentialStreak >= 100
+    else:
+      # Out of order, reset streak and increase tolerance counter
+      rkd.outOfOrderCount += 1
+      rkd.sequentialStreak = max(0, rkd.sequentialStreak - 10)  # Penalize more heavily
+      # Only disable sequential mode if we see frequent out-of-order (>10% of writes)
+      if rkd.outOfOrderCount > 100 and rkd.outOfOrderCount > (rkd.pendingInserts.len div 10):
+        rkd.sequentialMode = false
 
   rkd.lastInsertedKey = key
 
@@ -546,6 +560,8 @@ proc flush*(rkd: RangeKeyDir) =
         rkd.entriesStart = existingEntriesStart + lenChange
         rkd.pendingInserts.clear()
         rkd.isDirty = false
+        rkd.sequentialStreak = 0  # Reset after flush
+        rkd.outOfOrderCount = 0   # Reset after flush
         return
 
   # Not sequential, fall back to merge-based flush
@@ -626,10 +642,22 @@ proc flush*(rkd: RangeKeyDir) =
   rkd.maxKey = maxKey
   rkd.pendingInserts.clear()
   rkd.isDirty = false
+  rkd.sequentialStreak = 0  # Reset after flush
+  rkd.outOfOrderCount = 0   # Reset after flush
 
-proc shouldFlush*(rkd: RangeKeyDir): bool =
+proc totalLen*(rkd: RangeKeyDir): int =
+  ## Get total entry count including pending inserts
+  result = rkd.entryCount + rkd.pendingInserts.len
+
+proc shouldFlush*(rkd: RangeKeyDir, maxEntriesPerRange: int = 100_000): bool =
   ## Check if pending buffer should be flushed
-  rkd.pendingInserts.len >= rkd.maxPendingInserts
+  ## Also flush if we're approaching maxEntriesPerRange to avoid oversized ranges
+
+  # Use the smaller of maxPendingInserts and maxEntriesPerRange as threshold
+  # This ensures tests with tiny maxEntriesPerRange still flush frequently
+  let effectiveThreshold = min(rkd.maxPendingInserts, max(maxEntriesPerRange - rkd.entryCount, 10))
+
+  return rkd.pendingInserts.len >= effectiveThreshold
 
 proc maybeFlush*(rkd: RangeKeyDir) =
   ## Flush if pending buffer exceeds threshold
