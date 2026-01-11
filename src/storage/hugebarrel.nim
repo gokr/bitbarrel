@@ -91,9 +91,6 @@ proc cacheGet(cache: var RangeKeyDirCache, rangeKey: string): Option[RangeKeyDir
 proc cachePut(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
   ## Put RangeKeyDir in cache with automatic eviction
   withLock(hb.rangeKeyCache.lock):
-    # DEBUG: Log cache state - print for ALL calls with any key
-    echo fmt"[CACHE DEBUG] cachePut() - rangeKey: '{rangeKey}', len: {rangeKey.len}, cache: {hb.rangeKeyCache.cache.len}, lru: {hb.rangeKeyCache.lruList.len}, max: {hb.rangeKeyCache.maxSize}"
-
     # Check if key already exists in cache (update in place)
     if rangeKey in hb.rangeKeyCache.cache:
       # Update existing entry and move to end of LRU (most recently used)
@@ -106,25 +103,19 @@ proc cachePut(hb: var HugeBarrel, rangeKey: string, rkd: RangeKeyDir) =
 
     # Key is new - evict if at capacity
     while hb.rangeKeyCache.lruList.len >= hb.rangeKeyCache.maxSize:
-      echo fmt"[CACHE DEBUG] EVICTION TRIGGERED! lruList.len={hb.rangeKeyCache.lruList.len} >= maxSize={hb.rangeKeyCache.maxSize}"
       let (evictedKey, evictedRkd, wasDirty) = hb.rangeKeyCache.evictLRU()
       # If we got a stale entry (key not in cache), keep evicting
       if evictedKey == "":
-        echo "[CACHE DEBUG] Evicted stale entry, retrying..."
         continue
-      echo fmt"[CACHE DEBUG] EVICTED range: {evictedKey}, wasDirty: {wasDirty}"
       # Save evicted range if it was dirty
       if wasDirty:
         let evictedSerialized = evictedRkd.serialize()
         discard hb.barrel1.set(evictedKey, evictedSerialized)
-        echo fmt"[CACHE DEBUG] SAVED dirty range to Barrel1: {evictedKey}"
       break  # Successfully evicted a real entry
 
     # Add new entry to cache and LRU list
     hb.rangeKeyCache.cache[rangeKey] = rkd
     hb.rangeKeyCache.lruList.add(rangeKey)
-    if rangeKey.len > 0:
-      echo fmt"[CACHE DEBUG] ADDED to cache: {rangeKey}, new size: {hb.rangeKeyCache.cache.len}"
 
 proc cacheClear*(cache: var RangeKeyDirCache) =
   ## Clear the cache
@@ -496,10 +487,6 @@ proc splitRange*(hb: var HugeBarrel, rangeKey: string): (string, string) =
 
 proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   ## Set a key-value pair
-
-  # DEBUG: Check if set is being called
-  if key.len > 10 and key[0..9] == "stress:key:":  # Filter to our test keys
-    echo fmt"[SET DEBUG] key: {key}", " (first call only)"
 
   if hb.barrel1.isClosed():
     return false
@@ -1258,14 +1245,11 @@ proc splitRangeAtomic*(hb: var HugeBarrel, rangeKey: string): (string, string) =
   discard hb.barrel1.delete(rangeKey)
 
   # Step 7: Clear pending marker (split complete)
-  echo "Clearing pending split marker"
   discard hb.barrel1.delete(PENDING_SPLIT_KEY)
 
   # Update cache
   hb.rangeKeyCache.cacheDel(rangeKey)
   hb.cachePut(leftRangeKey, leftRkd)
   hb.cachePut(rightRangeKey, rightRkd)
-
-  echo fmt"Split range {rangeKey} into {leftRangeKey} and {rightRangeKey}"
 
   result = (leftRangeKey, rightRangeKey)
