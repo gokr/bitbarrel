@@ -768,10 +768,12 @@ proc getTtl*(barrel: Barrel, key: string): int =
 
 # CritBit mode specific operations (range queries)
 
-proc keysWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, offset: int = 0): seq[string] =
-  ## Get keys that start with the given prefix with pagination
+proc keysWithPrefixOffset*(barrel: Barrel, prefix: string, limit: int = 1000, offset: int = 0): seq[string] =
+  ## Get keys that start with the given prefix with offset-based pagination (deprecated)
   ## limit: Maximum number of keys to return (default: 1000)
   ## offset: Number of keys to skip (default: 0)
+  ##
+  ## **Deprecated:** Use keysWithPrefix with cursor-based pagination instead
   if barrel.closed:
     return @[]
 
@@ -804,6 +806,51 @@ proc keysWithPrefix*(barrel: Barrel, prefix: string, limit: int = 1000, offset: 
           break
         result.add(key)
         inc collected
+  of bmHugeCritBit:
+    # TODO: HugeBarrel keysWithPrefix (Phase 3)
+    raise newException(ValueError, "bmHugeCritBit not yet implemented")
+
+proc keysWithPrefix*(barrel: Barrel, prefix: string,
+                    limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+  ## Get keys with prefix with cursor-based pagination
+  ##
+  ## Only available in bmCritBit mode
+  ## limit: Maximum number of keys to return (default: 1000)
+  ## cursor: Last key from previous page (empty string for first page)
+  ## Returns: ``(keys: seq[string], nextCursor: string, hasMore: bool)``
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var config = defaultBarrelConfig()
+  ## config.mode = bmCritBit
+  ## let barrel = openBarrel("data.db", config)
+  ##
+  ## # Add user data
+  ## barrel.set("user:100", "Alice")
+  ## barrel.set("user:200", "Bob")
+  ## barrel.set("user:300", "Charlie")
+  ##
+  ## # Paginate through all user keys
+  ## var cursor = ""
+  ## var allKeys: seq[string]
+  ##
+  ## while true:
+  ##   let (keys, nextCursor, hasMore) = barrel.keysWithPrefix("user:", 100, cursor)
+  ##   allKeys.add(keys)
+  ##   if not hasMore:
+  ##     break
+  ##   cursor = nextCursor
+  ## ```
+  if barrel.closed:
+    return (@[], "", false)
+
+  case barrel.mode
+  of bmCritBit:
+    # Use the CritBit index's cursor-based API
+    result = barrel.critBit.keysWithPrefix(prefix, limit, cursor)
+  of bmHash:
+    # Hash mode doesn't support ordered prefix queries
+    raise newException(ValueError, "keysWithPrefix requires bmCritBit mode")
   of bmHugeCritBit:
     # TODO: HugeBarrel keysWithPrefix (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
@@ -845,6 +892,50 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int =
           break
         result.add(key)
         inc collected
+  of bmHugeCritBit:
+    # TODO: HugeBarrel keysInRange (Phase 3)
+    raise newException(ValueError, "bmHugeCritBit not yet implemented")
+
+proc keysInRange*(barrel: Barrel, startKey: string, endKey: string,
+                  limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+  ## Get keys in the range [startKey, endKey) with cursor-based pagination
+  ##
+  ## Only available in bmCritBit mode
+  ## limit: Maximum number of keys to return (default: 1000)
+  ## cursor: Last key from previous page (empty string for first page)
+  ## Returns: ``(keys: seq[string], nextCursor: string, hasMore: bool)``
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var config = defaultBarrelConfig()
+  ## config.mode = bmCritBit
+  ## let barrel = openBarrel("data.db", config)
+  ##
+  ## # Add sorted data
+  ## for i in 0..<1000:
+  ##   barrel.set(fmt"user:{i:04d}", "data")
+  ##
+  ## # Paginate through range
+  ## var cursor = ""
+  ## var allKeys: seq[string]
+  ##
+  ## while true:
+  ##   let (keys, nextCursor, hasMore) = barrel.keysInRange("user:0000", "user:1000", 100, cursor)
+  ##   allKeys.add(keys)
+  ##   if not hasMore:
+  ##     break
+  ##   cursor = nextCursor
+  ## ```
+  if barrel.closed:
+    return (@[], "", false)
+
+  case barrel.mode
+  of bmCritBit:
+    # Use the CritBit index's cursor-based API
+    result = barrel.critBit.keysInRange(startKey, endKey, limit, cursor)
+  of bmHash:
+    # Hash mode doesn't support ordered range queries
+    raise newException(ValueError, "keysInRange requires bmCritBit mode")
   of bmHugeCritBit:
     # TODO: HugeBarrel keysInRange (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")

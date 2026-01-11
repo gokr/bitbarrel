@@ -245,6 +245,92 @@ proc countWithPrefix*(index: var CritBitIndex, prefix: string): int =
     for _ in index.tree.keysWithPrefix(prefix):
       inc result
 
+proc keysInRange*(index: var CritBitIndex, startKey: string, endKey: string,
+                 limit: int, cursor: string = ""): (seq[string], string, bool) =
+  ## Get keys in range [startKey, endKey) with cursor-based pagination
+  ## limit: Maximum number of keys to return
+  ## cursor: Last key from previous page (empty string for first page)
+  ## Returns: (keys, nextCursor, hasMore)
+  withLock(index.lock):
+    result = (newSeq[string](), "", false)
+    var collected = 0
+    var started = cursor == ""
+
+    # Find common prefix between start and end for efficient iteration
+    var commonPrefix = ""
+    let minLen = min(startKey.len, endKey.len)
+    for i in 0..<minLen:
+      if startKey[i] == endKey[i]:
+        commonPrefix.add(startKey[i])
+      else:
+        break
+
+    # Determine if we can use optimized iteration or need full iteration
+    var useFullIter = false
+    if endKey.len > commonPrefix.len:
+      useFullIter = true
+
+    # Iterate keys and filter by range and cursor
+    if useFullIter:
+      for key in index.tree.keys:
+        if key < startKey or key >= endKey:
+          continue
+
+        if not started:
+          if cursor != "" and key <= cursor:
+            continue
+          started = true
+
+        if collected >= limit:
+          result[1] = key
+          result[2] = true
+          break
+
+        result[0].add(key)
+        inc collected
+    else:
+      for key in index.tree.keysWithPrefix(commonPrefix):
+        if key < startKey or key >= endKey:
+          continue
+
+        if not started:
+          if cursor != "" and key <= cursor:
+            continue
+          started = true
+
+        if collected >= limit:
+          result[1] = key
+          result[2] = true
+          break
+
+        result[0].add(key)
+        inc collected
+
+proc keysWithPrefix*(index: var CritBitIndex, prefix: string,
+                    limit: int, cursor: string = ""): (seq[string], string, bool) =
+  ## Get keys with prefix with cursor-based pagination
+  ## limit: Maximum number of keys to return
+  ## cursor: Last key from previous page (empty string for first page)
+  ## Returns: (keys, nextCursor, hasMore)
+  withLock(index.lock):
+    result = (newSeq[string](), "", false)
+    var collected = 0
+    var started = cursor == ""
+
+    for key in index.tree.keysWithPrefix(prefix):
+      if not started:
+        if cursor != "" and key <= cursor:
+          continue
+        started = true
+
+      if collected >= limit:
+        result[1] = key
+        result[2] = true
+        break
+
+      result[0].add(key)
+      inc collected
+
 iterator pairs*(index: var CritBitIndex): (string, KeyDirEntry) =
   ## Iterate over all key-entry pairs (sorted by key)
   ## Note: Lock is held for entire iteration
