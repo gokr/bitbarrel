@@ -121,6 +121,26 @@ proc wrapperKeysInRange(wrapper: BarrelWrapper, startKey: string, endKey: string
     # HugeBarrel doesn't support keysInRange - return empty
     @[]
 
+proc wrapperKeysInRangeCursor(wrapper: BarrelWrapper, startKey: string, endKey: string,
+                              limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+  ## Keys-only range query with cursor-based pagination
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.keysInRange(startKey, endKey, limit, cursor)
+  of bkHuge:
+    # HugeBarrel doesn't support keysInRange - return empty
+    (@[], "", false)
+
+proc wrapperKeysWithPrefix(wrapper: BarrelWrapper, prefix: string,
+                           limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+  ## Keys-only prefix query with cursor-based pagination
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.keysWithPrefix(prefix, limit, cursor)
+  of bkHuge:
+    # HugeBarrel doesn't support keysWithPrefix - return empty
+    (@[], "", false)
+
 type
   BitBarrelServerObj* = object
     registry*: BarrelRegistry         ## All open barrels
@@ -530,7 +550,7 @@ proc handleWebSocketMessage*(
             # These commands are handled at the outer level
             discard
 
-          of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount:
+          of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount, cmdRangeKeys, cmdPrefixKeys:
             # These commands are handled at the outer level
             discard
 
@@ -714,6 +734,80 @@ proc handleWebSocketMessage*(
             except CatchableError as e:
               resp.status = statusError
               resp.value = "Range count error: " & e.msg
+
+  of cmdRangeKeys:
+    # Keys-only range query requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          var wrapper = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Decode range query request
+              let params = protocol.decodeRangeRequest(req.value)
+
+              # Execute keys-only range query
+              let (keys, nextCursor, hasMore) = wrapperKeysInRangeCursor(
+                wrapper, params.startKey, params.endKey, params.limit, params.cursor)
+
+              # Encode and send response
+              let respData = protocol.encodeKeysResponse(
+                protocol.KeysResponse(keys: keys, nextCursor: nextCursor, hasMore: hasMore))
+              let finalResp = protocol.okResponse(req.seq, respData)
+              ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
+              return  # Skip normal response sending
+
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Range keys error: " & e.msg
+
+  of cmdPrefixKeys:
+    # Keys-only prefix query requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          var wrapper = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Decode prefix query request
+              let params = protocol.decodePrefixRequest(req.value)
+
+              # Execute keys-only prefix query
+              let (keys, nextCursor, hasMore) = wrapperKeysWithPrefix(
+                wrapper, params.prefix, params.limit, params.cursor)
+
+              # Encode and send response
+              let respData = protocol.encodeKeysResponse(
+                protocol.KeysResponse(keys: keys, nextCursor: nextCursor, hasMore: hasMore))
+              let finalResp = protocol.okResponse(req.seq, respData)
+              ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
+              return  # Skip normal response sending
+
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Prefix keys error: " & e.msg
 
   of cmdGetBarrelStats:
     # Get barrel statistics requires a current barrel

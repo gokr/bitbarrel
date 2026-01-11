@@ -204,7 +204,7 @@ proc decodeRequest*(data: string): Request =
   if cmdByte notin {0x01'u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09,  # Data ops + ping
                      0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,  # Barrel ops + config + stats
                      0x20,                                       # Traverse
-                     0x21, 0x22, 0x23,                          # Range queries
+                     0x21, 0x22, 0x23, 0x24, 0x25,              # Range queries
                      0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46}:     # Pub/Sub commands
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
@@ -373,6 +373,11 @@ type
     nextCursor*: string
     hasMore*: bool
 
+  KeysResponse* = object
+    keys*: seq[string]
+    nextCursor*: string
+    hasMore*: bool
+
 proc encodeRangeRequest*(req: RangeRequest): string =
   ## Encode a range query request
   ## Format: ``[startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]``
@@ -473,6 +478,40 @@ proc decodeRangeResponse*(data: string): RangeResponse =
     raise newException(ProtocolError, "Next cursor too large: " & $nextCursorLen)
   result.nextCursor = readString(data, pos, int(nextCursorLen))
 
+proc encodeKeysResponse*(resp: KeysResponse): string =
+  ## Encode a keys-only query response
+  ## Format: ``[count:4][keys...][hasMore:1][nextCursorLen:2][nextCursor:N]``
+  result = newStringOfCap(4 + resp.nextCursor.len + 20)  # Reasonable capacity
+  result.writeUint32BE(uint32(resp.keys.len))
+
+  for key in resp.keys:
+    result.writeUint16BE(uint16(key.len))
+    result.add(key)
+
+  result.writeByte(byte(if resp.hasMore: 1 else: 0))
+  result.writeUint16BE(uint16(resp.nextCursor.len))
+  result.add(resp.nextCursor)
+
+proc decodeKeysResponse*(data: string): KeysResponse =
+  ## Decode a keys-only query response
+  var pos = 0
+  let count = readUint32BE(data, pos)
+  result.keys = newSeq[string](count)
+
+  for i in 0..<count:
+    let keyLen = readUint16BE(data, pos)
+    if keyLen > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $keyLen)
+    result.keys[i] = readString(data, pos, int(keyLen))
+
+  let hasMoreByte = readByte(data, pos)
+  result.hasMore = hasMoreByte != 0
+
+  let nextCursorLen = readUint16BE(data, pos)
+  if nextCursorLen > MaxKeySize:
+    raise newException(ProtocolError, "Next cursor too large: " & $nextCursorLen)
+  result.nextCursor = readString(data, pos, int(nextCursorLen))
+
 
 proc newRequest*(command: Command, key: string = "", value: string = "", seq: uint32 = 0): Request =
   ## Create a new request.
@@ -528,6 +567,8 @@ proc `$`*(cmd: Command): string =
   of cmdRangeQuery: "RANGE_QUERY"
   of cmdPrefixQuery: "PREFIX_QUERY"
   of cmdRangeCount: "RANGE_COUNT"
+  of cmdRangeKeys: "RANGE_KEYS"
+  of cmdPrefixKeys: "PREFIX_KEYS"
   of cmdCreateBarrel: "CREATE_BARREL"
   of cmdOpenBarrel: "OPEN_BARREL"
   of cmdUseBarrel: "USE_BARREL"
