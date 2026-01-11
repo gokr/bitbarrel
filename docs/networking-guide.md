@@ -179,7 +179,7 @@ var client = netclient.newClient(
 client.connect()
 ```
 
-**Note:** JWT authentication is currently only supported in the Nim client. Go, Python, and Dart clients do not yet have built-in auth support.
+**Note:** JWT authentication is supported in all client libraries - Nim, Go, Dart/Flutter, Python, and TypeScript.
 
 ### Authorization Rules
 
