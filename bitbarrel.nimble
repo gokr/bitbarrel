@@ -83,6 +83,27 @@ task testError, "Run error handling tests (API error category) - automatic disco
 task testHugeBarrel, "Run HugeBarrel feature tests - automatic discovery":
   exec "testament pattern \"tests/hugebarrel/*.nim\""
 
+task testPubSub, "Run pub/sub tests - automatic discovery":
+  exec "testament pattern \"tests/pubsub/*.nim\""
+
+task testPubSubTypes, "Run pub/sub types tests":
+  exec "testament pattern \"tests/pubsub/test_pubsub_types.nim\""
+
+task testPubSubPattern, "Run pattern matching tests":
+  exec "testament pattern \"tests/pubsub/test_pattern.nim\""
+
+task testPubSubManager, "Run manager tests":
+  exec "testament pattern \"tests/pubsub/test_manager.nim\""
+
+task testPubSubHooks, "Run barrel hooks tests":
+  exec "testament pattern \"tests/pubsub/test_barrel_hooks.nim\""
+
+task testPubSubHistory, "Run history tests":
+  exec "testament pattern \"tests/pubsub/test_history.nim\""
+
+task testPubSubIntegration, "Run pub/sub integration tests":
+  exec "testament pattern \"tests/pubsub/test_integration.nim\""
+
 # Tasks for running demos
 
 task demoBasic, "Run basic CRUD demo":

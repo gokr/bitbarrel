@@ -21,6 +21,7 @@ import ../storage/crc32
 import ../storage/hintfile
 import ../network/protocol
 import ../pubsub/barrel_hooks
+import ../pubsub/pubsub as pubsub_types
 
 export types, datafile, protocol
 
@@ -410,12 +411,14 @@ proc indexGet(barrel: Barrel, key: string): Option[KeyDirEntry] =
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
 # Helper to add entry to index (mode-independent)
-proc indexAdd(barrel: Barrel, key: string, entry: KeyDirEntry) =
+proc indexAdd(barrel: Barrel, key: string, entry: KeyDirEntry): bool =
   case barrel.mode
   of bmHash:
     barrel.keyDir.add(key, entry)
+    return true
   of bmCritBit:
     barrel.critBit.add(key, entry)
+    return true
   of bmHugeCritBit:
     # TODO: HugeBarrel add (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
@@ -492,7 +495,7 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
     )
     if barrel.indexAdd(key, entry):
       # Trigger pub/sub k/v change event
-      triggerBarrelHooks(barrel.path, key, kvSet, value)
+      triggerBarrelHooks(barrel.path, key, pubsub_types.kvSet, value)
       return true
     return false
   except:
@@ -608,7 +611,7 @@ proc delete*(barrel: Barrel, key: string): bool =
     )
     if barrel.indexAdd(key, entry):
       # Trigger pub/sub k/v change event
-      triggerBarrelHooks(barrel.path, key, kvDelete, "")
+      triggerBarrelHooks(barrel.path, key, pubsub_types.kvDelete, "")
       return true
     return false
   except:
