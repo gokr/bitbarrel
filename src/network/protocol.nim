@@ -29,12 +29,34 @@ type
     cmdSetBarrelConfig = 0x17
     ## Statistics
     cmdGetBarrelStats = 0x18
+    ## Reference traversal
+    cmdTraverse = 0x20
     ## Range queries
     cmdRangeQuery = 0x21
     cmdPrefixQuery = 0x22
     cmdRangeCount = 0x23
-    ## Reference traversal
-    cmdTraverse = 0x20
+    ## Pub/Sub commands (0x40-0x4F)
+    cmdSubscribe = 0x40
+    cmdUnsubscribe = 0x41
+    cmdPublish = 0x42
+    cmdListSubscribers = 0x43
+    cmdHistory = 0x44
+    cmdListTopics = 0x45
+    cmdPresence = 0x46
+
+  PubSubMessageType* = enum
+    mtData = 0
+    mtPresence
+    mtKvChange
+
+  PresenceEventType* = enum
+    peJoin = 0
+    peLeave = 0x01
+    peUpdate = 0x02
+
+  KvChangeType* = enum
+    kvSet = 0
+    kvDelete = 0x01
 
   ResponseStatus* = enum
     statusOk = 0x00
@@ -104,6 +126,16 @@ proc writeUint32BE(s: var string, v: uint32) =
   s.add(char((v shr 8) and 0xFF))
   s.add(char(v and 0xFF))
 
+proc writeUint64BE(s: var string, v: uint64) =
+  s.add(char((v shr 56) and 0xFF))
+  s.add(char((v shr 48) and 0xFF))
+  s.add(char((v shr 40) and 0xFF))
+  s.add(char((v shr 32) and 0xFF))
+  s.add(char((v shr 24) and 0xFF))
+  s.add(char((v shr 16) and 0xFF))
+  s.add(char((v shr 8) and 0xFF))
+  s.add(char(v and 0xFF))
+
 proc readByte(data: string, pos: var int): byte =
   if pos >= data.len:
     raise newException(ProtocolError, "Unexpected end of data reading byte")
@@ -124,6 +156,19 @@ proc readUint32BE(data: string, pos: var int): uint32 =
            (uint32(data[pos + 2]) shl 8) or
            uint32(data[pos + 3])
   pos += 4
+
+proc readUint64BE(data: string, pos: var int): uint64 =
+  if pos + 8 > data.len:
+    raise newException(ProtocolError, "Unexpected end of data reading uint64")
+  result = (uint64(data[pos]) shl 56) or
+           (uint64(data[pos + 1]) shl 48) or
+           (uint64(data[pos + 2]) shl 40) or
+           (uint64(data[pos + 3]) shl 32) or
+           (uint64(data[pos + 4]) shl 24) or
+           (uint64(data[pos + 5]) shl 16) or
+           (uint64(data[pos + 6]) shl 8) or
+           uint64(data[pos + 7])
+  pos += 8
 
 proc readString(data: string, pos: var int, length: int): string =
   if pos + length > data.len:
@@ -157,7 +202,8 @@ proc decodeRequest*(data: string): Request =
   if cmdByte notin {0x01'u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09,  # Data ops + ping
                      0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,  # Barrel ops + config + stats
                      0x20,                                       # Traverse
-                     0x21, 0x22, 0x23}:                          # Range queries
+                     0x21, 0x22, 0x23,                          # Range queries
+                     0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46}:     # Pub/Sub commands
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
   result.command = cast[Command](cmdByte)
@@ -490,6 +536,13 @@ proc `$`*(cmd: Command): string =
   of cmdSetBarrelConfig: "SET_BARREL_CONFIG"
   of cmdGetBarrelStats: "GET_BARREL_STATS"
   of cmdTraverse: "TRAVERSE"
+  of cmdSubscribe: "SUBSCRIBE"
+  of cmdUnsubscribe: "UNSUBSCRIBE"
+  of cmdPublish: "PUBLISH"
+  of cmdListSubscribers: "LIST_SUBSCRIBERS"
+  of cmdHistory: "HISTORY"
+  of cmdListTopics: "LIST_TOPICS"
+  of cmdPresence: "PRESENCE"
 
 proc `$`*(status: ResponseStatus): string =
   ## String representation of status.
@@ -595,3 +648,242 @@ proc decodeBarrelStats*(jsonStr: string): BarrelStats =
 
   result.dataPath = jsonObj["dataPath"].getStr()
   result.lastModified = jsonObj["lastModified"].getStr()
+
+
+## Pub/Sub protocol extensions
+
+type
+  SubscribeRequest* = object
+    topic*: string                 ## Exact topic name
+    pattern*: string               ## Optional pattern for wildcard subscriptions
+    options*: SubscribeOptions
+
+  SubscribeOptions* = object
+    enableKvEvents*: bool          ## Receive k/v change events
+    enablePresence*: bool          ## Receive presence events
+    replayHistory*: bool           ## Replay history on subscribe
+
+  UnsubscribeRequest* = object
+    topicOrPattern*: string        ## Topic or pattern to unsubscribe from (empty = all)
+
+  PublishRequest* = object
+    topic*: string
+    messageType*: PubSubMessageType
+    headers*: string               ## JSON-encoded headers
+    payload*: string
+
+  HistoryRequest* = object
+    topic*: string
+    count*: int                    ## Max messages to return (0 = use topic config)
+    sinceSeq*: uint64              ## Only return messages with sequence >= this value
+
+  ListTopicsRequest* = object
+    pattern*: string               ## Optional pattern to filter topics (empty = all)
+
+  PresenceRequest* = object
+    operation*: uint8              ## 0 = get_online, 1 = broadcast_update
+
+  PubSubEvent* = object
+    topic*: string
+    messageType*: PubSubMessageType
+    sequence*: uint64
+    timestamp*: int64
+    headers*: string               ## JSON-encoded headers
+    payload*: string
+
+proc encodeSubscribeRequest*(req: SubscribeRequest): string =
+  ## Encode a subscribe request
+  ## Format: ``[options:1][topicLen:2][topic:N][patternLen:2][pattern:M]``
+
+  var options: byte = 0
+  if req.options.enableKvEvents:
+    options = options or 0x01
+  if req.options.enablePresence:
+    options = options or 0x02
+  if req.options.replayHistory:
+    options = options or 0x04
+
+  result = newStringOfCap(1 + 2 + req.topic.len + 2 + req.pattern.len)
+  result.writeByte(options)
+  result.writeUint16BE(uint16(req.topic.len))
+  result.add(req.topic)
+  result.writeUint16BE(uint16(req.pattern.len))
+  result.add(req.pattern)
+
+proc decodeSubscribeRequest*(data: string): SubscribeRequest =
+  ## Decode a subscribe request
+  var pos = 0
+
+  let optionsByte = readByte(data, pos)
+  result.options.enableKvEvents = (optionsByte and 0x01) != 0
+  result.options.enablePresence = (optionsByte and 0x02) != 0
+  result.options.replayHistory = (optionsByte and 0x04) != 0
+
+  let topicLen = readUint16BE(data, pos)
+  if topicLen > MaxKeySize:
+    raise newException(ProtocolError, "Topic too large: " & $topicLen)
+  result.topic = readString(data, pos, int(topicLen))
+
+  let patternLen = readUint16BE(data, pos)
+  if patternLen > MaxKeySize:
+    raise newException(ProtocolError, "Pattern too large: " & $patternLen)
+  result.pattern = readString(data, pos, int(patternLen))
+
+proc encodePublishRequest*(req: PublishRequest): string =
+  ## Encode a publish request
+  ## Format: ``[topicLen:2][topic:N][msgType:1][headersLen:4][headers:M][payloadLen:4][payload:P]``
+
+  result = newStringOfCap(2 + req.topic.len + 1 + 4 + req.headers.len + 4 + req.payload.len)
+  result.writeUint16BE(uint16(req.topic.len))
+  result.add(req.topic)
+  result.writeByte(byte(ord(req.messageType)))
+  result.writeUint32BE(uint32(req.headers.len))
+  if req.headers.len > 0:
+    result.add(req.headers)
+  result.writeUint32BE(uint32(req.payload.len))
+  if req.payload.len > 0:
+    result.add(req.payload)
+
+proc decodePublishRequest*(data: string): PublishRequest =
+  ## Decode a publish request
+  var pos = 0
+
+  let topicLen = readUint16BE(data, pos)
+  if topicLen > MaxKeySize:
+    raise newException(ProtocolError, "Topic too large: " & $topicLen)
+  result.topic = readString(data, pos, int(topicLen))
+
+  result.messageType = PubSubMessageType(readByte(data, pos))
+
+  let headersLen = readUint32BE(data, pos)
+  if headersLen > MaxValueSize:
+    raise newException(ProtocolError, "Headers too large: " & $headersLen)
+  if headersLen > 0:
+    result.headers = readString(data, pos, int(headersLen))
+  else:
+    result.headers = ""
+
+  let payloadLen = readUint32BE(data, pos)
+  if payloadLen > MaxValueSize:
+    raise newException(ProtocolError, "Payload too large: " & $payloadLen)
+  if payloadLen > 0:
+    result.payload = readString(data, pos, int(payloadLen))
+  else:
+    result.payload = ""
+
+proc encodeHistoryRequest*(req: HistoryRequest): string =
+  ## Encode a history request
+  ## Format: ``[topicLen:2][topic:N][count:4][sinceSeq:8]``
+
+  result = newStringOfCap(2 + req.topic.len + 4 + 8)
+  result.writeUint16BE(uint16(req.topic.len))
+  result.add(req.topic)
+  result.writeUint32BE(uint32(req.count))
+  result.writeUint64BE(req.sinceSeq)
+
+proc decodeHistoryRequest*(data: string): HistoryRequest =
+  ## Decode a history request
+  var pos = 0
+
+  let topicLen = readUint16BE(data, pos)
+  if topicLen > MaxKeySize:
+    raise newException(ProtocolError, "Topic too large: " & $topicLen)
+  result.topic = readString(data, pos, int(topicLen))
+
+  result.count = int(readUint32BE(data, pos))
+  result.sinceSeq = readUint64BE(data, pos)
+
+proc encodePresenceRequest*(req: PresenceRequest): string =
+  ## Encode a presence request
+  ## Format: ``[operation:1]``
+
+  result = newStringOfCap(1)
+  result.writeByte(req.operation)
+
+proc decodePresenceRequest*(data: string): PresenceRequest =
+  ## Decode a presence request
+  var pos = 0
+  result.operation = uint8(readByte(data, pos))
+
+## Pub/Sub event message encoding (server to client, async)
+## Uses cmd byte 0xFF for events
+
+proc encodePubSubEvent*(event: PubSubEvent): string =
+  ## Encode a pub/sub event message for WebSocket transmission
+  ## Format: ``[cmd:1][seq:4][topicLen:2][topic:N][msgType:1][seq:8][ts:8][headersLen:4][headers:M][payloadLen:4][payload:P]``
+
+  result = newStringOfCap(1 + 4 + 2 + event.topic.len + 1 + 8 + 8 +
+                          4 + event.headers.len + 4 + event.payload.len)
+
+  # Command byte (0xFF for pub/sub events)
+  result.writeByte(0xFF)
+
+  # Sequence placeholder (not used for async events)
+  result.writeByte(0)
+  result.writeByte(0)
+  result.writeByte(0)
+  result.writeByte(0)
+
+  # Topic
+  result.writeUint16BE(uint16(event.topic.len))
+  result.add(event.topic)
+
+  # Message type
+  result.writeByte(byte(ord(event.messageType)))
+
+  # Message sequence
+  result.writeUint64BE(event.sequence)
+
+  # Timestamp
+  result.writeUint64BE(uint64(event.timestamp))
+
+  # Headers
+  result.writeUint32BE(uint32(event.headers.len))
+  if event.headers.len > 0:
+    result.add(event.headers)
+
+  # Payload
+  result.writeUint32BE(uint32(event.payload.len))
+  if event.payload.len > 0:
+    result.add(event.payload)
+
+proc decodePubSubEvent*(data: string): PubSubEvent =
+  ## Decode a pub/sub event message
+  var pos = 0
+
+  # Skip command byte and seq placeholder
+  discard readByte(data, pos)
+  discard readUint32BE(data, pos)
+
+  # Topic
+  let topicLen = readUint16BE(data, pos)
+  if topicLen > MaxKeySize:
+    raise newException(ProtocolError, "Event topic too large: " & $topicLen)
+  result.topic = readString(data, pos, int(topicLen))
+
+  # Message type
+  result.messageType = PubSubMessageType(readByte(data, pos))
+
+  # Message sequence
+  result.sequence = readUint64BE(data, pos)
+
+  # Timestamp
+  result.timestamp = int64(readUint64BE(data, pos))
+
+  # Headers
+  let headersLen = readUint32BE(data, pos)
+  if headersLen > MaxValueSize:
+    raise newException(ProtocolError, "Event headers too large: " & $headersLen)
+  if headersLen > 0:
+    result.headers = readString(data, pos, int(headersLen))
+  else:
+    result.headers = ""
+
+  # Payload
+  let payloadLen = readUint32BE(data, pos)
+  if payloadLen > MaxValueSize:
+    raise newException(ProtocolError, "Event payload too large: " & $payloadLen)
+  if payloadLen > 0:
+    result.payload = readString(data, pos, int(payloadLen))
+  else:
+    result.payload = ""

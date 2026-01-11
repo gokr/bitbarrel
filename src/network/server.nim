@@ -2,7 +2,7 @@
 ##
 ## WebSocket/HTTP server built on MummyX for remote BitBarrel access
 
-import std/[net, locks, tables, strutils, os, sequtils, strformat]
+import std/[net, locks, tables, strutils, os, sequtils, strformat, times, json]
 import mummy
 import mummy/routers
 import session
@@ -12,6 +12,11 @@ import ../storage/hugebarrel
 import ../bitbarrel/refs
 import ../bitbarrel/config_json
 import metrics
+import ../pubsub/pubsub
+import ../pubsub/manager
+import ../pubsub/eventbroker
+import ../pubsub/presence
+import ../pubsub/barrel_hooks
 
 # Import protocol module
 import protocol
@@ -126,6 +131,13 @@ type
     startTime: float                  ## Server start time (epochTime)
     metrics*: MetricsCollector        ## Metrics collector for monitoring
 
+    # Pub/Sub system components
+    pubSubManager*: PubSubManager     ## Pub/sub topic and subscription manager
+    eventBroker*: EventBroker         ## Event routing to WebSocket clients
+    presenceManager*: PresenceManager ## Presence tracking (join/leave, heartbeat)
+    historyStore*: HistoryStore       ## Message history (in-memory or persistent)
+    pubSubEnabled*: bool              ## Whether pub/sub is enabled
+
   BitBarrelServer* = ref BitBarrelServerObj  # Use ref to avoid ORC cleanup issues
 
   ServerConfig* = object
@@ -136,6 +148,12 @@ type
     auth*: authjwt.AuthConfig  ## Authentication configuration
     webadminPath*: string ## Path to webadmin build files
     webadminEnabled*: bool ## Enable webadmin UI serving
+
+    # Pub/Sub configuration
+    pubSubEnabled*: bool              ## Enable pub/sub system (default: true)
+    maxPubSubTopics*: int             ## Maximum topics (0 = unlimited)
+    maxSubscriptionsPerClient*: int  ## Max subscriptions per client (0 = unlimited)
+    pubSubHeartbeatTimeoutMs*: int   ## Client heartbeat timeout (default: 30000)
 
 # Note: Avoid thread-local variables for server storage as closures capture them
 # across thread boundaries, causing ORC cleanup issues.
@@ -720,6 +738,177 @@ proc handleWebSocketMessage*(
               resp.status = statusError
               resp.value = "Failed to get barrel stats: " & e.msg
 
+  of cmdSubscribe:
+    ## Subscribe to a topic or pattern
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        let subReq = protocol.decodeSubscribeRequest(req.value)
+        let subOptions = SubscriptionOptions(
+          enableKvEvents: subReq.options.enableKvEvents,
+          enablePresence: subReq.options.enablePresence,
+          replayHistory: subReq.options.replayHistory
+        )
+        let subId = server.pubSubManager.subscribe(
+          ws.clientId, subReq.topic, subReq.pattern, subOptions
+        )
+        resp.status = statusOk
+        resp.value = subId
+
+        # If presence enabled, join the topic
+        if subReq.options.enablePresence and server.presenceManager != nil:
+          withLock server.sessionsLock:
+            if ws.clientId in server.sessions:
+              let username = server.sessions[ws.clientId].authSession.username
+              if username.len == 0:
+                # Use a default username based on client ID
+                discard server.presenceManager.joinTopic(subReq.topic, ws.clientId, "client_" & $ws.clientId)
+              else:
+                discard server.presenceManager.joinTopic(subReq.topic, ws.clientId, username)
+
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Subscribe error: " & e.msg
+
+  of cmdUnsubscribe:
+    ## Unsubscribe from a topic or pattern (empty = unsubscribe all)
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        if server.pubSubManager.unsubscribe(ws.clientId, req.value):
+          resp.status = statusOk
+        else:
+          resp.status = statusInvalid
+          resp.value = "Not subscribed to topic/pattern"
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Unsubscribe error: " & e.msg
+
+  of cmdPublish:
+    ## Publish a message to a topic
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        let pubReq = protocol.decodePublishRequest(req.value)
+        let headers = if pubReq.headers.len > 0:
+                        parseJson(pubReq.headers)
+                      else:
+                        nil
+
+        let seqNo = server.pubSubManager.publish(pubReq.topic, pubReq.messageType,
+                                                     pubReq.payload, headers)
+
+        resp.status = statusOk
+        resp.value = $seqNo
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Publish error: " & e.msg
+
+  of cmdListSubscribers:
+    ## Get subscribers for a topic
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        let subscribers = server.pubSubManager.getSubscribersForTopic(req.value)
+        var respArray = newJArray()
+        for sub in subscribers:
+          var subJson = newJObject()
+          subJson["subscriptionId"] = %sub.id
+          subJson["clientId"] = %sub.clientId
+          if sub.pattern.len > 0:
+            subJson["pattern"] = %sub.pattern
+          else:
+            subJson["topic"] = %sub.topic
+          respArray.add(subJson)
+        resp.status = statusOk
+        resp.value = $respArray
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "List subscribers error: " & e.msg
+
+  of cmdHistory:
+    ## Get message history for a topic
+    if not server.pubSubEnabled or server.historyStore == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub history not enabled"
+    else:
+      try:
+        let histReq = protocol.decodeHistoryRequest(req.value)
+        let messages = server.historyStore.getHistory(histReq.topic, histReq.count,
+                                                        histReq.sinceSeq)
+        var respArray = newJArray()
+        for msg in messages:
+          var msgJson = newJObject()
+          msgJson["topic"] = %msg.topic
+          msgJson["messageType"] = %ord(msg.messageType)
+          msgJson["payload"] = %msg.payload
+          msgJson["timestamp"] = %msg.timestamp
+          msgJson["sequence"] = %msg.sequence
+          if msg.headers != nil:
+            msgJson["headers"] = msg.headers
+          else:
+            msgJson["headers"] = newJObject()
+          respArray.add(msgJson)
+        resp.status = statusOk
+        resp.value = $respArray
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "History error: " & e.msg
+
+  of cmdListTopics:
+    ## List topics matching pattern
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        let topics = server.pubSubManager.listTopics(req.value)
+        var respArray = newJArray()
+        for topic in topics:
+          var topicJson = newJObject()
+          topicJson["name"] = %topic.name
+          topicJson["sequence"] = %topic.sequence
+          topicJson["subscriberCount"] = %topic.subscribers.len
+          topicJson["messageCount"] = %topic.messageCount
+          respArray.add(topicJson)
+        resp.status = statusOk
+        resp.value = $respArray
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "List topics error: " & e.msg
+
+  of cmdPresence:
+    ## Get presence info or broadcast update
+    if not server.pubSubEnabled or server.presenceManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub presence not enabled"
+    else:
+      try:
+        let presReq = protocol.decodePresenceRequest(req.value)
+        if presReq.operation == 0:
+          # Get online - return presence for subscribed topics
+          var respArray = newJArray()
+          let presenceData = server.presenceManager.getAllPresence()
+          for _, info in presenceData:
+            respArray.add(toJson(info))
+          resp.status = statusOk
+          resp.value = $respArray
+        else:
+          # Broadcast update - for future use
+          resp.status = statusInvalid
+          resp.value = "Operation not implemented"
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Presence error: " & e.msg
+
   else:
     resp.status = statusInvalid
     resp.value = "Unknown command"
@@ -774,6 +963,19 @@ proc websocketHandler*(
       # Session created lazily on first message
       echo "WebSocket connection opened: clientId=", ws.clientId
 
+      # Register WebSocket with event broker for pub/sub
+      if server.pubSubEnabled and server.eventBroker != nil:
+        # Create a WebSocket reference for the event broker
+        let wsRef = WebSocket(
+          clientId: ws.clientId,
+          send: proc(data: string, binary: bool = false) {.gcsafe.} =
+            ws.send(data, if binary: BinaryMessage else: TextMessage),
+          close: proc() {.gcsafe.} =
+            # Note: can't close from here, will be handled by CloseEvent
+            discard
+        )
+        server.eventBroker.addClient(wsRef)
+
     of MessageEvent:
       if message.kind == BinaryMessage:
         server.handleWebSocketMessage(ws, message.data)
@@ -786,6 +988,24 @@ proc websocketHandler*(
 
     of CloseEvent:
       echo "WebSocket connection closed: clientId=", ws.clientId
+      # Clean up pub/sub subscriptions if enabled
+      if server.pubSubEnabled:
+        if server.pubSubManager != nil:
+          # Unsubscribe client from all topics
+          let count = server.pubSubManager.unsubscribeAll(ws.clientId)
+          if count > 0:
+            echo "[PubSub] Unsubscribed ", count, " subscriptions for client ", ws.clientId
+
+        if server.presenceManager != nil:
+          # Leave all presence topics
+          let leftCount = server.presenceManager.leaveAllTopics(ws.clientId)
+          if leftCount > 0:
+            echo "[PubSub] Client ", ws.clientId, " left ", leftCount, " topics"
+
+        if server.eventBroker != nil:
+          # Remove client from event broker
+          server.eventBroker.removeClient(ws.clientId)
+
       # Clean up session
       withLock server.sessionsLock:
         server.sessions.del(ws.clientId)
@@ -1167,6 +1387,148 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   result.startTime = epochTime()
   result.metrics = newMetricsCollector(persistEnabled = false, retentionHours = 168)
   initLock(result.sessionsLock)
+
+  # Initialize pub/sub system if enabled
+  result.pubSubEnabled = if result.config.pubSubEnabled:
+    result.config.pubSubEnabled
+  else:
+    true  # Default to enabled if not specified
+
+  if result.pubSubEnabled:
+    echo "[PubSub] Initializing pub/sub system..."
+
+    # Create pub/sub configuration
+    let psConfig = PubSubConfig(
+      enabled: true,
+      maxTopics: if config.maxPubSubTopics > 0: config.maxPubSubTopics else: 0,
+      maxSubscriptionsPerClient: if config.maxSubscriptionsPerClient > 0:
+                                     config.maxSubscriptionsPerClient
+                                   else: 0,
+      heartbeatTimeoutMs: if config.pubSubHeartbeatTimeoutMs > 0:
+                             config.pubSubHeartbeatTimeoutMs
+                           else: 30000,
+      heartbeatCheckIntervalMs: 5000,
+      defaultTopicConfig: defaultTopicConfig()
+    )
+
+    # Create pub/sub manager with message callback
+    type ServerRef = ptr BitBarrelServerObj
+
+    proc buildMessageCallback(srv: ServerRef): MessageCallback proc {.gcsafe.} =
+      proc clientMsgCallback(clientId: uint64, topic: string,
+                              messageType: PubSubMessageType,
+                              payload: string, headers: string) {.gcsafe.} =
+        # Find the WebSocket connection for this client
+        withLock srv.sessionsLock:
+          if clientId notin srv.sessions:
+            return
+
+          # Build event message
+          let event = PubSubEvent(
+            topic: topic,
+            messageType: messageType,
+            sequence: 0,
+            timestamp: epochTime().milli,
+            headers: headers,
+            payload: payload
+          )
+
+          # Encode and send
+          let encoded = encodePubSubEvent(event)
+          # Note: We'd need access to ws here, but we don't have it
+          # For now, we'll rely on the event broker to send
+          # This is a limitation - we may need to track WebSockets differently
+
+      return clientMsgCallback
+
+    # Create manager (without callback initially - will be set after broker)
+    result.pubSubManager = newPubSubManager(psConfig)
+
+    # Create event broker
+    result.eventBroker = newEventBroker(result.pubSubManager)
+
+    # Now set the message callback on the manager that uses the broker
+    proc brokerMessageCallback(clientId: uint64, topic: string,
+                                messageType: PubSubMessageType,
+                                payload: string, headers: string) {.gcsafe.} =
+      {.gcsafe.}:
+        # Build event message
+        let event = PubSubEvent(
+          topic: topic,
+          messageType: messageType,
+          sequence: 0,
+          timestamp: epochTime().milli,
+          headers: headers,
+          payload: payload
+        )
+
+        # Encode and send through event broker
+        # We'll send directly via ws here - need to track WebSocket connection
+        # For now, use the eventBroker.sendToClient which handles this
+        result.eventBroker.sendToClient(clientId, topic, messageType, payload, headers)
+
+    result.pubSubManager.messageCallback = brokerMessageCallback
+
+    # Create presence manager
+    result.presenceManager = newPresenceManager(
+      eventBroker = result.eventBroker,
+      checkIntervalMs = 5000,
+      heartbeatTimeoutMs = psConfig.heartbeatTimeoutMs
+    )
+
+    # Create history store
+    result.historyStore = newHistoryStore(
+      enablePersistence = false,  # TODO: add persistence option
+      barrelPath = config.dataDir / "pubsub_history.data"
+    )
+
+    # Capture references for closures (cannot capture 'result' directly)
+    let managerRef = result.pubSubManager
+    let brokerRef = result.eventBroker
+
+    # Register barrel hook for k/v change events
+    managerRef.setKvChangeCallback(proc(barrelName: string, key: string,
+                                        changeType: KvChangeType,
+                                        value: string) {.gcsafe.} =
+      # Publish k/v change event via event broker
+      {.gcsafe.}:
+        let topic = "kv:" & barrelName & ":" & key
+        var payload = ""
+        if changeType == kvSet:
+          payload = value
+        let msg = newMessage(topic, mtKvChange, payload)
+        # Get all subscribers for this topic
+        let subscribers = managerRef.getAllSubscribersForTopic(topic)
+        # Build headers
+        var headers = newJObject()
+        headers["barrel"] = %barrelName
+        headers["key"] = %key
+        headers["changeType"] = %ord(changeType)
+
+        let headerStr = $headers
+        for sub in subscribers:
+          if sub.options.enableKvEvents:
+            brokerRef.sendToClient(sub.clientId, topic, mtKvChange,
+                                   payload, headerStr)
+    )
+
+    managerRef.kvHookId = registerBarrelHook(
+      proc(barrelName: string, key: string,
+           changeType: KvChangeType, value: string) {.gcsafe.} =
+        # Forward to the manager's callback
+        if managerRef.kvChangeCallback != nil:
+          managerRef.kvChangeCallback(barrelName, key, changeType, value)
+    )
+
+    # Start presence cleanup thread
+    result.presenceManager.startCleanupThread()
+
+    echo "[PubSub] Pub/sub system initialized"
+  else:
+    result.pubSubManager = nil
+    result.eventBroker = nil
+    result.presenceManager = nil
+    result.historyStore = nil
 
   # Create MummyX router with server reference captured
   var router: Router
