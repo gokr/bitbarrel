@@ -138,7 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       try {
         await di<BarrelService>().deleteBarrel(name);
 
-        if (mounted) {
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Barrel "$name" deleted'),
@@ -147,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         }
       } catch (e) {
-        if (mounted) {
+        if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to delete barrel: $e'),
@@ -163,7 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       await di<BarrelService>().useBarrel(name);
 
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Selected barrel: $name'),
@@ -175,7 +175,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         context.go('/explorer');
       }
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to select barrel: $e'),
@@ -199,7 +199,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       barrelName: name,
     );
 
-    if (result != null && mounted) {
+    if (result != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Configuration updated for "$name"'),
@@ -308,7 +308,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (error != null) ...[
             Container(
               padding: const EdgeInsets.all(16),
-              color: AppTheme.errorColor.withOpacity(0.1),
+              color: AppTheme.errorColor.withValues(alpha: 0.1),
               child: Row(
                 children: [
                   const Icon(Icons.error_outline, color: AppTheme.errorColor),
@@ -342,20 +342,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         Icon(
                           Icons.storage,
                           size: 64,
-                          color: AppTheme.secondaryColor.withOpacity(0.5),
+                          color: AppTheme.secondaryColor.withValues(alpha: 0.5),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           'No barrels found',
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: AppTheme.secondaryColor.withOpacity(0.7),
+                            color: AppTheme.secondaryColor.withValues(alpha: 0.7),
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           'Create a new barrel to get started',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppTheme.secondaryColor.withOpacity(0.5),
+                            color: AppTheme.secondaryColor.withValues(alpha: 0.5),
                           ),
                         ),
                       ],
@@ -371,7 +371,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           leading: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withOpacity(0.1),
+                              color: AppTheme.primaryColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(
@@ -390,7 +390,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 Text(
                                   'Index: ${barrel.indexMode}',
                                   style: TextStyle(
-                                    color: AppTheme.secondaryColor.withOpacity(0.7),
+                                    color: AppTheme.secondaryColor.withValues(alpha: 0.7),
                                     fontSize: 12,
                                   ),
                                 ),

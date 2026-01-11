@@ -79,7 +79,6 @@ class _GraphVisualizerState extends State<GraphVisualizer> {
 
   Widget _buildResultItem(BuildContext context, TraverseResult result, bool isSelected) {
     final hasJsonValue = _isJson(result.value);
-    final pathParts = result.path.split('->');
 
     return Container(
       color: isSelected ? AppTheme.accentColor.withValues(alpha: 0.1) : null,

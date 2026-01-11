@@ -66,12 +66,11 @@ class AppTheme {
         primary: primaryColor,
         secondary: secondaryColor,
         surface: cardColor,
-        background: backgroundColor,
         error: errorColor,
         brightness: Brightness.light,
       ).copyWith(
-        primaryContainer: accentColor.withOpacity(0.1),
-        secondaryContainer: secondaryColor.withOpacity(0.1),
+        primaryContainer: accentColor.withValues(alpha: 0.1),
+        secondaryContainer: secondaryColor.withValues(alpha: 0.1),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
@@ -93,11 +92,11 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: secondaryColor.withOpacity(0.3)),
+          borderSide: BorderSide(color: secondaryColor.withValues(alpha: 0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: secondaryColor.withOpacity(0.3)),
+          borderSide: BorderSide(color: secondaryColor.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),

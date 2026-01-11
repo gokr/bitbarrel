@@ -12,11 +12,6 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
 
   ConnectionScreen({super.key});
 
-  void _disposeControllers() {
-    _hostController.dispose();
-    _portController.dispose();
-  }
-
   Future<void> _connect(BuildContext context) async {
     if (_formKey.currentState!.validate()) {
       final host = _hostController.text;
@@ -27,7 +22,9 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
 
         if (di<ConnectionService>().connected) {
           // Navigate to dashboard
-          context.go('/dashboard');
+          if (context.mounted) {
+            context.go('/dashboard');
+          }
         }
       } catch (e) {
         if (context.mounted) {
@@ -160,10 +157,10 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: AppTheme.errorColor.withOpacity(0.1),
+                              color: AppTheme.errorColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: AppTheme.errorColor.withOpacity(0.3),
+                                color: AppTheme.errorColor.withValues(alpha: 0.3),
                               ),
                             ),
                             child: Row(
@@ -218,10 +215,10 @@ class ConnectionScreen extends StatelessWidget with WatchItMixin {
                           Container(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             decoration: BoxDecoration(
-                              color: AppTheme.successColor.withOpacity(0.1),
+                              color: AppTheme.successColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: AppTheme.successColor.withOpacity(0.3),
+                                color: AppTheme.successColor.withValues(alpha: 0.3),
                               ),
                             ),
                             child: const Row(
