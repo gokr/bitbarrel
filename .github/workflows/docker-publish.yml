@@ -100,27 +100,29 @@ jobs:
       - name: Run smoke test
         run: |
           # Start container
-          container_id=$(docker run -d -p 8080:8080 -p 8081:8081 bitbarrel:test)
+          container_id=$(docker run -d -p 8080:8080 bitbarrel:test)
 
           # Wait for startup
-          sleep 10
+          sleep 15
 
           # Check if container is still running
           if docker ps | grep -q $container_id; then
             echo "✓ Container is running"
 
-            # Test server endpoint
-            if curl -s http://localhost:8080 > /dev/null 2>&1; then
-              echo "✓ Server endpoint is responding"
+            # Test server status endpoint
+            resp=$(curl -s http://localhost:8080/status 2>&1 || echo "failed")
+            if [ "$resp" != "failed" ]; then
+              echo "✓ Server status endpoint is responding"
+              echo "Response: $resp"
             else
-              echo "⚠ Server endpoint check failed (container may need more time)"
+              echo "⚠ Server status endpoint check failed"
             fi
 
             # Test admin endpoint
-            if curl -s http://localhost:8081 > /dev/null 2>&1; then
-              echo "✓ Admin endpoint is responding"
+            if curl -s http://localhost:8080/admin/ > /dev/null 2>&1; then
+              echo "✓ Web admin is serving at /admin/"
             else
-              echo "⚠ Admin endpoint check failed (web admin may not be included)"
+              echo "⚠ Admin endpoint check failed"
             fi
 
             # Cleanup
@@ -163,7 +165,7 @@ jobs:
 
             ### Quick start
             ```bash
-            docker run -d -p 8080:8080 -p 8081:8081 -v bitbarrel-data:/data ghcr.io/${{ github.repository }}:${{ github.ref }}
+            docker run -d -p 8080:8080 -v bitbarrel-data:/data ghcr.io/${{ github.repository }}:${{ github.ref }}
             ```
 
             See [docs/DOCKER.md](https://github.com/${{ github.repository }}/blob/main/docs/DOCKER.md) for detailed usage instructions.
