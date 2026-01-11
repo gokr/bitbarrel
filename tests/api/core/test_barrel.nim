@@ -144,18 +144,18 @@ suite "Barrel API - CritBit Mode":
     check barrel.set("session:abc", "data1")
     check barrel.set("session:def", "data2")
 
-    let user1Keys = barrel.keysWithPrefix("user:1:")
+    let (user1Keys, _, _) = barrel.keysWithPrefix("user:1:", limit = 1000)
     check user1Keys.len == 2
     check "user:1:name" in user1Keys
     check "user:1:email" in user1Keys
 
-    let userKeys = barrel.keysWithPrefix("user:")
+    let (userKeys, _, _) = barrel.keysWithPrefix("user:", limit = 1000)
     check userKeys.len == 4
 
-    let sessionKeys = barrel.keysWithPrefix("session:")
+    let (sessionKeys, _, _) = barrel.keysWithPrefix("session:", limit = 1000)
     check sessionKeys.len == 2
 
-    let noMatch = barrel.keysWithPrefix("nonexistent:")
+    let (noMatch, _, _) = barrel.keysWithPrefix("nonexistent:", limit = 1000)
     check noMatch.len == 0
 
     barrel.close()
@@ -292,11 +292,11 @@ suite "CritBit Index Unit Tests":
     index.add("other:x", entry)
     index.add("other:y", entry)
 
-    let prefixKeys = index.keysWithPrefix("prefix:")
+    let (prefixKeys, _, _) = index.keysWithPrefix("prefix:", 1000)
     check prefixKeys.len == 3
     check prefixKeys == @["prefix:a", "prefix:b", "prefix:c"]
 
-    let otherKeys = index.keysWithPrefix("other:")
+    let (otherKeys, _, _) = index.keysWithPrefix("other:", 1000)
     check otherKeys.len == 2
 
     index.deinit()
