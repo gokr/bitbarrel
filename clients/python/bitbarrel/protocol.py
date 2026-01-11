@@ -29,6 +29,8 @@ class Command(IntEnum):
     RANGE_QUERY = 0x21
     PREFIX_QUERY = 0x22
     RANGE_COUNT = 0x23
+    RANGE_KEYS = 0x24
+    PREFIX_KEYS = 0x25
     CREATE_BARREL = 0x10
     OPEN_BARREL = 0x11
     USE_BARREL = 0x12
@@ -122,6 +124,7 @@ def decode_request(data: bytes) -> Tuple[int, int, str, str]:
         Command.GET, Command.SET, Command.DELETE, Command.EXISTS, Command.COUNT,
         Command.LIST_KEYS, Command.PING, Command.TRAVERSE,
         Command.RANGE_QUERY, Command.PREFIX_QUERY, Command.RANGE_COUNT,
+        Command.RANGE_KEYS, Command.PREFIX_KEYS,
         Command.CREATE_BARREL, Command.OPEN_BARREL, Command.USE_BARREL,
         Command.CLOSE_BARREL, Command.LIST_BARRELS, Command.DROP_BARREL,
         Command.GET_BARREL_CONFIG, Command.SET_BARREL_CONFIG, Command.GET_BARREL_STATS
@@ -353,6 +356,46 @@ def decode_range_response(data: bytes) -> Tuple[list, str, bool]:
     next_cursor = buf[offset:offset+cursor_len].decode("utf-8")
 
     return items, next_cursor, has_more
+
+
+def decode_keys_response(data: bytes) -> Tuple[List[str], str, bool]:
+    """Decode a keys-only response.
+
+    Returns: (keys: list of str, nextCursor: str, hasMore: bool)
+    """
+    buf = data
+    offset = 0
+
+    # Count
+    count = struct.unpack(">I", buf[offset:offset+4])[0]
+    offset += 4
+
+    keys = []
+
+    # Keys
+    for _ in range(count):
+        # Key length
+        key_len = struct.unpack(">H", buf[offset:offset+2])[0]
+        offset += 2
+
+        # Key
+        key = buf[offset:offset+key_len].decode("utf-8")
+        offset += key_len
+
+        keys.append(key)
+
+    # Has more
+    has_more = buf[offset] != 0
+    offset += 1
+
+    # Next cursor length
+    cursor_len = struct.unpack(">H", buf[offset:offset+2])[0]
+    offset += 2
+
+    # Next cursor
+    next_cursor = buf[offset:offset+cursor_len].decode("utf-8")
+
+    return keys, next_cursor, has_more
 
 
 # Traversal encoding

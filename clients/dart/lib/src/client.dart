@@ -436,6 +436,59 @@ class BitBarrelClient {
     return int.tryParse(value) ?? 0;
   }
 
+  /// Perform a keys-only range query
+  /// Returns a [KeysResponse] with keys, cursor, and hasMore flag
+  /// Requires barrel opened in bmCritBit mode
+  /// Empty startKey/endKey queries entire barrel
+  Future<KeysResponse> rangeQueryKeys(
+    String startKey,
+    String endKey, {
+    int limit = 1000,
+    String cursor = '',
+  }) async {
+    _ensureBarrel();
+
+    final encodedParams = ProtocolEncoder.encodeRangeRequest(
+      startKey: startKey,
+      endKey: endKey,
+      limit: limit,
+      cursor: cursor,
+    );
+
+    final value = await _sendRequest(
+      command: Command.rangeKeys,
+      key: '',
+      binaryValue: encodedParams,
+    );
+
+    return ProtocolDecoder.decodeKeysResponse(value);
+  }
+
+  /// Perform a keys-only prefix query
+  /// Returns a [KeysResponse] with keys, cursor, and hasMore flag
+  /// Requires barrel opened in bmCritBit mode
+  Future<KeysResponse> prefixQueryKeys(
+    String prefix, {
+    int limit = 1000,
+    String cursor = '',
+  }) async {
+    _ensureBarrel();
+
+    final encodedParams = ProtocolEncoder.encodePrefixRequest(
+      prefix: prefix,
+      limit: limit,
+      cursor: cursor,
+    );
+
+    final value = await _sendRequest(
+      command: Command.prefixKeys,
+      key: '',
+      binaryValue: encodedParams,
+    );
+
+    return ProtocolDecoder.decodeKeysResponse(value);
+  }
+
   /// Perform a reference traversal
   /// Returns a list of [TraverseResult] items
   Future<List<TraverseResult>> traverse(

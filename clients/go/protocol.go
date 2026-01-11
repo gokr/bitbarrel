@@ -19,6 +19,8 @@ const (
 	CmdRangeQuery   byte = 0x21
 	CmdPrefixQuery  byte = 0x22
 	CmdRangeCount   byte = 0x23
+	CmdRangeKeys    byte = 0x24
+	CmdPrefixKeys   byte = 0x25
 	CmdCreateBarrel byte = 0x10
 	CmdOpenBarrel   byte = 0x11
 	CmdUseBarrel    byte = 0x12
@@ -66,7 +68,7 @@ type Response struct {
 func IsValidCommand(cmd byte) bool {
 	switch cmd {
 	case CmdGet, CmdSet, CmdDelete, CmdExists, CmdCount, CmdListKeys, CmdPing,
-		CmdTraverse, CmdRangeQuery, CmdPrefixQuery, CmdRangeCount,
+		CmdTraverse, CmdRangeQuery, CmdPrefixQuery, CmdRangeCount, CmdRangeKeys, CmdPrefixKeys,
 		CmdCreateBarrel, CmdOpenBarrel, CmdUseBarrel,
 		CmdCloseBarrel, CmdListBarrels, CmdDropBarrel,
 		CmdGetBarrelConfig, CmdSetBarrelConfig, CmdGetBarrelStats:
@@ -504,6 +506,61 @@ func DecodeRangeResponse(data string) (RangeQueryResponse, error) {
 		offset += valLen
 
 		result.Items = append(result.Items, KeyValue{Key: key, Value: value})
+	}
+
+	if len(buf) < offset+1 {
+		return result, errors.New("truncated hasMore flag")
+	}
+	result.HasMore = buf[offset] != 0
+	offset += 1
+
+	if len(buf) < offset+2 {
+		return result, errors.New("truncated cursor length")
+	}
+	cursorLen := int(binary.BigEndian.Uint16(buf[offset : offset+2]))
+	offset += 2
+
+	if len(buf) < offset+cursorLen {
+		return result, errors.New("truncated cursor")
+	}
+	result.NextCursor = string(buf[offset : offset+cursorLen])
+
+	return result, nil
+}
+
+// DecodeKeysResponse decodes a keys-only response
+// Format: [count:4][keys...][hasMore:1][nextCursorLen:2][nextCursor:N]
+// Each key: [keyLen:2][key:N]
+func DecodeKeysResponse(data string) (KeysResponse, error) {
+	result := KeysResponse{}
+	buf := []byte(data)
+	offset := 0
+
+	if len(buf) < 5 {
+		return result, errors.New("response too short")
+	}
+
+	// Count
+	count := int(binary.BigEndian.Uint32(buf[offset : offset+4]))
+	offset += 4
+
+	result.Keys = make([]string, 0, count)
+
+	// Keys
+	for i := 0; i < count; i++ {
+		if len(buf) < offset+2 {
+			return result, errors.New("truncated key length")
+		}
+		keyLen := int(binary.BigEndian.Uint16(buf[offset : offset+2]))
+		offset += 2
+
+		if len(buf) < offset+keyLen {
+			return result, errors.New("truncated key")
+		}
+		key := string(buf[offset : offset+keyLen])
+		offset += keyLen
+
+		result.Keys = append(result.Keys, key)
 	}
 
 	if len(buf) < offset+1 {

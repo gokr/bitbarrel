@@ -7,7 +7,7 @@
 
 import { Command, ResponseStatus, MaxKeySize, MaxValueSize } from './types';
 import { ProtocolError } from './errors';
-import type { Request, Response, RangeRequest, PrefixRequest, RangeResponse, TraverseRequest, TraverseResult } from './types';
+import type { Request, Response, RangeRequest, PrefixRequest, RangeResponse, KeysResponse, TraverseRequest, TraverseResult } from './types';
 
 export class Protocol {
   /**
@@ -431,6 +431,59 @@ export class Protocol {
   }
 
   /**
+   * Decode a keys-only response: [count:4][keys...][hasMore:1][nextCursorLen:2][nextCursor:N]
+   * Each key: [keyLen:2][key:N]
+   */
+  static decodeKeysResponse(data: Buffer): KeysResponse {
+    if (data.length < 7) {
+      throw new ProtocolError(`Keys response too short: ${data.length} bytes (min 7)`);
+    }
+
+    let offset = 0;
+
+    const count = data.readUInt32BE(offset);
+    offset += 4;
+
+    const keys: string[] = [];
+    for (let i = 0; i < count; i++) {
+      if (offset + 2 > data.length) {
+        throw new ProtocolError('Truncated keys response: missing key length');
+      }
+      const keyLen = data.readUInt16BE(offset);
+      offset += 2;
+      if (keyLen > MaxKeySize) {
+        throw new ProtocolError(`Key too large in response: ${keyLen} bytes`);
+      }
+      if (offset + keyLen > data.length) {
+        throw new ProtocolError('Truncated keys response: key extends beyond buffer');
+      }
+      const key = data.toString('utf8', offset, offset + keyLen);
+      offset += keyLen;
+      keys.push(key);
+    }
+
+    if (offset >= data.length) {
+      throw new ProtocolError('Truncated keys response: missing hasMore flag');
+    }
+    const hasMore = data.readUInt8(offset++) !== 0;
+
+    if (offset + 2 > data.length) {
+      throw new ProtocolError('Truncated keys response: missing next cursor length');
+    }
+    const nextCursorLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (nextCursorLen > MaxKeySize) {
+      throw new ProtocolError(`Next cursor too large: ${nextCursorLen} bytes`);
+    }
+    if (offset + nextCursorLen > data.length) {
+      throw new ProtocolError('Truncated keys response: next cursor extends beyond buffer');
+    }
+    const nextCursor = nextCursorLen > 0 ? data.toString('utf8', offset, offset + nextCursorLen) : '';
+
+    return { keys, nextCursor, hasMore };
+  }
+
+  /**
    * Encode a traverse request: [seq:4][keyLen:2][key:N][pathLen:2][path:N][options:1]
    */
   static encodeTraverseRequest(req: TraverseRequest): Buffer {
@@ -503,6 +556,83 @@ export class Protocol {
     const options = data.readUInt8(offset);
 
     return { seq, key, pathSpec, options };
+  }
+
+  /**
+   * Decode traverse results: [status:1][seq:4][count:4][results...]
+   * Each result: [pathLen:2][path][valLen:4][value][extFlags:1][extLen:4][extData]
+   */
+  static decodeTraverseResults(data: Buffer): [number, number, TraverseResult[]] {
+    if (data.length < 9) {
+      throw new ProtocolError(`Traverse response too short: ${data.length} bytes (min 9)`);
+    }
+
+    let offset = 0;
+
+    const status = data.readUInt8(offset++);
+    const seq = data.readUInt32BE(offset);
+    offset += 4;
+
+    const count = data.readUInt32BE(offset);
+    offset += 4;
+
+    const results: TraverseResult[] = [];
+
+    for (let i = 0; i < count; i++) {
+      // Path length
+      if (offset + 2 > data.length) {
+        throw new ProtocolError('Truncated traverse response: missing path length');
+      }
+      const pathLen = data.readUInt16BE(offset);
+      offset += 2;
+      if (offset + pathLen > data.length) {
+        throw new ProtocolError('Truncated traverse response: path extends beyond buffer');
+      }
+      const path = data.toString('utf8', offset, offset + pathLen);
+      offset += pathLen;
+
+      // Value length
+      if (offset + 4 > data.length) {
+        throw new ProtocolError('Truncated traverse response: missing value length');
+      }
+      const valLen = data.readUInt32BE(offset);
+      offset += 4;
+      let value = '';
+      if (valLen > 0 && offset + valLen <= data.length) {
+        value = data.toString('utf8', offset, offset + valLen);
+        offset += valLen;
+      }
+
+      // Extracted data flag
+      if (offset >= data.length) {
+        throw new ProtocolError('Truncated traverse response: missing extracted flag');
+      }
+      const hasExtracted = data.readUInt8(offset++) !== 0;
+
+      // Extracted data length
+      if (offset + 4 > data.length) {
+        throw new ProtocolError('Truncated traverse response: missing extracted length');
+      }
+      const extLen = data.readUInt32BE(offset);
+      offset += 4;
+      let extractedData = '';
+      if (hasExtracted && extLen > 0 && offset + extLen <= data.length) {
+        extractedData = data.toString('utf8', offset, offset + extLen);
+        offset += extLen;
+      }
+
+      // Extract key from path (last element after -> if present)
+      const key = path.includes('->') ? path.split('->').pop() || path : path;
+
+      results.push({
+        path,
+        key,
+        value,
+        extractedData,
+      });
+    }
+
+    return [status, seq, results];
   }
 
   /**

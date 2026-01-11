@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional, Union
 from .protocol import (
     Command, Status,
     encode_request, decode_response, decode_response_raw,
-    encode_range_request, decode_range_response,
+    encode_range_request, decode_range_response, decode_keys_response,
     encode_prefix_request,
     encode_traverse_request, decode_traverse_response,
     status_to_error,
@@ -21,6 +21,15 @@ class RangeResult:
 
     def __init__(self, items: List[Tuple[str, str]], next_cursor: str, has_more: bool):
         self.items = items
+        self.next_cursor = next_cursor
+        self.has_more = has_more
+
+
+class KeysResult:
+    """Result from keys-only range or prefix query."""
+
+    def __init__(self, keys: List[str], next_cursor: str, has_more: bool):
+        self.keys = keys
         self.next_cursor = next_cursor
         self.has_more = has_more
 
@@ -504,6 +513,56 @@ class Client:
             return int(value)
         except ValueError:
             raise ServerError(f"Invalid count response: {value}")
+
+    def range_query_keys(self, start_key: str, end_key: str,
+                        limit: int = 1000, cursor: str = "") -> KeysResult:
+        """Query only keys in range [startKey, endKey) with cursor pagination.
+
+        Requires barrel opened in bmCritBit mode.
+        Empty start_key/end_key queries entire barrel.
+
+        Args:
+            start_key: Start key (inclusive), or "" for first key
+            end_key: End key (exclusive), or "" for end of barrel
+            limit: Maximum number of keys to return
+            cursor: Last key from previous page (empty for first page)
+
+        Returns:
+            KeysResult with keys, next cursor, and hasMore flag
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+        params = encode_range_request(start_key, end_key, limit, cursor)
+        value = self._send_request_binary(Command.RANGE_KEYS, "", params)
+        keys, next_cursor, has_more = decode_keys_response(value)
+        return KeysResult(keys, next_cursor, has_more)
+
+    def prefix_query_keys(self, prefix: str, limit: int = 1000,
+                         cursor: str = "") -> KeysResult:
+        """Query only keys with prefix and cursor pagination.
+
+        Requires barrel opened in bmCritBit mode.
+
+        Args:
+            prefix: Key prefix to match
+            limit: Maximum number of keys to return
+            cursor: Last key from previous page (empty for first page)
+
+        Returns:
+            KeysResult with keys, next cursor, and hasMore flag
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+        params = encode_prefix_request(prefix, limit, cursor)
+        value = self._send_request_binary(Command.PREFIX_KEYS, "", params)
+        keys, next_cursor, has_more = decode_keys_response(value)
+        return KeysResult(keys, next_cursor, has_more)
 
     # Reference traversal
 

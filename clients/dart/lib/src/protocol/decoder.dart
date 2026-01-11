@@ -140,6 +140,75 @@ class ProtocolDecoder {
     );
   }
 
+  /// Decode keys-only range/prefix query response
+  /// Format: [count:4][keys...][hasMore:1][nextCursorLen:2][nextCursor]
+  /// Each key: [keyLen:2][key]
+  static KeysResponse decodeKeysResponse(String data) {
+    final bytes = Latin1Codec().encode(data);
+    final buffer = ByteData.sublistView(bytes);
+
+    if (bytes.length < 5) {
+      throw ProtocolException('Keys response too short');
+    }
+
+    var offset = 0;
+
+    // Count
+    final count = buffer.getUint32(offset, Endian.big);
+    offset += 4;
+
+    final keys = <String>[];
+
+    // Decode keys
+    for (int i = 0; i < count; i++) {
+      // Key length
+      if (offset + 2 > bytes.length) {
+        throw ProtocolException('Truncated key length');
+      }
+      final keyLen = buffer.getUint16(offset, Endian.big);
+      offset += 2;
+
+      // Key
+      if (offset + keyLen > bytes.length) {
+        throw ProtocolException('Truncated key');
+      }
+      final key = utf8.decode(bytes.sublist(offset, offset + keyLen));
+      offset += keyLen;
+
+      keys.add(key);
+    }
+
+    // Has more flag
+    if (offset + 1 > bytes.length) {
+      throw ProtocolException('Truncated hasMore flag');
+    }
+    final hasMore = buffer.getUint8(offset++) != 0;
+
+    // Next cursor length
+    if (offset + 2 > bytes.length) {
+      throw ProtocolException('Truncated cursor length');
+    }
+    final cursorLen = buffer.getUint16(offset, Endian.big);
+    offset += 2;
+
+    // Next cursor
+    String nextCursor;
+    if (cursorLen == 0) {
+      nextCursor = '';
+    } else {
+      if (offset + cursorLen > bytes.length) {
+        throw ProtocolException('Truncated cursor');
+      }
+      nextCursor = utf8.decode(bytes.sublist(offset, offset + cursorLen));
+    }
+
+    return KeysResponse(
+      keys: keys,
+      nextCursor: nextCursor,
+      hasMore: hasMore,
+    );
+  }
+
   /// Decode traverse results
   /// Format: [status:1][seq:4][count:4][results...]
   /// Each result: [pathLen:2][path][valLen:4][value][extFlags:1][extLen:4][extData]

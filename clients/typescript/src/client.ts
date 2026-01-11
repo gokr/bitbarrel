@@ -7,7 +7,7 @@
 
 import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
-import type { ClientConfig, Command, ResponseStatus, Request, Response, RangeRequest, PrefixRequest, RangeResponse, TraverseRequest, TraverseResult, TraverseOptions, BarrelStats } from './types';
+import type { ClientConfig, Request, Response, RangeRequest, PrefixRequest, TraverseRequest, TraverseResult, TraverseOptions, BarrelStats } from './types';
 import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions } from './types';
 import { Protocol } from './protocol';
 import { BitBarrelError, ConnectionError, RequestTimeoutError, BarrelError, NotFoundError } from './errors';
@@ -475,6 +475,64 @@ export class BitBarrelClient extends EventEmitter {
     return 0;
   }
 
+  // Keys-Only Queries (require bmCritBit mode)
+
+  async rangeQueryKeys(
+    startKey: string,
+    endKey: string,
+    options?: { limit?: number; cursor?: string }
+  ): Promise<{ keys: string[]; nextCursor: string; hasMore: boolean }> {
+    this.checkBarrelSelected();
+
+    const opts = normalizeRangeOptions(options);
+
+    const rangePayload: RangeRequest = {
+      startKey,
+      endKey,
+      limit: opts.limit,
+      cursor: opts.cursor,
+    };
+
+    const rangeData = Protocol.encodeRangeRequest(rangePayload).toString('base64');
+    const req = Protocol.newRequest(Cmd.RangeKeys, '', rangeData);
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Range keys query failed: ${resp.status}`);
+    }
+
+    // Decode the response
+    const responseData = Buffer.from(resp.value, 'base64');
+    return Protocol.decodeKeysResponse(responseData);
+  }
+
+  async prefixQueryKeys(
+    prefix: string,
+    options?: { limit?: number; cursor?: string }
+  ): Promise<{ keys: string[]; nextCursor: string; hasMore: boolean }> {
+    this.checkBarrelSelected();
+
+    const opts = normalizeRangeOptions(options);
+
+    const prefixPayload: PrefixRequest = {
+      prefix,
+      limit: opts.limit,
+      cursor: opts.cursor,
+    };
+
+    const prefixData = Protocol.encodePrefixRequest(prefixPayload).toString('base64');
+    const req = Protocol.newRequest(Cmd.PrefixKeys, '', prefixData);
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Prefix keys query failed: ${resp.status}`);
+    }
+
+    // Decode the response
+    const responseData = Buffer.from(resp.value, 'base64');
+    return Protocol.decodeKeysResponse(responseData);
+  }
+
   // Reference Traversal
 
   async traverse(
@@ -508,7 +566,7 @@ export class BitBarrelClient extends EventEmitter {
 
     // Decode the results
     const responseData = Buffer.from(resp.value, 'base64');
-    const [status, seq, results] = Protocol.decodeTraverseResults(responseData);
+    const [, , results] = Protocol.decodeTraverseResults(responseData);
 
     return results;
   }

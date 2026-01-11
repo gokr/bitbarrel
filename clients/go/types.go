@@ -28,6 +28,13 @@ type RangeQueryResponse struct {
 	HasMore    bool
 }
 
+// KeysResponse represents the response from keys-only range/prefix queries
+type KeysResponse struct {
+	Keys       []string
+	NextCursor string
+	HasMore    bool
+}
+
 // TraverseOptions represents options for reference traversal
 type TraverseOptions struct {
 	IncludeFullData bool

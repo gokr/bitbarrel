@@ -699,6 +699,80 @@ func (c *Client) RangeCount(startKey, endKey string) (int, error) {
 	return count, nil
 }
 
+// RangeQueryKeys queries only keys in range [startKey, endKey)
+// Requires barrel opened in bmCritBit mode
+// Empty startKey/endKey queries entire barrel
+func (c *Client) RangeQueryKeys(startKey, endKey string, limit int, cursor string) ([]string, string, bool, error) {
+	if err := c.ensureBarrel(); err != nil {
+		return nil, "", false, err
+	}
+
+	params := RangeQueryRequest{
+		StartKey: startKey,
+		EndKey:   endKey,
+		Limit:    limit,
+		Cursor:   cursor,
+	}
+
+	encoded, err := EncodeRangeRequest(params)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	req := NewRequest(CmdRangeKeys, "", string(encoded))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, "", false, StatusToError(resp.Status, resp.Value)
+	}
+
+	keysResp, err := DecodeKeysResponse(resp.Value)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	return keysResp.Keys, keysResp.NextCursor, keysResp.HasMore, nil
+}
+
+// PrefixQueryKeys queries only keys with prefix
+// Requires barrel opened in bmCritBit mode
+func (c *Client) PrefixQueryKeys(prefix string, limit int, cursor string) ([]string, string, bool, error) {
+	if err := c.ensureBarrel(); err != nil {
+		return nil, "", false, err
+	}
+
+	params := PrefixQueryRequest{
+		Prefix: prefix,
+		Limit:  limit,
+		Cursor: cursor,
+	}
+
+	encoded, err := EncodePrefixRequest(params)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	req := NewRequest(CmdPrefixKeys, "", string(encoded))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, "", false, StatusToError(resp.Status, resp.Value)
+	}
+
+	keysResp, err := DecodeKeysResponse(resp.Value)
+	if err != nil {
+		return nil, "", false, err
+	}
+
+	return keysResp.Keys, keysResp.NextCursor, keysResp.HasMore, nil
+}
+
 // Traverse traverses references from a key using path specification
 func (c *Client) Traverse(key, pathSpec string, options TraverseOptions) ([]TraverseResult, error) {
 	if err := c.ensureBarrel(); err != nil {

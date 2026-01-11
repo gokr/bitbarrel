@@ -622,11 +622,12 @@ proc ping*(client: var BitBarrelClient): bool =
 
 # Range query operations (require bmCritBit mode barrel)
 
-proc rangeQuery*(client: var BitBarrelClient, startKey: string, endKey: string,
+proc rangeQuery*(client: var BitBarrelClient, startKey: string = "", endKey: string = "",
                  limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
   ## Query key-value pairs in range [startKey, endKey) with cursor-based pagination
   ##
   ## Requires barrel opened in bmCritBit mode.
+  ## Use empty strings for startKey/endKey to query entire barrel
   ## Returns: (items, nextCursor, hasMore)
   ##
   ## **Example:**
@@ -634,6 +635,9 @@ proc rangeQuery*(client: var BitBarrelClient, startKey: string, endKey: string,
   ## let (items, nextCursor, hasMore) = client.rangeQuery("user:0", "user:999", 100)
   ## if hasMore:
   ##   let (nextPage, _, _) = client.rangeQuery("user:0", "user:999", 100, nextCursor)
+  ##
+  ## # Query entire barrel with defaults
+  ## let (allItems, _, _) = client.rangeQuery()
   ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
@@ -689,14 +693,18 @@ proc prefixQuery*(client: var BitBarrelClient, prefix: string,
   let rangeResp = protocol.decodeRangeResponse(resp.value)
   result = (rangeResp.items, rangeResp.nextCursor, rangeResp.hasMore)
 
-proc rangeCount*(client: var BitBarrelClient, startKey: string, endKey: string): int =
+proc rangeCount*(client: var BitBarrelClient, startKey: string = "", endKey: string = ""): int =
   ## Count keys in range [startKey, endKey)
   ##
   ## Requires barrel opened in bmCritBit mode.
+  ## Use empty strings for startKey/endKey to count entire barrel
   ##
   ## **Example:**
   ## ```nim
   ## let count = client.rangeCount("user:0", "user:999")
+  ##
+  ## # Count all keys in barrel
+  ## let total = client.rangeCount()
   ## ```
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
@@ -718,6 +726,79 @@ proc rangeCount*(client: var BitBarrelClient, startKey: string, endKey: string):
     raise newException(ClientError, fmt"Range count failed: {resp.status}")
 
   result = parseInt(resp.value)
+
+# Keys-only range query operations (require bmCritBit mode barrel)
+
+proc rangeQueryKeys*(client: var BitBarrelClient, startKey: string = "", endKey: string = "",
+                     limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+  ## Query keys in range [startKey, endKey) with cursor-based pagination
+  ##
+  ## Requires barrel opened in bmCritBit mode.
+  ## Use empty strings for startKey/endKey to query entire barrel
+  ## Returns: (keys, nextCursor, hasMore)
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let (keys, nextCursor, hasMore) = client.rangeQueryKeys("user:0", "user:999", 100)
+  ## if hasMore:
+  ##   let (nextPage, _, _) = client.rangeQueryKeys("user:0", "user:999", 100, nextCursor)
+  ##
+  ## # Get all keys in barrel
+  ## let (allKeys, _, _) = client.rangeQueryKeys()
+  ## ```
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if not client.connected:
+    client.connect()
+
+  let params = protocol.RangeRequest(
+    startKey: startKey,
+    endKey: endKey,
+    limit: limit,
+    cursor: cursor
+  )
+
+  let req = Request(command: cmdRangeKeys, value: protocol.encodeRangeRequest(params))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Range keys query failed: {resp.status}")
+
+  let keysResp = protocol.decodeKeysResponse(resp.value)
+  result = (keysResp.keys, keysResp.nextCursor, keysResp.hasMore)
+
+proc prefixQueryKeys*(client: var BitBarrelClient, prefix: string,
+                      limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+  ## Query keys with prefix with cursor-based pagination
+  ##
+  ## Requires barrel opened in bmCritBit mode.
+  ## Returns: (keys, nextCursor, hasMore)
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let (keys, nextCursor, hasMore) = client.prefixQueryKeys("user:", 100)
+  ## ```
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if not client.connected:
+    client.connect()
+
+  let params = protocol.PrefixRequest(
+    prefix: prefix,
+    limit: limit,
+    cursor: cursor
+  )
+
+  let req = Request(command: cmdPrefixKeys, value: protocol.encodePrefixRequest(params))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Prefix keys query failed: {resp.status}")
+
+  let keysResp = protocol.decodeKeysResponse(resp.value)
+  result = (keysResp.keys, keysResp.nextCursor, keysResp.hasMore)
 
 # Reference traversal operations
 
@@ -947,3 +1028,125 @@ proc getHistory*(client: var BitBarrelClient, topic: string,
 proc getPresence*(client: var BitBarrelClient, topic: string): PresenceInfo =
   ## Get presence info for topic
   raise newException(ClientError, "getPresence() not yet implemented")
+
+# Lazy pagination iterator for Nim client
+
+type
+  RangeIterator*[T] = object
+    client*: ptr BitBarrelClient
+    queryType*: string
+    startKey*: string
+    endKey*: string
+    prefix*: string
+    pageSize*: int
+    buffer*: seq[T]
+    cursor*: string
+    exhausted*: bool
+
+proc fetchNextPage*[T](it: var RangeIterator[T]) =
+  ## Fetch next page into buffer
+  if it.exhausted:
+    return
+
+  if not it.client[].connected:
+    it.client[].connect()
+
+  try:
+    case it.queryType
+    of "range":
+      when T is string:
+        let (keys, nextCursor, hasMore) = it.client.rangeQueryKeys(
+          it.startKey, it.endKey, it.pageSize, it.cursor)
+        it.buffer = keys
+        it.cursor = nextCursor
+        it.exhausted = not hasMore
+      else:
+        let (items, nextCursor, hasMore) = it.client.rangeQuery(
+          it.startKey, it.endKey, it.pageSize, it.cursor)
+        it.buffer = cast[seq[T]](items)
+        it.cursor = nextCursor
+        it.exhausted = not hasMore
+    of "prefix":
+      when T is string:
+        let (keys, nextCursor, hasMore) = it.client.prefixQueryKeys(
+          it.prefix, it.pageSize, it.cursor)
+        it.buffer = keys
+        it.cursor = nextCursor
+        it.exhausted = not hasMore
+      else:
+        let (items, nextCursor, hasMore) = it.client.prefixQuery(
+          it.prefix, it.pageSize, it.cursor)
+        it.buffer = cast[seq[T]](items)
+        it.cursor = nextCursor
+        it.exhausted = not hasMore
+    else:
+      it.exhausted = true
+  except CatchableError:
+    it.exhausted = true
+
+iterator items*[T](it: var RangeIterator[T]): T =
+  ## Lazy iterator over range query results
+  defer: it.exhausted = true
+  while not it.exhausted:
+    if it.buffer.len == 0:
+      it.fetchNextPage()
+    if it.buffer.len == 0:
+      break
+    yield it.buffer[0]
+    it.buffer.delete(0)
+
+# Convenience procedures to create iterators
+
+proc newRangeIterator*(client: var BitBarrelClient, startKey: string, endKey: string,
+                       pageSize: int = 1000): RangeIterator[(string, string)] =
+  ## Create a new lazy range query iterator for key-value pairs
+  result = RangeIterator[(string, string)](
+    client: addr(client),
+    queryType: "range",
+    startKey: startKey,
+    endKey: endKey,
+    pageSize: pageSize,
+    buffer: @[],
+    cursor: "",
+    exhausted: false
+  )
+
+proc newKeysIterator*(client: var BitBarrelClient, startKey: string, endKey: string,
+                      pageSize: int = 1000): RangeIterator[string] =
+  ## Create a new lazy range query iterator for keys only
+  result = RangeIterator[string](
+    client: addr(client),
+    queryType: "range",
+    startKey: startKey,
+    endKey: endKey,
+    pageSize: pageSize,
+    buffer: @[],
+    cursor: "",
+    exhausted: false
+  )
+
+proc newPrefixIterator*(client: var BitBarrelClient, prefix: string,
+                        pageSize: int = 1000): RangeIterator[(string, string)] =
+  ## Create a new lazy prefix query iterator for key-value pairs
+  result = RangeIterator[(string, string)](
+    client: addr(client),
+    queryType: "prefix",
+    prefix: prefix,
+    pageSize: pageSize,
+    buffer: @[],
+    cursor: "",
+    exhausted: false
+  )
+
+proc newKeysPrefixIterator*(client: var BitBarrelClient, prefix: string,
+                            pageSize: int = 1000): RangeIterator[string] =
+  ## Create a new lazy prefix query iterator for keys only
+  result = RangeIterator[string](
+    client: addr(client),
+    queryType: "prefix",
+    prefix: prefix,
+    pageSize: pageSize,
+    buffer: @[],
+    cursor: "",
+    exhausted: false
+  )

@@ -16,6 +16,30 @@ class KeyValue {
   int get hashCode => Object.hash(key, value);
 }
 
+/// Result of a keys-only range or prefix query with pagination support
+class KeysResponse {
+  /// Keys in this page
+  final List<String> keys;
+
+  /// Cursor for fetching the next page (empty if no more pages)
+  final String nextCursor;
+
+  /// Whether more items are available
+  final bool hasMore;
+
+  const KeysResponse({
+    required this.keys,
+    required this.nextCursor,
+    required this.hasMore,
+  });
+
+  /// Creates an empty response (no keys)
+  const KeysResponse.empty()
+      : keys = const [],
+        nextCursor = '',
+        hasMore = false;
+}
+
 /// Result of a range or prefix query with pagination support
 class RangeQueryResponse {
   /// Key-value pairs in this page

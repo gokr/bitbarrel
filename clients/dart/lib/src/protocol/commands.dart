@@ -17,6 +17,8 @@ class Command {
   static const int rangeQuery = 0x21;
   static const int prefixQuery = 0x22;
   static const int rangeCount = 0x23;
+  static const int rangeKeys = 0x24;
+  static const int prefixKeys = 0x25;
 
   // Barrel operations
   static const int createBarrel = 0x10;
@@ -42,6 +44,8 @@ class Command {
     rangeQuery,
     prefixQuery,
     rangeCount,
+    rangeKeys,
+    prefixKeys,
     createBarrel,
     openBarrel,
     useBarrel,

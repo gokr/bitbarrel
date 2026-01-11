@@ -63,6 +63,8 @@ export const enum Command {
   RangeQuery = 0x21,
   PrefixQuery = 0x22,
   RangeCount = 0x23,
+  RangeKeys = 0x24,
+  PrefixKeys = 0x25,
 }
 
 // Response status codes
@@ -112,6 +114,13 @@ export interface PrefixRequest {
 
 export interface RangeResponse {
   items: Array<[string, string]>;
+  nextCursor: string;
+  hasMore: boolean;
+}
+
+// Keys-only response type
+export interface KeysResponse {
+  keys: string[];
   nextCursor: string;
   hasMore: boolean;
 }
