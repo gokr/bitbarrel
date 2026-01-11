@@ -23,6 +23,8 @@ type
     pending*: Table[uint32, Response]
     lock: Lock
     token*: string             ## JWT authentication token (if any, default: "")
+    subscriptions*: Table[string, bool]  ## Track active subscriptions
+    onMessage*: proc(event: PubSubEvent) {.closure, gcsafe.}  ## Pub/sub message handler
 
   ClientConfig* = object
     ## Configuration for BitBarrel client connections
@@ -82,7 +84,8 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
     seqCounter: 0,
     currentBarrel: "",
     pending: initTable[uint32, Response](),
-    token: config.token
+    token: config.token,
+    subscriptions: initTable[string, bool]()
   )
   initLock(result.lock)
 
@@ -176,9 +179,42 @@ proc close*(client: var BitBarrelClient) {.raises: [].} =
     client.connected = false
     client.currentBarrel = ""
 
+proc receiveMessages*(client: var BitBarrelClient, timeoutMs: int = 100) =
+  ## Receive and process pending pub/sub messages
+  ##
+  ## This is called automatically by sendAndWait, but can also be
+  ## called manually to process pub/sub events while idle.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## # Wait for messages to arrive
+  ## sleep(100)
+  ## client.receiveMessages(500)  # Process any pending events
+  ## ```
+  if not client.connected:
+    return
+
+  try:
+    let msg = client.ws.receiveMessage(timeout = timeoutMs)
+    if msg.isSome() and msg.get().kind == BinaryMessage:
+      let data = msg.get().data
+
+      # Check if this is a pub/sub event (command 0xFF)
+      if isPubSubEvent(data):
+        try:
+          let event = decodePubSubEvent(data)
+          if client.onMessage != nil:
+            client.onMessage(event)
+        except CatchableError as e:
+          echo "Error handling pub/sub event: ", e.msg
+  except CatchableError:
+    # Timeout or other error - ignore
+    discard
+
 proc sendAndWait*(client: var BitBarrelClient, req: Request): Response =
   ## Send request and wait for response
   ##
+  ## Also processes pub/sub events while waiting.
   ## Thread-safe: uses lock to prevent concurrent access.
   ## Raises ClientError on timeout or communication error.
   withLock client.lock:
@@ -197,7 +233,25 @@ proc sendAndWait*(client: var BitBarrelClient, req: Request): Response =
       while attempts < maxAttempts:
         let msg = client.ws.receiveMessage(timeout = 100)
         if msg.isSome() and msg.get().kind == BinaryMessage:
-          let resp = decodeResponse(msg.get().data)
+          let data = msg.get().data
+
+          # Check if this is a pub/sub event (command 0xFF)
+          if isPubSubEvent(data):
+            # Decode and handle pub/sub event
+            try:
+              let event = decodePubSubEvent(data)
+              # Call onMessage callback if set
+              if client.onMessage != nil:
+                client.onMessage(event)
+            except CatchableError as e:
+              # Log error but continue waiting for response
+              echo "Error handling pub/sub event: ", e.msg
+            # Continue waiting for our response
+            inc attempts
+            continue
+
+          # Regular response
+          let resp = decodeResponse(data)
           if resp.seq == mutableReq.seq:
             return resp
 
@@ -729,3 +783,167 @@ proc traversePath*(client: var BitBarrelClient, key: string,
     firstOnly: false
   )
   result = client.traverse(key, pathSpec, options)
+
+## ============================================================================
+## Pub/Sub Methods (Stubs - to be implemented)
+## ============================================================================
+
+proc subscribe*(client: var BitBarrelClient, topic: string,
+                options: SubscriptionOptions): string =
+  ## Subscribe to topic with options (supports pattern matching with *)
+  ## Returns subscription ID
+  ##
+  ## **Example:**
+  ## ```nim
+  ## # Subscribe to exact topic
+  ## let sub1 = client.subscribe("user/login")
+  ##
+  ## # Subscribe with pattern
+  ## let sub2 = client.subscribe("user/*")
+  ##
+  ## # Subscribe with options
+  ## var opts = SubscriptionOptions(enablePresence: true)
+  ## let sub3 = client.subscribe("chat/room1", opts)
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  # Determine if this is a pattern subscription (contains *)
+  let isPattern = "*" in topic
+  let actualTopic = if isPattern: "" else: topic
+  let actualPattern = if isPattern: topic else: ""
+
+  # Encode subscribe request
+  let subscribeData = encodeSubscribeRequest(actualTopic, actualPattern, options)
+
+  # Send request
+  let req = Request(command: cmdSubscribe, value: subscribeData)
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Subscribe failed: {resp.status}")
+
+  # Response value is the subscription ID
+  let subId = decodeSubscribeResponse(resp.value)
+
+  # Track subscription
+  withLock client.lock:
+    client.subscriptions[subId] = true
+
+  return subId
+
+proc subscribe*(client: var BitBarrelClient, topic: string): string =
+  ## Subscribe to exact topic with default options
+  ## Returns subscription ID
+  let defaultOptions = SubscriptionOptions(
+    enableKvEvents: false,
+    enablePresence: false,
+    replayHistory: false
+  )
+  return client.subscribe(topic, defaultOptions)
+
+proc isSubscribed*(client: var BitBarrelClient, subId: string): bool =
+  ## Check if subscription is active
+  withLock client.lock:
+    return subId in client.subscriptions and client.subscriptions[subId]
+
+proc unsubscribe*(client: var BitBarrelClient, subId: string): bool =
+  ## Unsubscribe from subscription
+  ## Returns true if subscription existed
+  if not client.connected:
+    return false
+
+  # Check if subscription exists
+  var exists = false
+  withLock client.lock:
+    exists = subId in client.subscriptions
+
+  if not exists:
+    return false
+
+  # Send unsubscribe request (subId in value field)
+  let req = Request(command: cmdUnsubscribe, value: subId)
+  let resp = client.sendAndWait(req)
+
+  if resp.status == statusOk:
+    withLock client.lock:
+      client.subscriptions.del(subId)
+    return true
+  else:
+    return false
+
+proc unsubscribeAll*(client: var BitBarrelClient): int =
+  ## Unsubscribe from all subscriptions
+  ## Returns number of subscriptions removed
+  var subIds: seq[string]
+
+  withLock client.lock:
+    for subId in client.subscriptions.keys:
+      subIds.add(subId)
+
+  result = 0
+  for subId in subIds:
+    if client.unsubscribe(subId):
+      inc result
+
+proc publish*(client: var BitBarrelClient, topic: string,
+              messageType: PubSubMessageType, payload: string,
+              headers: string): uint64 =
+  ## Publish message with type and headers to topic
+  ## Returns sequence number
+  ##
+  ## **Example:**
+  ## ```nim
+  ## # Publish simple message
+  ## let seq1 = client.publish("events/user", "user logged in")
+  ##
+  ## # Publish with message type
+  ## let seq2 = client.publish("events/system", mtData, "system started")
+  ##
+  ## # Publish with headers
+  ## let headers = """{"userId": "123", "source": "web"}"""
+  ## let seq3 = client.publish("events/action", mtData, "button clicked", headers)
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  # Encode publish request
+  let publishData = encodePublishRequest(topic, messageType, payload, headers)
+
+  # Send request
+  let req = Request(command: cmdPublish, value: publishData)
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Publish failed: {resp.status}")
+
+  # Response value contains the sequence number as uint64
+  return decodePublishResponse(resp.value)
+
+proc publish*(client: var BitBarrelClient, topic: string,
+              messageType: PubSubMessageType, payload: string): uint64 =
+  ## Publish message with type to topic
+  ## Returns sequence number
+  return client.publish(topic, messageType, payload, "")
+
+proc publish*(client: var BitBarrelClient, topic: string, payload: string): uint64 =
+  ## Publish data message to topic
+  ## Returns sequence number
+  return client.publish(topic, mtData, payload, "")
+
+proc listSubscribers*(client: var BitBarrelClient, topic: string): seq[SubscriptionInfo] =
+  ## List subscribers for a topic
+  raise newException(ClientError, "listSubscribers() not yet implemented")
+
+proc listTopics*(client: var BitBarrelClient): seq[string] =
+  ## List all topics
+  raise newException(ClientError, "listTopics() not yet implemented")
+
+proc getHistory*(client: var BitBarrelClient, topic: string,
+                 limit: int = 100, sinceSeq: uint64 = 0): seq[PubSubEvent] =
+  ## Get message history for topic
+  raise newException(ClientError, "getHistory() not yet implemented")
+
+proc getPresence*(client: var BitBarrelClient, topic: string): PresenceInfo =
+  ## Get presence info for topic
+  raise newException(ClientError, "getPresence() not yet implemented")
