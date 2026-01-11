@@ -17,7 +17,6 @@ suite "RangeKeyDir Tests":
     var rkd = newRangeKeyDir()
 
     let entry = RangeKeyDirEntry(
-      key: "test_key",
       recordPos: 100,
       fileId: 1,
       valueSize: 50,
@@ -41,7 +40,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<10:
       let keyStr = fmt"key_{i:03d}"
       let entry = RangeKeyDirEntry(
-        key: keyStr,
         recordPos: (i * 100).uint64,
         fileId: i.uint32,
         valueSize: 50,
@@ -78,7 +76,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<100:
       let keyStr = fmt"key_{i:03d}"
       let entry = RangeKeyDirEntry(
-        key: keyStr,
         recordPos: (i * 100).uint64,
         fileId: i.uint32,
         valueSize: 50,
@@ -107,7 +104,6 @@ suite "RangeKeyDir Tests":
     let keys = @["zebra", "apple", "mango", "banana", "orange", "kiwi"]
     for i, key in keys:
       let entry = RangeKeyDirEntry(
-        key: key,
         recordPos: (i * 100).uint64,
         fileId: i.uint32,
         valueSize: 50,
@@ -139,7 +135,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<5:
       let keyStr = fmt"key_{i}"
       let entry = RangeKeyDirEntry(
-        key: keyStr,
         recordPos: (i * 100).uint64,
         fileId: i.uint32,
         valueSize: 50,
@@ -156,7 +151,6 @@ suite "RangeKeyDir Tests":
     for i in 5..<10:
       let keyStr = fmt"key_{i}"
       let entry = RangeKeyDirEntry(
-        key: keyStr,
         recordPos: (i * 100).uint64,
         fileId: i.uint32,
         valueSize: 50,
@@ -169,7 +163,6 @@ suite "RangeKeyDir Tests":
 
     # Update an existing key
     let updatedEntry = RangeKeyDirEntry(
-      key: "key_2",
       recordPos: 9999,
       fileId: 999,
       valueSize: 50,
@@ -196,7 +189,6 @@ suite "RangeKeyDir Tests":
     var rkd = newRangeKeyDir()
 
     let entry = RangeKeyDirEntry(
-      key: "to_delete",
       recordPos: 100,
       fileId: 1,
       valueSize: 50,
@@ -220,15 +212,15 @@ suite "RangeKeyDir Tests":
   test "MinKey and MaxKey tracking":
     var rkd = newRangeKeyDir()
 
-    rkd.insert("middle", RangeKeyDirEntry(key: "middle", recordPos: 0, fileId: 1, valueSize: 10, recordSize: 0, keyLen: 6))
+    rkd.insert("middle", RangeKeyDirEntry(recordPos: 0, fileId: 1, valueSize: 10, recordSize: 0, keyLen: 6))
     check rkd.minKey == "middle"
     check rkd.maxKey == "middle"
 
-    rkd.insert("alpha", RangeKeyDirEntry(key: "alpha", recordPos: 0, fileId: 2, valueSize: 10, recordSize: 0, keyLen: 5))
+    rkd.insert("alpha", RangeKeyDirEntry(recordPos: 0, fileId: 2, valueSize: 10, recordSize: 0, keyLen: 5))
     check rkd.minKey == "alpha"
     check rkd.maxKey == "middle"
 
-    rkd.insert("zebra", RangeKeyDirEntry(key: "zebra", recordPos: 0, fileId: 3, valueSize: 10, recordSize: 0, keyLen: 5))
+    rkd.insert("zebra", RangeKeyDirEntry(recordPos: 0, fileId: 3, valueSize: 10, recordSize: 0, keyLen: 5))
     check rkd.minKey == "alpha"
     check rkd.maxKey == "zebra"
 
@@ -238,7 +230,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<5:
       let keyStr = fmt"key_{i}"
       let entry = RangeKeyDirEntry(
-        key: keyStr,
         recordPos: 0,
         fileId: i.uint32,
         valueSize: 10,
@@ -262,7 +253,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<numEntries:
       let keyStr = fmt"key_{i:06d}"
       let entry = RangeKeyDirEntry(
-        key: keyStr,
         recordPos: (i * 100).uint64,
         fileId: (i mod 100).uint32,
         valueSize: 50,
@@ -290,7 +280,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<10:
       let keyStr = fmt"testkey_{i:03d}"
       rkd.insert(keyStr, RangeKeyDirEntry(
-        key: keyStr,
         recordPos: (i * 100).uint64,
         fileId: i.uint32,
         valueSize: 50,
@@ -320,7 +309,6 @@ suite "RangeKeyDir Tests":
     for i in 0..<4:
       let keyStr = fmt"key_{i}"
       rkd.insert(keyStr, RangeKeyDirEntry(
-        key: keyStr,
         recordPos: 0,
         fileId: i.uint32,
         valueSize: 10,
@@ -332,7 +320,6 @@ suite "RangeKeyDir Tests":
     check rkd.pendingCount == 4
 
     rkd.insert("key_4", RangeKeyDirEntry(
-      key: "key_4",
       recordPos: 0,
       fileId: 4,
       valueSize: 10,
