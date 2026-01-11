@@ -35,6 +35,8 @@ type
     cmdRangeQuery = 0x21
     cmdPrefixQuery = 0x22
     cmdRangeCount = 0x23
+    cmdRangeKeys = 0x24  ## Keys-only range query (bmCritBit only)
+    cmdPrefixKeys = 0x25 ## Keys-only prefix query (bmCritBit only)
     ## Pub/Sub commands (0x40-0x4F)
     cmdSubscribe = 0x40
     cmdUnsubscribe = 0x41

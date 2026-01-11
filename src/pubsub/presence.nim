@@ -5,7 +5,8 @@
 ## - Join/leave event broadcasting
 ## - Heartbeat tracking and cleanup of stale clients
 
-import std/[tables, locks, sets, times, strformat]
+import std/[tables, locks, sets, times, strformat, os, json, sequtils]
+import std/options
 import ./pubsub
 import ./eventbroker
 
@@ -29,7 +30,7 @@ type
     eventBroker*: EventBroker
 
     ## Cleanup thread
-    cleanupThread*: Thread[PresenceCleanupArgs]
+    cleanupThread*: ref Thread[PresenceCleanupArgs]
     threadRunning*: bool
     threadLock*: Lock
 
@@ -46,7 +47,7 @@ proc cleanupWorker(args: PresenceCleanupArgs) {.thread.} =
   echo "[Presence] Cleanup worker started"
 
   while running[]:
-    times.sleep(manager.checkIntervalMs)
+    os.sleep(manager.checkIntervalMs)
 
     # Remove stale clients
     let stale = manager.heartbeatTracker.removeStaleClients()
@@ -88,7 +89,6 @@ proc newPresenceManager*(eventBroker: EventBroker = nil,
 
     eventBroker: eventBroker,
 
-    cleanupThread: nil,
     threadRunning: false,
     threadLock: Lock(),
 
@@ -112,7 +112,7 @@ proc startCleanupThread*(manager: PresenceManager) =
     manager.threadRunning = true
 
     try:
-      createThread(manager.cleanupThread, cleanupWorker, args)
+      createThread(manager.cleanupThread[], cleanupWorker, args)
     except ResourceExhaustedError as e:
       echo fmt"[Presence] Failed to start cleanup thread: {e.msg}"
       manager.threadRunning = false
@@ -126,8 +126,7 @@ proc stopCleanupThread*(manager: PresenceManager) =
 
   # Wait for thread to finish
   if manager.cleanupThread != nil:
-    joinThread(manager.cleanupThread)
-    manager.cleanupThread = nil
+    joinThread(manager.cleanupThread[])
 
 proc joinTopic*(manager: PresenceManager, topic: string,
                 clientId: uint64, username: string,
@@ -241,7 +240,7 @@ proc updateMetadata*(manager: PresenceManager, topic: string,
       let idStr = $clientId
       if idStr in info.members:
         info.members[idStr].metadata = metadata
-        info.lastUpdate = toUnix(getTime())* 1000
+        info.lastUpdate = toUnix(getTime()) * 1000
 
         # Broadcast update event
         if manager.eventBroker != nil:
@@ -302,9 +301,9 @@ proc getPresenceStats*(manager: PresenceManager): tuple[
 
   var totalMembers = 0
   var uniqueClients = initHashSet[uint64]()
-
+  var topicCount = 0
   withLock manager.presenceLock:
-    let topicCount = manager.presence.len
+    topicCount = manager.presence.len
 
     for _, info in manager.presence:
       totalMembers += info.members.len
@@ -323,8 +322,8 @@ proc cleanup*(manager: PresenceManager) =
   manager.stopCleanupThread()
 
   withLock manager.presenceLock:
-    manager.presence.setLen(0)
+    manager.presence.clear()
 
   # Clear heartbeat tracker
-  withLock manager.heartbeatTracker.clientLastSeen:
-    manager.heartbeatTracker.clientLastSeen.setLen(0)
+  #withLock manager.heartbeatTracker.clientLastSeen:
+  #  manager.heartbeatTracker.clientLastSeen.clear()

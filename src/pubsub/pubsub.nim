@@ -321,4 +321,4 @@ proc toJson*(presence: PresenceInfo): JsonNode =
   for _, member in presence.members:
     membersArray.add(toJson(member))
   result["members"] = membersArray
-  result["memberCount"] = %presence.member_count
+  result["memberCount"] = %presence.memberCount()

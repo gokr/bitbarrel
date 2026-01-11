@@ -17,6 +17,7 @@ import ../pubsub/manager
 import ../pubsub/eventbroker
 import ../pubsub/presence
 import ../pubsub/barrel_hooks
+import ../pubsub/history
 
 # Import protocol module
 import protocol
@@ -282,7 +283,7 @@ proc serveWebadminRoot*(server: BitBarrelServer, request: mummy.Request) =
 
 proc handleWebSocketMessage*(
   server: BitBarrelServer,
-  ws: WebSocket,
+  ws: mummy.WebSocket,
   data: string
 ) =
   ## Process a binary WebSocket message from client
@@ -531,6 +532,10 @@ proc handleWebSocketMessage*(
 
           of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount:
             # These commands are handled at the outer level
+            discard
+
+          of cmdSubscribe, cmdUnsubscribe, cmdPublish, cmdListSubscribers, cmdHistory, cmdListTopics, cmdPresence:
+            # Pub/sub commands are handled at the outer level
             discard
 
           of cmdTraverse:
@@ -801,7 +806,8 @@ proc handleWebSocketMessage*(
                       else:
                         nil
 
-        let seqNo = server.pubSubManager.publish(pubReq.topic, pubReq.messageType,
+        let seqNo = server.pubSubManager.publish(pubReq.topic,
+                                                     pubsub.PubSubMessageType(pubReq.messageType),
                                                      pubReq.payload, headers)
 
         resp.status = statusOk
@@ -952,9 +958,9 @@ proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
 
 proc websocketHandler*(
   server: BitBarrelServer,
-  ws: WebSocket,
+  ws: mummy.WebSocket,
   event: WebSocketEvent,
-  message: Message
+  message: mummy.Message
 ) =
   ## Handle WebSocket events
   {.gcsafe.}:
@@ -965,8 +971,8 @@ proc websocketHandler*(
 
       # Register WebSocket with event broker for pub/sub
       if server.pubSubEnabled and server.eventBroker != nil:
-        # Create a WebSocket reference for the event broker
-        let wsRef = WebSocket(
+        # Create a PubSubWebSocket wrapper for the event broker
+        let wsRef = eventbroker.PubSubWebSocket(
           clientId: ws.clientId,
           send: proc(data: string, binary: bool = false) {.gcsafe.} =
             ws.send(data, if binary: BinaryMessage else: TextMessage),
@@ -1414,9 +1420,9 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
     # Create pub/sub manager with message callback
     type ServerRef = ptr BitBarrelServerObj
 
-    proc buildMessageCallback(srv: ServerRef): MessageCallback proc {.gcsafe.} =
+    proc buildMessageCallback(srv: ServerRef): MessageCallback =
       proc clientMsgCallback(clientId: uint64, topic: string,
-                              messageType: PubSubMessageType,
+                              messageType: pubsub.PubSubMessageType,
                               payload: string, headers: string) {.gcsafe.} =
         # Find the WebSocket connection for this client
         withLock srv.sessionsLock:
@@ -1426,9 +1432,9 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
           # Build event message
           let event = PubSubEvent(
             topic: topic,
-            messageType: messageType,
+            messageType: protocol.PubSubMessageType(messageType),
             sequence: 0,
-            timestamp: epochTime().milli,
+            timestamp: int64(epochTime() * 1000),
             headers: headers,
             payload: payload
           )
@@ -1447,17 +1453,21 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
     # Create event broker
     result.eventBroker = newEventBroker(result.pubSubManager)
 
+    # Capture references for closures (cannot capture 'result' directly)
+    let managerRef = result.pubSubManager
+    let brokerRef = result.eventBroker
+
     # Now set the message callback on the manager that uses the broker
     proc brokerMessageCallback(clientId: uint64, topic: string,
-                                messageType: PubSubMessageType,
+                                messageType: pubsub.PubSubMessageType,
                                 payload: string, headers: string) {.gcsafe.} =
       {.gcsafe.}:
         # Build event message
         let event = PubSubEvent(
           topic: topic,
-          messageType: messageType,
+          messageType: protocol.PubSubMessageType(messageType),
           sequence: 0,
-          timestamp: epochTime().milli,
+          timestamp: int64(epochTime() * 1000),
           headers: headers,
           payload: payload
         )
@@ -1465,7 +1475,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
         # Encode and send through event broker
         # We'll send directly via ws here - need to track WebSocket connection
         # For now, use the eventBroker.sendToClient which handles this
-        result.eventBroker.sendToClient(clientId, topic, messageType, payload, headers)
+        brokerRef.sendToClient(clientId, topic, messageType, payload, headers)
 
     result.pubSubManager.messageCallback = brokerMessageCallback
 
@@ -1482,13 +1492,9 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
       barrelPath = config.dataDir / "pubsub_history.data"
     )
 
-    # Capture references for closures (cannot capture 'result' directly)
-    let managerRef = result.pubSubManager
-    let brokerRef = result.eventBroker
-
     # Register barrel hook for k/v change events
     managerRef.setKvChangeCallback(proc(barrelName: string, key: string,
-                                        changeType: KvChangeType,
+                                        changeType: pubsub.KvChangeType,
                                         value: string) {.gcsafe.} =
       # Publish k/v change event via event broker
       {.gcsafe.}:
@@ -1514,7 +1520,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
 
     managerRef.kvHookId = registerBarrelHook(
       proc(barrelName: string, key: string,
-           changeType: KvChangeType, value: string) {.gcsafe.} =
+           changeType: pubsub.KvChangeType, value: string) {.gcsafe.} =
         # Forward to the manager's callback
         if managerRef.kvChangeCallback != nil:
           managerRef.kvChangeCallback(barrelName, key, changeType, value)
@@ -1556,7 +1562,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
 
   result.mummyServer = newServer(
     router.toHandler(),
-    websocketHandler = proc(ws: WebSocket, event: WebSocketEvent, msg: Message) {.gcsafe.} =
+    websocketHandler = proc(ws: mummy.WebSocket, event: WebSocketEvent, msg: mummy.Message) {.gcsafe.} =
       websocketHandler(serverRef, ws, event, msg),
     maxMessageLen = 33 * 1024 * 1024  # 33MB to match protocol MaxValueSize with overhead
   )

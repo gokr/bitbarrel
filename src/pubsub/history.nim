@@ -6,7 +6,7 @@
 ## - Per-topic history configuration
 ## - Message retention and cleanup
 
-import std/[tables, locks, sequtils, times, strformat]
+import std/[tables, locks, sequtils]
 import ./pubsub
 
 type

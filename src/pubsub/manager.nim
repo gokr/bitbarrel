@@ -132,7 +132,7 @@ proc subscribe*(manager: PubSubManager, clientId: uint64,
   ## Raises: ValueError if limits exceeded
 
   let subId = manager.generateSubscriptionId()
-  let timestamp = toUnix(getTime())* 1000
+  let timestamp = toUnix(getTime()) * 1000
 
   withLock manager.subsLock:
     # Check subscription limit per client

@@ -1,16 +1,16 @@
-## Event Broker - Message routing to WebSocket clients
+## Event Broker - Message routing to PubSubWebSocket clients
 ##
 ## The EventBroker receives published messages and routes them to
-## connected WebSocket clients based on their subscriptions.
+## connected PubSubWebSocket clients based on their subscriptions.
 
 import std/[tables, strformat, json, locks, times]
 import ./pubsub
 import ./manager
 
 type
-  ## WebSocket interface for sending messages
-  WebSocket* = ref WebSocketObj
-  WebSocketObj = object
+  ## PubSub PubSubWebSocket interface for sending messages
+  PubSubWebSocket* = ref PubSubWebSocketObj
+  PubSubWebSocketObj = object
     clientId*: uint64
     send*: proc(data: string, binary: bool = false) {.gcsafe.}
     close*: proc() {.gcsafe.}
@@ -21,8 +21,8 @@ type
     ## Reference to pub/sub manager
     pubSubManager*: PubSubManager
 
-    ## WebSocket clients (clientId -> WebSocket)
-    clients*: Table[uint64, WebSocket]
+    ## PubSubWebSocket clients (clientId -> PubSubWebSocket)
+    clients*: Table[uint64, PubSubWebSocket]
 
     ## Clients lock
     clientsLock*: Lock
@@ -32,19 +32,19 @@ proc newEventBroker*(pubSubManager: PubSubManager): EventBroker =
 
   result = EventBroker(
     pubSubManager: pubSubManager,
-    clients: initTable[uint64, WebSocket](),
+    clients: initTable[uint64, PubSubWebSocket](),
     clientsLock: Lock()
   )
   initLock(result.clientsLock)
 
-proc addClient*(broker: EventBroker, ws: WebSocket) =
-  ## Add a WebSocket client to the broker
+proc addClient*(broker: EventBroker, ws: PubSubWebSocket) =
+  ## Add a PubSubWebSocket client to the broker
 
   withLock broker.clientsLock:
     broker.clients[ws.clientId] = ws
 
 proc removeClient*(broker: EventBroker, clientId: uint64) =
-  ## Remove a WebSocket client from the broker
+  ## Remove a PubSubWebSocket client from the broker
 
   withLock broker.clientsLock:
     if clientId in broker.clients:
@@ -53,7 +53,7 @@ proc removeClient*(broker: EventBroker, clientId: uint64) =
 proc encodeEventMessage*(topic: string, messageType: PubSubMessageType,
                         sequence: uint64, timestamp: int64,
                         headers: string, payload: string): string =
-  ## Encode a pub/sub event message for WebSocket transmission
+  ## Encode a pub/sub event message for PubSubWebSocket transmission
   ##
   ## Format: `[cmd:1][seq:4][topicLen:2][topic:N][msgType:1][seq:8][ts:8][headersLen:4][headers:M][payloadLen:4][payload:P]`
   ## Note: Uses command byte 0xFF for pub/sub events
@@ -117,7 +117,7 @@ proc encodeEventMessage*(topic: string, messageType: PubSubMessageType,
 proc sendToClient*(broker: EventBroker, clientId: uint64,
                   topic: string, messageType: PubSubMessageType,
                   payload: string, headers: string) =
-  ## Send a message to a specific WebSocket client
+  ## Send a message to a specific PubSubWebSocket client
 
   withLock broker.clientsLock:
     if clientId notin broker.clients:
@@ -132,7 +132,7 @@ proc sendToClient*(broker: EventBroker, clientId: uint64,
                    else:
                      0'u64
 
-    let timestamp = toUnix(getTime())* 1000
+    let timestamp = toUnix(getTime()) * 1000
 
     let encoded = encodeEventMessage(topic, messageType, sequence,
                                      timestamp, headers, payload)
