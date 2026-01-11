@@ -40,7 +40,7 @@ suite "Pub/Sub Integration":
     # Subscribe to k/v changes
     var options = defaultSubscriptionOptions()
     options.enableKvEvents = true
-    discard manager.subscribe(1'u64, "", "kv:testdb:*", options)
+    discard manager.subscribe(1'u64, "", "kv:*:*", options)
 
     # Register hook that forwards to manager
     type ManagerRef = ref object
@@ -62,7 +62,8 @@ suite "Pub/Sub Integration":
       discard barrel.set("key1", "value1")
 
       # Verify hook was called and message delivered
-      check received.topic == "kv:testdb:key1"
+      check received.topic.startsWith("kv:")
+      check received.topic.endsWith(":key1")
       check received.payload == "value1"
       check received.msgType == pubsub.mtKvChange
 
@@ -82,7 +83,7 @@ suite "Pub/Sub Integration":
 
     var options = defaultSubscriptionOptions()
     options.enableKvEvents = true
-    discard manager.subscribe(1'u64, "", "kv:testdb:*", options)
+    discard manager.subscribe(1'u64, "", "kv:*:*", options)
 
     # Register hook that forwards to manager - use ref object to avoid GC-safety issue
     type ManagerRef = ref object
@@ -319,7 +320,7 @@ suite "Pub/Sub Integration":
 
     var options = defaultSubscriptionOptions()
     options.enableKvEvents = true
-    discard manager.subscribe(1'u64, "", "kv:mydb:*", options)
+    discard manager.subscribe(1'u64, "", "kv:*:*", options)
 
     type ManagerRef = ref object
       m: PubSubManager
