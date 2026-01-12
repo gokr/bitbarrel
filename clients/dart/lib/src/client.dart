@@ -521,4 +521,145 @@ class BitBarrelClient {
 
     return response.results;
   }
+
+  // ============ Pub/Sub Operations ============
+
+  /// Subscribe to topic with options (supports pattern matching with *)
+  /// Returns the subscription ID
+  Future<String> subscribe(
+    String topic, {
+    SubscriptionOptions? options,
+  }) async {
+    final opts = options ?? SubscriptionOptions.defaults;
+
+    // Determine if this is a pattern subscription
+    final isPattern = topic.contains('*');
+    final actualTopic = isPattern ? '' : topic;
+    final actualPattern = isPattern ? topic : '';
+
+    // Encode subscribe request
+    final subscribeData = ProtocolEncoder.encodeSubscribeRequest(
+      topic: actualTopic,
+      pattern: actualPattern,
+      options: opts.encode(),
+    );
+
+    final value = await _sendRequest(
+      command: Command.subscribe,
+      key: '',
+      binaryValue: subscribeData,
+    );
+
+    // Response value is the subscription ID
+    final subId = ProtocolDecoder.decodeSubscribeResponse(value);
+
+    // Track subscription (need to add subscription tracking to the client)
+    // For now, just return the subId
+
+    return subId;
+  }
+
+  /// Subscribe to exact topic with default options
+  Future<String> subscribeSimple(String topic) async {
+    return subscribe(topic);
+  }
+
+  /// Check if subscription is active
+  /// Note: This requires maintaining subscription tracking
+  /// Currently returns false as subscription tracking is not implemented
+  bool isSubscribed(String subId) {
+    // TODO: Implement subscription tracking
+    return false;
+  }
+
+  /// Unsubscribe from subscription
+  /// Returns true if subscription existed and was removed
+  Future<bool> unsubscribe(String subId) async {
+    // TODO: Implement subscription tracking
+    await _sendRequest(
+      command: Command.unsubscribe,
+      key: subId,
+      value: '',
+    );
+    return false;
+  }
+
+  /// Unsubscribe from all active subscriptions
+  /// Returns the number of subscriptions removed
+  Future<int> unsubscribeAll() async {
+    // TODO: Implement subscription tracking
+    return 0;
+  }
+
+  /// Publish message with type and headers to topic
+  /// Returns the sequence number
+  Future<int> publish(
+    String topic, {
+    required int messageType,
+    required String payload,
+    String headers = '',
+  }) async {
+    // Encode publish request
+    final publishData = ProtocolEncoder.encodePublishRequest(
+      topic: topic,
+      msgType: messageType,
+      payload: payload,
+      headers: headers,
+    );
+
+    final value = await _sendRequest(
+      command: Command.publish,
+      key: '',
+      binaryValue: publishData,
+    );
+
+    return ProtocolDecoder.decodePublishResponse(value);
+  }
+
+  /// Publish data message to topic
+  Future<int> publishData(String topic, String payload) async {
+    return publish(
+      topic,
+      messageType: PubSubMessageType.data,
+      payload: payload,
+      headers: '',
+    );
+  }
+
+  /// Publish presence message to topic
+  Future<int> publishPresence(String topic, String payload) async {
+    return publish(
+      topic,
+      messageType: PubSubMessageType.presence,
+      payload: payload,
+      headers: '',
+    );
+  }
+
+  /// List subscribers for a topic
+  /// Not yet implemented
+  Future<List<SubscriptionInfo>> listSubscribers(String topic) async {
+    throw UnimplementedError('listSubscribers() not yet implemented');
+  }
+
+  /// List all topics
+  /// Not yet implemented
+  Future<List<String>> listTopics() async {
+    throw UnimplementedError('listTopics() not yet implemented');
+  }
+
+  /// Get message history for topic
+  /// Not yet implemented
+  Future<List<PubSubEvent>> getHistory(
+    String topic, {
+    HistoryRequest? request,
+  }) async {
+    throw UnimplementedError('getHistory() not yet implemented');
+  }
+
+  /// Get presence info for topic
+  /// Not yet implemented
+  Future<PresenceInfo> getPresence(String topic) async {
+    throw UnimplementedError('getPresence() not yet implemented');
+  }
 }

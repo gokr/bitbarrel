@@ -198,4 +198,88 @@ class ProtocolEncoder {
 
     return buffer.buffer.asUint8List();
   }
+
+  // ============================================================================
+  // Pub/Sub Encoding
+  // ============================================================================
+
+  /// Encode subscribe request
+  /// Format: [topicLen:2][topic][patternLen:2][pattern][options:1]
+  static Uint8List encodeSubscribeRequest({
+    required String topic,
+    required String pattern,
+    required int options,
+  }) {
+    final topicBytes = utf8.encode(topic);
+    final patternBytes = utf8.encode(pattern);
+
+    final totalSize = 2 + topicBytes.length + 2 + patternBytes.length + 1;
+    final buffer = ByteData(totalSize);
+
+    var offset = 0;
+
+    // Topic
+    buffer.setUint16(offset, topicBytes.length, Endian.big);
+    offset += 2;
+    for (int i = 0; i < topicBytes.length; i++) {
+      buffer.setUint8(offset++, topicBytes[i]);
+    }
+
+    // Pattern
+    buffer.setUint16(offset, patternBytes.length, Endian.big);
+    offset += 2;
+    for (int i = 0; i < patternBytes.length; i++) {
+      buffer.setUint8(offset++, patternBytes[i]);
+    }
+
+    // Options
+    buffer.setUint8(offset, options);
+
+    return buffer.buffer.asUint8List();
+  }
+
+  /// Encode publish request
+  /// Format: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
+  static Uint8List encodePublishRequest({
+    required String topic,
+    required int msgType,
+    required String payload,
+    required String headers,
+  }) {
+    final topicBytes = utf8.encode(topic);
+    final headersBytes = utf8.encode(headers);
+    final payloadBytes = utf8.encode(payload);
+
+    final totalSize =
+        2 + topicBytes.length + 1 + 2 + headersBytes.length + 4 + payloadBytes.length;
+    final buffer = ByteData(totalSize);
+
+    var offset = 0;
+
+    // Topic
+    buffer.setUint16(offset, topicBytes.length, Endian.big);
+    offset += 2;
+    for (int i = 0; i < topicBytes.length; i++) {
+      buffer.setUint8(offset++, topicBytes[i]);
+    }
+
+    // Message type
+    buffer.setUint8(offset++, msgType);
+
+    // Headers
+    buffer.setUint16(offset, headersBytes.length, Endian.big);
+    offset += 2;
+    for (int i = 0; i < headersBytes.length; i++) {
+      buffer.setUint8(offset++, headersBytes[i]);
+    }
+
+    // Payload
+    buffer.setUint32(offset, payloadBytes.length, Endian.big);
+    offset += 4;
+    for (int i = 0; i < payloadBytes.length; i++) {
+      buffer.setUint8(offset++, payloadBytes[i]);
+    }
+
+    return buffer.buffer.asUint8List();
+  }
 }

@@ -254,3 +254,166 @@ class BarrelStats {
         'fragmentation: ${(fragmentationRatio * 100).toStringAsFixed(1)}%)';
   }
 }
+
+// ============================================================================
+// Pub/Sub Types
+// ============================================================================
+
+/// Pub/Sub message type
+class PubSubMessageType {
+  // Prevent instantiation
+  PubSubMessageType._();
+
+  /// Data message
+  static const int data = 0;
+
+  /// Presence message
+  static const int presence = 1;
+}
+
+/// Event received from PubSub subscription
+class PubSubEvent {
+  /// Topic the event was published to
+  final String topic;
+
+  /// Message type (data or presence)
+  final int messageType;
+
+  /// Sequence number
+  final int sequence;
+
+  /// Timestamp
+  final int timestamp;
+
+  /// Headers (optional JSON string)
+  final String headers;
+
+  /// Message payload
+  final String payload;
+
+  const PubSubEvent({
+    required this.topic,
+    required this.messageType,
+    required this.sequence,
+    required this.timestamp,
+    required this.headers,
+    required this.payload,
+  });
+
+  @override
+  String toString() {
+    final typeName = messageType == PubSubMessageType.data ? 'DATA' : 'PRESENCE';
+    return 'PubSubEvent(topic: $topic, type: $typeName, seq: $sequence, '
+        'payload: $payload)';
+  }
+}
+
+/// Options for subscribing to a topic
+class SubscriptionOptions {
+  /// Enable key-value events
+  final bool enableKvEvents;
+
+  /// Enable presence tracking
+  final bool enablePresence;
+
+  /// Replay historical messages
+  final bool replayHistory;
+
+  const SubscriptionOptions({
+    this.enableKvEvents = false,
+    this.enablePresence = false,
+    this.replayHistory = false,
+  });
+
+  /// Default options
+  static const defaults = SubscriptionOptions();
+
+  /// Encode options to a single byte
+  int encode() {
+    var opts = 0;
+    if (enableKvEvents) opts |= 0x01;
+    if (enablePresence) opts |= 0x02;
+    if (replayHistory) opts |= 0x04;
+    return opts;
+  }
+}
+
+/// Information about a subscription
+class SubscriptionInfo {
+  /// Subscription ID
+  final String id;
+
+  /// Topic name
+  final String topic;
+
+  /// Pattern (for wildcard subscriptions)
+  final String pattern;
+
+  const SubscriptionInfo({
+    required this.id,
+    required this.topic,
+    required this.pattern,
+  });
+
+  @override
+  String toString() => 'SubscriptionInfo(id: $id, topic: $topic, pattern: $pattern)';
+}
+
+/// Single member in presence data
+class PresenceMember {
+  /// Client ID
+  final int clientId;
+
+  /// Unix timestamp when client joined
+  final int joinedAt;
+
+  /// Unix timestamp of last ping
+  final int lastPing;
+
+  const PresenceMember({
+    required this.clientId,
+    required this.joinedAt,
+    required this.lastPing,
+  });
+
+  @override
+  String toString() => 'PresenceMember(clientId: $clientId)';
+}
+
+/// Presence information for a topic
+class PresenceInfo {
+  /// Topic name
+  final String topic;
+
+  /// Active members
+  final List<PresenceMember> members;
+
+  /// Last update timestamp
+  final int lastUpdate;
+
+  const PresenceInfo({
+    required this.topic,
+    required this.members,
+    required this.lastUpdate,
+  });
+
+  @override
+  String toString() => 'PresenceInfo(topic: $topic, members: ${members.length})';
+}
+
+/// Parameters for history queries
+class HistoryRequest {
+  /// Maximum number of messages to return
+  final int limit;
+
+  /// Starting sequence number (0 for beginning)
+  final int sinceSeq;
+
+  const HistoryRequest({
+    this.limit = 100,
+    this.sinceSeq = 0,
+  });
+
+  /// Default request
+  static const defaults = HistoryRequest();
+}

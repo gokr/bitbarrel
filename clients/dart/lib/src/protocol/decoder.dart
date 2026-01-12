@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:convert';
 
+import 'commands.dart';
 import 'status.dart';
 import 'encoder.dart';
 import '../types.dart';
@@ -309,5 +310,131 @@ class ProtocolDecoder {
     }
 
     return (status: status, seq: seq, results: results);
+  }
+
+  // ============================================================================
+  // Pub/Sub Decoding
+  // ============================================================================
+
+  /// Decode a PubSub event from server
+  /// Format: [cmd:1][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+  static PubSubEvent decodePubSubEvent(Uint8List data) {
+    if (data.length < 32) {
+      throw ProtocolException('PubSub event too short: ${data.length} bytes (minimum 32)');
+    }
+
+    // Check command (should be 0xFF)
+    if (data[0] != Command.pubsubEvent) {
+      throw ProtocolException('Not a PubSub event: cmd=0x${data[0].toRadixString(16)}');
+    }
+
+    final buffer = ByteData.sublistView(data.buffer);
+    var offset = 1; // Skip command byte
+
+    // Topic
+    if (offset + 2 > data.length) {
+      throw ProtocolException('Truncated PubSub event: missing topic length');
+    }
+    final topicLen = buffer.getUint16(offset, Endian.big);
+    offset += 2;
+
+    if (offset + topicLen > data.length) {
+      throw ProtocolException('Truncated PubSub event: topic data');
+    }
+    final topic = utf8.decode(data.sublist(offset, offset + topicLen));
+    offset += topicLen;
+
+    // Message type
+    if (offset >= data.length) {
+      throw ProtocolException('Truncated PubSub event: missing message type');
+    }
+    final messageType = data[offset++];
+
+    // Sequence (8 bytes)
+    if (offset + 8 > data.length) {
+      throw ProtocolException('Truncated PubSub event: missing sequence');
+    }
+    // Read 64-bit sequence as two 32-bit values
+    final seqHigh = buffer.getUint32(offset, Endian.big);
+    offset += 4;
+    final seqLow = buffer.getUint32(offset, Endian.big);
+    offset += 4;
+    final sequence = (seqHigh << 32) + seqLow;
+
+    // Timestamp (8 bytes)
+    if (offset + 8 > data.length) {
+      throw ProtocolException('Truncated PubSub event: missing timestamp');
+    }
+    final tsHigh = buffer.getUint32(offset, Endian.big);
+    offset += 4;
+    final tsLow = buffer.getUint32(offset, Endian.big);
+    offset += 4;
+    final timestamp = (tsHigh << 32).toDouble() + tsLow;
+
+    // Headers
+    if (offset + 2 > data.length) {
+      throw ProtocolException('Truncated PubSub event: missing headers length');
+    }
+    final headersLen = buffer.getUint16(offset, Endian.big);
+    offset += 2;
+
+    String headers;
+    if (headersLen == 0) {
+      headers = '';
+    } else {
+      if (offset + headersLen > data.length) {
+        throw ProtocolException('Truncated PubSub event: headers data');
+      }
+      headers = utf8.decode(data.sublist(offset, offset + headersLen));
+      offset += headersLen;
+    }
+
+    // Payload
+    if (offset + 4 > data.length) {
+      throw ProtocolException('Truncated PubSub event: missing payload length');
+    }
+    final payloadLen = buffer.getUint32(offset, Endian.big);
+    offset += 4;
+
+    String payload;
+    if (payloadLen == 0) {
+      payload = '';
+    } else {
+      if (offset + payloadLen > data.length) {
+        throw ProtocolException('Truncated PubSub event: payload data');
+      }
+      payload = utf8.decode(data.sublist(offset, offset + payloadLen));
+    }
+
+    return PubSubEvent(
+      topic: topic,
+      messageType: messageType,
+      sequence: sequence,
+      timestamp: timestamp.toInt(),
+      headers: headers,
+      payload: payload,
+    );
+  }
+
+  /// Check if data is a PubSub event (command 0xFF)
+  static bool isPubSubEvent(Uint8List data) {
+    return data.isNotEmpty && data[0] == Command.pubsubEvent;
+  }
+
+  /// Decode subscribe response (subscription ID)
+  static String decodeSubscribeResponse(String data) {
+    return data;
+  }
+
+  /// Decode publish response (sequence number)
+  static int decodePublishResponse(String data) {
+    final bytes = Latin1Codec().encode(data);
+    if (bytes.length >= 8) {
+      final buffer = ByteData.sublistView(bytes);
+      final high = buffer.getUint32(0, Endian.big);
+      final low = buffer.getUint32(4, Endian.big);
+      return (high << 32) + low;
+    }
+    return 0;
   }
 }
