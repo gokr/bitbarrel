@@ -321,7 +321,7 @@ class _ExportDialogState extends State<ExportDialog> {
     });
 
     try {
-      final barrelName = _barrelService.currentBarrel.value?.name ?? 'data';
+      final barrelName = di<BarrelService>().currentBarrel.value?.name ?? 'data';
       final timestamp = DateFormat('yyyyMMdd-HHmmss').format(DateTime.now());
       final extension = _format == ExportFormat.jsonl ? 'jsonl' : 'csv';
       final filename = '${barrelName}-export-$timestamp.$extension';
