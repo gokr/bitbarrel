@@ -198,56 +198,7 @@ task benchNetworkComprehensive, "Run comprehensive network benchmark (100K ops, 
 # Test all client libraries - starts server, runs tests, stops server
 
 task testNimClient, "Test Nim client library - starts server on port 9876":
-  exec """
-    # Start BitBarrel server in background
-    echo "Starting BitBarrel server on port 9876..."
-    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
-    SERVER_PID=$!
-
-    # Give server time to start
-    sleep 5
-
-    # Check if server started successfully
-    if ! kill -0 $SERVER_PID 2>/dev/null; then
-      echo "ERROR: Failed to start BitBarrel server"
-      cat /tmp/bitbarrel_server.log
-      exit 1
-    fi
-
-    echo "✓ Server started (PID: $SERVER_PID)"
-
-    # Function to stop server on exit
-    cleanup() {
-      echo ""
-      echo "Stopping BitBarrel server..."
-      kill $SERVER_PID 2>/dev/null
-      wait $SERVER_PID 2>/dev/null
-      echo "✓ Server stopped"
-    }
-    trap cleanup EXIT
-
-    # Test Nim client
-    if [ -d "clients/nim" ]; then
-      echo ""
-      echo "=== Testing Nim client ==="
-      if [ -f "clients/nim/bitbarrel_client.nimble" ]; then
-        cd clients/nim
-        if nimble test 2>/dev/null; then
-          echo "✓ Nim client tests passed"
-          exit 0
-        else
-          echo "✗ Nim client tests failed"
-          exit 1
-        fi
-      else
-        echo "⚠ Nim client has no nimble file, skipping"
-        exit 0
-      fi
-    else
-      echo "⚠ Nim client directory not found"
-      exit 0
-    fi
-  """
+  exec "./tools/test_client.sh nim"
 
 task testGoClient, "Test Go client library - starts server on port 9876":
   exec """
