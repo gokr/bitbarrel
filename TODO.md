@@ -93,7 +93,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ JWT authentication support
 - ✅ Barrel configuration management (get/set)
 - ✅ getOrDefault method for safe retrieval
-- ❌ Pub/Sub messaging (not yet implemented, protocol commands defined)
+- ✅ Pub/Sub messaging (basic implementation: subscribe/publish only, query methods pending)
 - ✅ 54+ passing unit tests
 - ✅ Comprehensive README with examples
 - ✅ Uses web_socket_channel for platform compatibility
@@ -132,7 +132,7 @@ Most clients have complete feature parity (Dart client missing Pub/Sub):
 - ✅ Range queries and prefix searches (CritBit mode)
 - ✅ Cursor-based pagination
 - ✅ getOrDefault / get_or_default method
-- ✅ Pub/Sub messaging (Nim, Go, Python, TypeScript complete; Dart pending)
+- ✅ Pub/Sub messaging (Nim full, Go/Python with ListSubscribers/ListTopics, TypeScript/Dart basic)
 - ✅ JWT authentication support
 - ✅ Thread-safe operations
 - ✅ Comprehensive test coverage
@@ -197,11 +197,11 @@ flutter run -d chrome --web-port 8080
 A generic pub/sub messaging system implemented in BitBarrel, supporting topic-based subscriptions over WebSocket connections.
 
 ### Client Support Status
-- **Nim client**: Phase 2 complete (subscribe/publish), Phases 3-4 pending
-- **Go client**: Basic subscribe/publish implemented, query methods pending
-- **Python client**: Full implementation (subscribe, publish, event handling)
-- **TypeScript client**: Full implementation (subscribe, publish, event handling)
-- **Dart client**: Not yet implemented (protocol commands defined only)
+- **Nim client**: Full PubSub implementation with tests (including query methods)
+- **Go client**: PubSub implementation with tests (subscribe/publish + ListSubscribers/ListTopics)
+- **Python client**: PubSub implementation with tests (subscribe/publish + listSubscribers/listTopics)
+- **TypeScript client**: Basic PubSub implementation (subscribe/publish only, query methods pending)
+- **Dart client**: Basic PubSub implementation (subscribe/publish only, query methods pending)
 
 ### Implemented Features
 

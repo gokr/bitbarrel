@@ -330,7 +330,7 @@ client.unsubscribe(subId)
 client.close()
 ```
 
-**Go client** (basic subscribe/publish implemented, query methods pending):
+**Go client** (full PubSub implementation including ListSubscribers/ListTopics):
 ```go
 package main
 
@@ -354,6 +354,10 @@ func main() {
         fmt.Printf("Received: %s -> %s\n", event.Topic, event.Payload)
     })
     client.StartEventReceiver()
+
+    // Query subscribers and topics
+    subs, _ := client.ListSubscribers("user:notifications:123")
+    topics, _ := client.ListTopics()
 
     // Clean up
     client.Unsubscribe(subId)
