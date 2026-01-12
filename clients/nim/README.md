@@ -51,7 +51,7 @@ client.close()
 - **Iterator-based queries** - Memory-efficient streaming for large datasets
 - Reference traversal for graph-like data
 - Statistics support: Get comprehensive barrel statistics and metrics
-- **Pub/Sub messaging** - Full implementation including subscribe/publish, event handling, and query methods (listSubscribers, getHistory, getPresence, listTopics)
+- **Pub/Sub messaging** - Complete WebSocket pub/sub implementation with topic/pattern subscriptions, message types, headers, event callbacks, and query methods
 - Thread-safe request handling
 
 ## Concurrency Model
@@ -270,26 +270,21 @@ let results = client.traversePath("user:1", "->friend")
 
 ## Pub/Sub Messaging
 
-BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Nim client has full implementation complete including event handling and query methods.
-
-**Current Status:**
-- Phase 1: Protocol types and test infrastructure ✅
-- Phase 2: Basic subscribe/publish operations ✅
-- Phase 3: Message receiving and event handling ✅
-- Phase 4: Query methods (listSubscribers, getHistory, getPresence, listTopics) ✅
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Nim client has complete implementation including event handling and query methods.
 
 ### Available Methods
 
 **Subscription Management:**
-- `subscribe(topic: string, options: SubscriptionOptions): string` - Subscribe to topic or pattern
-- `subscribeSimple(topic: string): string` - Convenience wrapper for basic subscription
+- `subscribe(topic: string): string` - Subscribe to topic or pattern with default options
+- `subscribe(topic: string, options: SubscriptionOptions): string` - Subscribe with custom options
 - `isSubscribed(subId: string): bool` - Check if subscription is active
 - `unsubscribe(subId: string): bool` - Remove specific subscription
 - `unsubscribeAll(): int` - Remove all subscriptions
 
 **Publishing:**
-- `publish(topic: string, msgType: PubSubMessageType, payload: string, headers: string = ""): uint64` - Publish message
-- `publishData(topic: string, payload: string): uint64` - Publish data message (convenience)
+- `publish(topic: string, payload: string): uint64` - Publish data message (default type mtData)
+- `publish(topic: string, msgType: PubSubMessageType, payload: string): uint64` - Publish with message type
+- `publish(topic: string, msgType: PubSubMessageType, payload: string, headers: string): uint64` - Publish with headers
 
 **Event Handling:**
 - `onMessage: proc(event: PubSubEvent)` - Callback for incoming Pub/Sub events
@@ -309,11 +304,12 @@ import bitbarrel_client
 var client = newClient("localhost", 9876.Port)
 client.connect()
 
-# Subscribe to pattern
-let subId = client.subscribe("user:notifications:*", SubscriptionOptions())
+# Subscribe to pattern with default options
+let subId = client.subscribe("user:notifications:*")
+echo "Subscribed with ID: ", subId
 
-# Publish message
-let seq = client.publishData("user:notifications:123", "Welcome to the system!")
+# Publish message (simple form - uses mtData message type)
+let seq = client.publish("user:notifications:123", "Welcome to the system!")
 echo "Published message with sequence: ", seq
 
 # Check subscription status
@@ -321,7 +317,7 @@ if client.isSubscribed(subId):
   echo "Subscription is active"
 
 # Handle incoming events
-client.onMessage = proc(event: PubSubEvent) =
+client.onMessage = proc(event: PubSubEvent) {.gcsafe.}:
   echo "Received event: ", event.topic, " -> ", event.payload
 
 # Process pending messages
@@ -329,6 +325,28 @@ client.receiveMessages(100)
 
 client.unsubscribe(subId)
 client.close()
+```
+
+### Example (Subscribe with Options)
+
+```nim
+import bitbarrel_client
+
+var client = newClient("localhost", 9876.Port)
+client.connect()
+
+# Subscribe with custom options (enable presence tracking)
+var opts = SubscriptionOptions(
+  enableKvEvents: false,
+  enablePresence: true,
+  replayHistory: false
+)
+let subId = client.subscribe("chat:room1", opts)
+
+# Publish with headers
+let headers = """{"userId": "123", "source": "web"}"""
+let seq = client.publish("chat:room1", mtData, "User joined", headers)
+echo "Published with sequence: ", seq
 ```
 
 ### Example (Query Methods)
@@ -415,6 +433,12 @@ Tests cover all BitBarrel operations:
 - Range queries and prefix searches (requires bmCritBit barrel)
 - Range count operations
 - Sequential and concurrent operations
+- **Pub/Sub messaging** - Subscribe/publish, pattern subscriptions, message types, headers, query methods
+
+Run pub/sub tests:
+```bash
+nim c -r tests/test_pubsub.nim
+```
 
 ## Keeping Protocol in Sync
 
