@@ -7,15 +7,22 @@
 
 import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
-import type { ClientConfig, Request, Response, RangeRequest, PrefixRequest, TraverseRequest, TraverseResult, TraverseOptions, BarrelStats } from './types';
-import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions } from './types';
+import type {
+  ClientConfig, Request, Response, RangeRequest, PrefixRequest,
+  TraverseRequest, TraverseResult, TraverseOptions, BarrelStats,
+  PubSubEvent, SubscriptionOptions, SubscriptionInfo,
+  PresenceMember, PresenceInfo, HistoryRequest,
+} from './types';
+import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions, defaultSubscriptionOptions } from './types';
 import { Protocol } from './protocol';
 import { BitBarrelError, ConnectionError, RequestTimeoutError, BarrelError, NotFoundError } from './errors';
+import type { PubSubMessageType } from './types';
 
 export interface BitBarrelClientEvents {
   connected: () => void;
   disconnected: () => void;
   error: (error: Error) => void;
+  pubsub: (event: PubSubEvent) => void;
 }
 
 export declare interface BitBarrelClient {
@@ -43,6 +50,9 @@ export class BitBarrelClient extends EventEmitter {
   }>();
   private messageBuffer: Buffer[] = [];
   private isProcessing = false;
+  // Pub/Sub support
+  private subscriptions = new Map<string, SubscriptionInfo>();
+  private onMessage: ((event: PubSubEvent) => void) | null = null;
 
   constructor(config: ClientConfig | string = 'localhost', port?: number, token?: string) {
     super();
@@ -151,6 +161,24 @@ export class BitBarrelClient extends EventEmitter {
     try {
       while (this.messageBuffer.length > 0) {
         const data = this.messageBuffer.shift()!;
+
+        // Check if this is a PubSub event (command 0xFF)
+        if (Protocol.isPubSubEvent(data)) {
+          try {
+            const event = Protocol.decodePubSubEvent(data);
+
+            // Call message handler if set
+            if (this.onMessage) {
+              this.onMessage(event);
+            }
+
+            // Also emit event for listeners
+            this.emit('pubsub', event);
+          } catch (error) {
+            this.emit('error', new BitBarrelError(`Failed to decode PubSub event: ${error instanceof Error ? error.message : String(error)}`));
+          }
+          continue;
+        }
 
         // Skip text messages (e.g., welcome message)
         const firstByte = data[0];
@@ -576,6 +604,160 @@ export class BitBarrelClient extends EventEmitter {
     pathSpec: string
   ): Promise<TraverseResult[]> {
     return this.traverse(key, pathSpec, { includeFullData: true });
+  }
+
+  // ============================================================================
+  // Pub/Sub Methods
+  // ============================================================================
+
+  /**
+   * Subscribe to topic with options (supports pattern matching with *)
+   */
+  async subscribe(topic: string, options?: SubscriptionOptions): Promise<string> {
+    const opts = options ?? defaultSubscriptionOptions();
+
+    // Determine if this is a pattern subscription
+    const isPattern = topic.includes('*');
+    const actualTopic = isPattern ? '' : topic;
+    const actualPattern = isPattern ? topic : '';
+
+    const subscribeData = Protocol.encodeSubscribeRequest(actualTopic, actualPattern, opts).toString('base64');
+    const req = Protocol.newRequest(Cmd.Subscribe, '', subscribeData);
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Subscribe failed: ${resp.status}`);
+    }
+
+    const subId = Protocol.decodeSubscribeResponse(resp.value);
+
+    // Track subscription
+    this.subscriptions.set(subId, { id: subId, topic: actualTopic, pattern: actualPattern });
+
+    return subId;
+  }
+
+  /**
+   * Subscribe to exact topic with default options
+   */
+  async subscribeSimple(topic: string): Promise<string> {
+    return this.subscribe(topic, defaultSubscriptionOptions());
+  }
+
+  /**
+   * Check if subscription is active
+   */
+  isSubscribed(subId: string): boolean {
+    return this.subscriptions.has(subId);
+  }
+
+  /**
+   * Unsubscribe from subscription
+   */
+  async unsubscribe(subId: string): Promise<boolean> {
+    if (!this.subscriptions.has(subId)) {
+      return false;
+    }
+
+    const req = Protocol.newRequest(Cmd.Unsubscribe, subId);
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status === Resp.Ok) {
+      this.subscriptions.delete(subId);
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Unsubscribe from all active subscriptions
+   */
+  async unsubscribeAll(): Promise<number> {
+    let count = 0;
+    const subIds = Array.from(this.subscriptions.keys());
+    for (const subId of subIds) {
+      if (await this.unsubscribe(subId)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Publish message with type and headers to topic
+   */
+  async publish(
+    topic: string,
+    messageType: PubSubMessageType,
+    payload: string,
+    headers = ''
+  ): Promise<number> {
+    const publishData = Protocol.encodePublishRequest(topic, messageType, payload, headers).toString('base64');
+    const req = Protocol.newRequest(Cmd.Publish, '', publishData);
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Publish failed: ${resp.status}`);
+    }
+
+    return Protocol.decodePublishResponse(resp.value);
+  }
+
+  /**
+   * Publish message with type to topic (no headers)
+   */
+  async publishSimple(
+    topic: string,
+    messageType: PubSubMessageType,
+    payload: string
+  ): Promise<number> {
+    return this.publish(topic, messageType, payload, '');
+  }
+
+  /**
+   * Publish data message to topic
+   */
+  async publishData(topic: string, payload: string): Promise<number> {
+    return this.publish(topic, 0, payload, ''); // PubSubMessageType.Data
+  }
+
+  /**
+   * List subscribers for a topic
+   * Not yet implemented
+   */
+  async listSubscribers(_topic: string): Promise<SubscriptionInfo[]> {
+    throw new BitBarrelError('listSubscribers() not yet implemented');
+  }
+
+  /**
+   * List all topics
+   * Not yet implemented
+   */
+  async listTopics(): Promise<string[]> {
+    throw new BitBarrelError('listTopics() not yet implemented');
+  }
+
+  /**
+   * Get message history for topic
+   * Not yet implemented
+   */
+  async getHistory(_topic: string, _request: HistoryRequest): Promise<PubSubEvent[]> {
+    throw new BitBarrelError('getHistory() not yet implemented');
+  }
+
+  /**
+   * Get presence info for topic
+   * Not yet implemented
+   */
+  async getPresence(_topic: string): Promise<PresenceInfo> {
+    throw new BitBarrelError('getPresence() not yet implemented');
+  }
+
+  /**
+   * Set the callback function for PubSub events
+   */
+  setMessageHandler(handler: ((event: PubSubEvent) => void) | null): void {
+    this.onMessage = handler;
   }
 }
 

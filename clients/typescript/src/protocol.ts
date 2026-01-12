@@ -7,7 +7,12 @@
 
 import { Command, ResponseStatus, MaxKeySize, MaxValueSize } from './types';
 import { ProtocolError } from './errors';
-import type { Request, Response, RangeRequest, PrefixRequest, RangeResponse, KeysResponse, TraverseRequest, TraverseResult } from './types';
+import type {
+  Request, Response, RangeRequest, PrefixRequest, RangeResponse,
+  KeysResponse, TraverseRequest, TraverseResult,
+  PubSubEvent, SubscriptionOptions,
+} from './types';
+import type { PubSubMessageType } from './types';
 
 export class Protocol {
   /**
@@ -656,5 +661,173 @@ export class Protocol {
 
   static notFoundResponse(seq: number, message = 'Not found'): Response {
     return this.newResponse(ResponseStatus.NotFound, seq, message);
+  }
+
+  // ============================================================================
+  // Pub/Sub Encoding/Decoding
+  // ============================================================================
+
+  /**
+   * Encode a subscribe request: [topicLen:2][topic][patternLen:2][pattern][options:1]
+   */
+  static encodeSubscribeRequest(
+    topic: string,
+    pattern: string,
+    options: SubscriptionOptions
+  ): Buffer {
+    const topicLen = topic.length;
+    const patternLen = pattern.length;
+    const optsByte = this.encodeSubscriptionOptions(options);
+
+    const buffer = Buffer.allocUnsafe(2 + topicLen + 2 + patternLen + 1);
+
+    let offset = 0;
+    buffer.writeUInt16BE(topicLen, offset);
+    offset += 2;
+    buffer.write(topic, offset);
+    offset += topicLen;
+
+    buffer.writeUInt16BE(patternLen, offset);
+    offset += 2;
+    buffer.write(pattern, offset);
+    offset += patternLen;
+
+    buffer.writeUInt8(optsByte, offset);
+
+    return buffer;
+  }
+
+  /**
+   * Decode subscribe response (subscription ID)
+   */
+  static decodeSubscribeResponse(data: string): string {
+    return data;
+  }
+
+  /**
+   * Encode a publish request: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
+   */
+  static encodePublishRequest(
+    topic: string,
+    msgType: PubSubMessageType,
+    payload: string,
+    headers: string
+  ): Buffer {
+    const topicLen = topic.length;
+    const headersLen = headers.length;
+    const payloadLen = payload.length;
+
+    const buffer = Buffer.allocUnsafe(2 + topicLen + 1 + 2 + headersLen + 4 + payloadLen);
+
+    let offset = 0;
+    buffer.writeUInt16BE(topicLen, offset);
+    offset += 2;
+    buffer.write(topic, offset);
+    offset += topicLen;
+
+    buffer.writeUInt8(msgType, offset++);
+
+    buffer.writeUInt16BE(headersLen, offset);
+    offset += 2;
+    buffer.write(headers, offset);
+    offset += headersLen;
+
+    buffer.writeUInt32BE(payloadLen, offset);
+    offset += 4;
+    buffer.write(payload, offset);
+
+    return buffer;
+  }
+
+  /**
+   * Decode publish response (sequence number)
+   */
+  static decodePublishResponse(data: string): number {
+    const buffer = Buffer.from(data);
+    if (buffer.length >= 8) {
+      return buffer.readBigUInt64BE(0);
+    }
+    return 0;
+  }
+
+  /**
+   * Decode a PubSub event from server
+   * Format: [cmd:1][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+   */
+  static decodePubSubEvent(data: Buffer): PubSubEvent {
+    if (data.length < 32) {
+      throw new ProtocolError(`PubSub event too short: ${data.length} bytes (min 32)`);
+    }
+
+    let offset = 0;
+
+    // Command (should be 0xFF)
+    const cmd = data.readUInt8(offset++);
+    if (cmd !== Command.PubSubEvent) {
+      throw new ProtocolError(`Not a PubSub event: cmd=0x${cmd.toString(16)}`);
+    }
+
+    // Topic
+    const topicLen = data.readUInt16BE(offset);
+    offset += 2;
+    if (offset + topicLen > data.length) {
+      throw new ProtocolError('Truncated PubSub event: topic extends beyond buffer');
+    }
+    const topic = data.toString('utf8', offset, offset + topicLen);
+    offset += topicLen;
+
+    // Message type
+    const messageType = data.readUInt8(offset++) as PubSubMessageType;
+
+    // Sequence
+    const sequence = data.readBigUInt64BE(offset);
+    offset += 8;
+
+    // Timestamp
+    const timestamp = Number(data.readBigUInt64BE(offset));
+    offset += 8;
+
+    // Headers
+    const headersLen = data.readUInt16BE(offset);
+    offset += 2;
+    let headers = '';
+    if (headersLen > 0) {
+      if (offset + headersLen > data.length) {
+        throw new ProtocolError('Truncated PubSub event: headers extend beyond buffer');
+      }
+      headers = data.toString('utf8', offset, offset + headersLen);
+      offset += headersLen;
+    }
+
+    // Payload
+    const payloadLen = data.readUInt32BE(offset);
+    offset += 4;
+    let payload = '';
+    if (payloadLen > 0) {
+      if (offset + payloadLen > data.length) {
+        throw new ProtocolError('Truncated PubSub event: payload extends beyond buffer');
+      }
+      payload = data.toString('utf8', offset, offset + payloadLen);
+    }
+
+    return { topic, messageType, sequence: Number(sequence), timestamp, headers, payload };
+  }
+
+  /**
+   * Check if data is a PubSub event (command 0xFF)
+   */
+  static isPubSubEvent(data: Buffer): boolean {
+    return data.length > 0 && data.readUInt8(0) === Command.PubSubEvent;
+  }
+
+  /**
+   * Encode subscription options to a single byte
+   */
+  private static encodeSubscriptionOptions(options: SubscriptionOptions): number {
+    let encoded = 0;
+    if (options.enableKvEvents) encoded |= 0x01;
+    if (options.enablePresence) encoded |= 0x02;
+    if (options.replayHistory) encoded |= 0x04;
+    return encoded;
   }
 }

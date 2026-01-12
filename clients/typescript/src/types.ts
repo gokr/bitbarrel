@@ -65,6 +65,18 @@ export const enum Command {
   RangeCount = 0x23,
   RangeKeys = 0x24,
   PrefixKeys = 0x25,
+
+  // Pub/Sub
+  Subscribe = 0x40,
+  Unsubscribe = 0x41,
+  Publish = 0x42,
+  ListSubscribers = 0x43,
+  History = 0x44,
+  ListTopics = 0x45,
+  Presence = 0x46,
+
+  // PubSubEvent push notification
+  PubSubEvent = 0xFF,
 }
 
 // Response status codes
@@ -182,4 +194,67 @@ export function normalizeRangeOptions(options?: RangeQueryOptions): Required<Ran
     limit: options?.limit ?? DefaultRangeLimit,
     cursor: options?.cursor ?? '',
   };
+}
+
+// ============================================================================
+// Pub/Sub Types
+// ============================================================================
+
+export const enum PubSubMessageType {
+  Data = 0,
+  Presence = 1,
+}
+
+export interface PubSubEvent {
+  topic: string;
+  messageType: PubSubMessageType;
+  sequence: number;
+  timestamp: number;
+  headers: string;
+  payload: string;
+}
+
+export interface SubscriptionOptions {
+  enableKvEvents?: boolean;
+  enablePresence?: boolean;
+  replayHistory?: boolean;
+}
+
+export function defaultSubscriptionOptions(): Required<SubscriptionOptions> {
+  return {
+    enableKvEvents: false,
+    enablePresence: false,
+    replayHistory: false,
+  };
+}
+
+export interface SubscriptionInfo {
+  id: string;
+  topic: string;
+  pattern: string;
+}
+
+export interface PresenceMember {
+  clientId: number;
+  joinedAt: number;
+  lastPing: number;
+}
+
+export interface PresenceInfo {
+  topic: string;
+  members: PresenceMember[];
+  lastUpdate: number;
+}
+
+export interface HistoryRequest {
+  limit?: number;
+  sinceSeq?: number;
+}
+
+export function encodeSubscriptionOptions(opts: SubscriptionOptions): number {
+  let encoded = 0;
+  if (opts.enableKvEvents) encoded |= 0x01;
+  if (opts.enablePresence) encoded |= 0x02;
+  if (opts.replayHistory) encoded |= 0x04;
+  return encoded;
 }
