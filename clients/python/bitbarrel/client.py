@@ -4,7 +4,7 @@ import threading
 import time
 from typing import List, Tuple, Optional, Union, Callable
 from .protocol import (
-    Command, Status,
+    Command, Status, TopicInfo,
     encode_request, decode_response, decode_response_raw,
     encode_range_request, decode_range_response, decode_keys_response,
     encode_prefix_request,
@@ -14,6 +14,9 @@ from .protocol import (
     encode_subscribe_request, decode_subscribe_response,
     encode_publish_request, decode_publish_response,
     decode_pubsub_event, is_pubsub_event,
+    encode_history_request, encode_presence_request,
+    decode_list_subscribers_response, decode_list_topics_response,
+    decode_history_response, decode_presence_response,
     SubscriptionOptions, default_subscription_options,
     PresenceMember, PresenceInfo, SubscriptionInfo, HistoryRequest,
 )
@@ -802,52 +805,72 @@ class Client:
     def list_subscribers(self, topic: str) -> List[SubscriptionInfo]:
         """List subscribers for a topic.
 
-        Not yet implemented.
-
         Args:
             topic: Topic name
 
-        Raises:
-            ServerError: Not implemented
-        """
-        raise ServerError("list_subscribers() not yet implemented")
+        Returns:
+            List of subscription information
 
-    def list_topics(self) -> List[str]:
+        Raises:
+            ConnectionError: If not connected
+            ServerError: If request fails
+        """
+        # List subscribers request uses empty key, topic is in response
+        value = self._send_request(Command.LIST_SUBSCRIBERS, topic, "")
+        return decode_list_subscribers_response(value)
+
+    def list_topics(self) -> List[TopicInfo]:
         """List all topics.
 
-        Not yet implemented.
+        Returns:
+            List of topic information
 
         Raises:
-            ServerError: Not implemented
+            ConnectionError: If not connected
+            ServerError: If request fails
         """
-        raise ServerError("list_topics() not yet implemented")
+        value = self._send_request(Command.LIST_TOPICS, "", "")
+        return decode_list_topics_response(value)
 
-    def get_history(self, topic: str, request: HistoryRequest) -> List[PubSubEvent]:
+    def get_history(self, topic: str, request: Optional[HistoryRequest] = None) -> List[PubSubEvent]:
         """Get message history for topic.
-
-        Not yet implemented.
 
         Args:
             topic: Topic name
-            request: History request parameters
+            request: History request parameters (defaults to limit=100, since_seq=0)
+
+        Returns:
+            List of historical PubSubEvents
 
         Raises:
-            ServerError: Not implemented
+            ConnectionError: If not connected
+            ServerError: If request fails
         """
-        raise ServerError("get_history() not yet implemented")
+        if request is None:
+            request = HistoryRequest()
+
+        # Encode history request
+        history_data = encode_history_request(topic, request.limit, request.since_seq)
+        value = self._send_request(Command.HISTORY, "", history_data)
+        return decode_history_response(value)
 
     def get_presence(self, topic: str) -> PresenceInfo:
         """Get presence info for topic.
 
-        Not yet implemented.
-
         Args:
             topic: Topic name
 
+        Returns:
+            Presence information with member list
+
         Raises:
-            ServerError: Not implemented
+            ConnectionError: If not connected
+            ServerError: If request fails
         """
-        raise ServerError("get_presence() not yet implemented")
+        # Presence request: operation 0 = get_online
+        presence_data = encode_presence_request(0)
+        value = self._send_request(Command.PRESENCE, topic, presence_data)
+        return decode_presence_response(topic, value)
 
     def set_message_handler(self, handler: Callable[[PubSubEvent], None]) -> None:
         """Set the callback function for PubSub events.

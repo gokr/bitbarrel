@@ -694,7 +694,10 @@ def decode_publish_response(data: bytes) -> int:
 def decode_pubsub_event(data: bytes) -> PubSubEvent:
     """Decode a PubSub event from server.
 
-    Format: [cmd:1][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+    Format: [cmd:1][seq:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+
+    The first seq (4 bytes) is the message sequence number for matching responses.
+    The second seq (8 bytes) is the event sequence number.
     """
     if len(data) < 32:  # Minimum size
         raise ProtocolError("PubSub event too short")
@@ -707,6 +710,10 @@ def decode_pubsub_event(data: bytes) -> PubSubEvent:
         raise ProtocolError(f"Not a PubSub event: cmd=0x{cmd:02x}")
     offset += 1
 
+    # Message sequence (4 bytes, not used for events but must be read)
+    msg_seq = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
     # Topic length and topic
     topic_len = struct.unpack(">H", data[offset:offset+2])[0]
     offset += 2
@@ -717,11 +724,11 @@ def decode_pubsub_event(data: bytes) -> PubSubEvent:
     msg_type = data[offset]
     offset += 1
 
-    # Sequence number
+    # Event sequence number (64-bit)
     sequence = struct.unpack(">Q", data[offset:offset+8])[0]
     offset += 8
 
-    # Timestamp
+    # Timestamp (64-bit)
     timestamp = struct.unpack(">Q", data[offset:offset+8])[0]
     offset += 8
 
@@ -742,3 +749,149 @@ def decode_pubsub_event(data: bytes) -> PubSubEvent:
 def is_pubsub_event(data: bytes) -> bool:
     """Check if data is a PubSub event (command 0xFF)."""
     return len(data) > 0 and data[0] == Command.PUBSUB_EVENT
+
+
+# Phase 3-4: Query method encoders/decoders
+
+def encode_history_request(topic: str, count: int, since_seq: int) -> bytes:
+    """Encode a history request.
+
+    Format: [topicLen:2][topic][count:4][sinceSeq:8]
+    """
+    buf = bytearray()
+
+    # Topic
+    buf.extend(struct.pack(">H", len(topic)))
+    buf.extend(topic.encode("utf-8"))
+
+    # Count
+    buf.extend(struct.pack(">I", count))
+
+    # Since sequence (64-bit)
+    buf.extend(struct.pack(">Q", since_seq))
+
+    return bytes(buf)
+
+
+def encode_presence_request(operation: int) -> bytes:
+    """Encode a presence request.
+
+    Format: [operation:1]
+
+    Operations:
+        0 = get_online
+        1 = broadcast_update
+    """
+    return bytes([operation])
+
+
+def decode_list_subscribers_response(data: str) -> List[SubscriptionInfo]:
+    """Decode list subscribers response.
+
+    The response is JSON: [{"subscriptionId": "...", "clientId": 123, "topic": "...", "pattern": "..."}]
+    """
+    import json
+    try:
+        items = json.loads(data) if data else []
+        result = []
+        for item in items:
+            result.append(SubscriptionInfo(
+                sub_id=item.get("subscriptionId", ""),
+                topic=item.get("topic", ""),
+                pattern=item.get("pattern", ""),
+                client_id=item.get("clientId", 0)
+            ))
+        return result
+    except json.JSONDecodeError as e:
+        raise ProtocolError(f"Failed to decode subscribers response: {e}")
+
+
+def decode_list_topics_response(data: str) -> List[TopicInfo]:
+    """Decode list topics response.
+
+    The response is JSON: [{"name": "...", "sequence": 123, "subscriberCount": 5, "messageCount": 100}]
+    """
+    import json
+    try:
+        items = json.loads(data) if data else []
+        result = []
+        for item in items:
+            result.append(TopicInfo(
+                name=item.get("name", ""),
+                sequence=item.get("sequence", 0),
+                subscriber_count=item.get("subscriberCount", 0),
+                message_count=item.get("messageCount", 0)
+            ))
+        return result
+    except json.JSONDecodeError as e:
+        raise ProtocolError(f"Failed to decode topics response: {e}")
+
+
+def decode_history_response(data: str) -> List[PubSubEvent]:
+    """Decode history response.
+
+    The response is JSON: [{"topic": "...", "messageType": 0, "sequence": 123, "timestamp": 1234567890, "headers": "...", "payload": "..."}]
+    """
+    import json
+    try:
+        items = json.loads(data) if data else []
+        result = []
+        for item in items:
+            result.append(PubSubEvent(
+                topic=item.get("topic", ""),
+                message_type=item.get("messageType", PubSubMessageType.DATA),
+                sequence=item.get("sequence", 0),
+                timestamp=item.get("timestamp", 0),
+                headers=item.get("headers", ""),
+                payload=_serialize_history_payload(item.get("payload"))
+            ))
+        return result
+    except json.JSONDecodeError as e:
+        raise ProtocolError(f"Failed to decode history response: {e}")
+
+
+def _serialize_history_payload(payload) -> str:
+    """Serialize history payload to string."""
+    import json
+    if isinstance(payload, str):
+        return payload
+    elif isinstance(payload, dict):
+        return json.dumps(payload)
+    return str(payload)
+
+
+def decode_presence_response(topic: str, data: str) -> PresenceInfo:
+    """Decode presence response.
+
+    The response is JSON: [{"topic": "...", "members": [...], "lastUpdate": 1234567890}]
+    """
+    import json
+    try:
+        items = json.loads(data) if data else []
+        if not items:
+            return PresenceInfo(topic=topic, members=[], last_update=0)
+
+        item = items[0]  # Take first (and typically only) topic
+
+        members = []
+        for member_data in item.get("members", []):
+            metadata = member_data.get("metadata")
+            if metadata is not None:
+                metadata_str = json.dumps(metadata)
+            else:
+                metadata_str = ""
+            members.append(PresenceMember(
+                client_id=member_data.get("clientId", 0),
+                username=member_data.get("username", ""),
+                joined_at=member_data.get("joinedAt", 0),
+                last_ping=member_data.get("lastPing", 0),
+                metadata=metadata_str
+            ))
+
+        return PresenceInfo(
+            topic=item.get("topic", topic),
+            members=members,
+            last_update=item.get("lastUpdate", 0)
+        )
+    except json.JSONDecodeError as e:
+        raise ProtocolError(f"Failed to decode presence response: {e}")
