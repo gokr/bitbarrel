@@ -6,6 +6,9 @@ import 'package:bitbarrel_admin/services/data_service.dart';
 import 'package:bitbarrel_admin/models/key_value_item.dart';
 import 'package:bitbarrel_admin/widgets/json_viewer.dart';
 import 'package:bitbarrel_admin/widgets/key_value_editor.dart';
+import 'package:bitbarrel_admin/widgets/export_dialog.dart';
+import 'package:bitbarrel_admin/widgets/import_dialog.dart';
+import 'package:bitbarrel_admin/services/import_export_service.dart';
 import 'package:bitbarrel_admin/theme/app_theme.dart';
 
 /// Screen for exploring key-value data in a barrel
@@ -141,6 +144,19 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
     context.go('/stats');
   }
 
+  Future<void> _onExportData() async {
+    final searchQuery = di<DataService>().searchQuery.value;
+    await ExportDialog.show(
+      context,
+      scope: ExportScope.filtered,
+      prefixFilter: searchQuery.isNotEmpty ? searchQuery : null,
+    );
+  }
+
+  Future<void> _onImportData() async {
+    await ImportDialog.show(context);
+  }
+
   Future<void> _onDeleteKey(String key) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -251,6 +267,16 @@ class _BarrelExplorerScreenState extends State<BarrelExplorerScreen> {
           onPressed: () => context.go('/dashboard'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.file_download),
+            tooltip: 'Export Data',
+            onPressed: _onExportData,
+          ),
+          IconButton(
+            icon: const Icon(Icons.file_upload),
+            tooltip: 'Import Data',
+            onPressed: _onImportData,
+          ),
           IconButton(
             icon: const Icon(Icons.analytics),
             tooltip: 'Statistics',
