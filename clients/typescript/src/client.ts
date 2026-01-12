@@ -11,7 +11,7 @@ import type {
   ClientConfig, Request, Response, RangeRequest, PrefixRequest,
   TraverseRequest, TraverseResult, TraverseOptions, BarrelStats,
   PubSubEvent, SubscriptionOptions, SubscriptionInfo,
-  PresenceMember, PresenceInfo, HistoryRequest,
+  PresenceInfo, HistoryRequest,
 } from './types';
 import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions, defaultSubscriptionOptions } from './types';
 import { Protocol } from './protocol';

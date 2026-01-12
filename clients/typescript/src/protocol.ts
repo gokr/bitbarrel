@@ -745,7 +745,7 @@ export class Protocol {
   static decodePublishResponse(data: string): number {
     const buffer = Buffer.from(data);
     if (buffer.length >= 8) {
-      return buffer.readBigUInt64BE(0);
+      return Number(buffer.readBigUInt64BE(0));
     }
     return 0;
   }

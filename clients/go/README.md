@@ -9,6 +9,84 @@ Go client library for BitBarrel key-value store with WebSocket protocol support.
 - Barrel management
 - Statistics support: Get comprehensive barrel statistics and metrics
 - Context support for timeouts and cancellation
+- Pub/Sub messaging (basic subscribe/publish implemented, query methods pending)
+
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Go client currently supports basic subscribe/publish operations with event handling. Query methods (`ListSubscribers`, `GetHistory`, `GetPresence`, `ListTopics`) are pending implementation.
+
+### Available Methods
+
+**Subscription Management:**
+- `Subscribe(topic string, opts SubscriptionOptions) (string, error)` - Subscribe to topic or pattern
+- `SubscribeSimple(topic string) (string, error)` - Convenience wrapper for basic subscription
+- `IsSubscribed(subId string) bool` - Check if subscription is active
+- `Unsubscribe(subId string) (bool, error)` - Remove specific subscription
+- `UnsubscribeAll() (int, error)` - Remove all subscriptions
+
+**Publishing:**
+- `Publish(topic string, msgType PubSubMessageType, payload string, headers string) (uint64, error)` - Publish message
+- `PublishSimple(topic string, msgType PubSubMessageType, payload string) (uint64, error)` - Publish without headers
+- `PublishData(topic string, payload string) (uint64, error)` - Publish data message (convenience)
+
+**Event Handling:**
+- `SetMessageHandler(handler func(PubSubEvent))` - Set callback for incoming Pub/Sub events
+- `StartEventReceiver()` - Start background goroutine to receive events
+
+**Pending Query Methods** (not yet implemented):
+- `ListSubscribers(topic string) ([]SubscriptionInfo, error)`
+- `GetHistory(topic string, req HistoryRequest) ([]PubSubEvent, error)`
+- `GetPresence(topic string) (PresenceInfo, error)`
+- `ListTopics() ([]string, error)`
+
+### Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/tankfeed/bitbarrel-go"
+)
+
+func main() {
+    client := bitbarrel.NewClient("localhost", 9876)
+    client.Connect()
+    defer client.Close()
+
+    // Set up message handler
+    client.SetMessageHandler(func(event bitbarrel.PubSubEvent) {
+        fmt.Printf("Received event: topic=%s, payload=%s\n", event.Topic, event.Payload)
+    })
+    client.StartEventReceiver()
+
+    // Subscribe to pattern
+    subId, err := client.Subscribe("user:notifications:*", bitbarrel.SubscriptionOptions{})
+    if err != nil {
+        panic(err)
+    }
+    defer client.Unsubscribe(subId)
+
+    // Publish message
+    seq, err := client.PublishData("user:notifications:123", "Welcome to the system!")
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("Published message with sequence: %d\n", seq)
+
+    // Check subscription status
+    if client.IsSubscribed(subId) {
+        fmt.Println("Subscription is active")
+    }
+}
+```
+
+### Pub/Sub Event Types
+
+- `PubSubMessageType.Data` (0) - Normal published messages
+- `PubSubMessageType.Presence` (1) - Member join/leave notifications
+
+See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details.
 
 ## Concurrency Model
 
