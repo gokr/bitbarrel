@@ -328,7 +328,7 @@ class ProtocolDecoder {
       throw ProtocolException('Not a PubSub event: cmd=0x${data[0].toRadixString(16)}');
     }
 
-    final buffer = ByteData.sublistView(data.buffer);
+    final buffer = ByteData.sublistView(data);
     var offset = 1; // Skip command byte
 
     // Topic
