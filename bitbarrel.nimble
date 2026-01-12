@@ -201,58 +201,7 @@ task testNimClient, "Test Nim client library - starts server on port 9876":
   exec "./tools/test_client.sh nim"
 
 task testGoClient, "Test Go client library - starts server on port 9876":
-  exec """
-    # Start BitBarrel server in background
-    echo "Starting BitBarrel server on port 9876..."
-    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
-    SERVER_PID=$!
-
-    # Give server time to start
-    sleep 5
-
-    # Check if server started successfully
-    if ! kill -0 $SERVER_PID 2>/dev/null; then
-      echo "ERROR: Failed to start BitBarrel server"
-      cat /tmp/bitbarrel_server.log
-      exit 1
-    fi
-
-    echo "✓ Server started (PID: $SERVER_PID)"
-
-    # Function to stop server on exit
-    cleanup() {
-      echo ""
-      echo "Stopping BitBarrel server..."
-      kill $SERVER_PID 2>/dev/null
-      wait $SERVER_PID 2>/dev/null
-      echo "✓ Server stopped"
-    }
-    trap cleanup EXIT
-
-    # Test Go client
-    if [ -d "clients/go" ]; then
-      echo ""
-      echo "=== Testing Go client ==="
-      if [ -f "clients/go/go.mod" ]; then
-        cd clients/go
-        # Run only package tests (not examples), with server environment
-        export BITBARREL_TEST_SERVER=true
-        if go test -v $(go list ./... | grep -v examples); then
-          echo "✓ Go client tests passed"
-          exit 0
-        else
-          echo "✗ Go client tests failed"
-          exit 1
-        fi
-      else
-        echo "⚠ Go client has no go.mod, skipping"
-        exit 0
-      fi
-    else
-      echo "⚠ Go client directory not found"
-      exit 0
-    fi
-  """
+  exec "./tools/test_client.sh go"
 
 task testPythonClient, "Test Python client library - starts server on port 9876":
   exec """
