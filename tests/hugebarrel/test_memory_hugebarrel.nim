@@ -60,8 +60,9 @@ suite "HugeBarrel Memory Safety Tests":
 
     try:
       # Create many keys to trigger multiple data files
+      # Use zero-padded keys so they sort lexicographically correctly
       for i in 0 ..< 100:
-        let key = fmt"concurrent_key_{i}"
+        let key = fmt"concurrent_key_{i:03d}"
         let value = fmt"value_data_{i}_with_extra_content"
 
         let success = hb.set(key, value)
@@ -69,7 +70,7 @@ suite "HugeBarrel Memory Safety Tests":
 
       # Verify all keys are still accessible
       for i in 0 ..< 100:
-        let key = fmt"concurrent_key_{i}"
+        let key = fmt"concurrent_key_{i:03d}"
         let expectedValue = fmt"value_data_{i}_with_extra_content"
         let retrieved = hb.get(key)
         check(retrieved == expectedValue)
