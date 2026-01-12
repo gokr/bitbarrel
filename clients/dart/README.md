@@ -10,6 +10,7 @@ A Dart/Flutter client library for [BitBarrel](../../), a high-performance Bitcas
 - Statistics support: Get comprehensive barrel statistics and metrics
 - Cursor-based pagination for efficient large dataset operations
 - Type-safe exception handling
+- Pub/Sub protocol support (basic implementation: subscribe/publish/unsubscribe, query methods pending)
 - Comprehensive test coverage
 
 ## Concurrency Model
@@ -300,6 +301,76 @@ try {
   print('Unexpected error: $e');
 }
 ```
+
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Dart client currently has basic PubSub support for subscribe/publish/unsubscribe operations, but query methods and event handling are pending implementation.
+
+**Current Status:**
+- Protocol commands defined and implemented (subscribe, unsubscribe, publish)
+- Type definitions available (PubSubEvent, SubscriptionOptions, etc.)
+- Basic subscribe/publish/unsubscribe methods implemented
+- **Pending**: Event handling infrastructure for receiving push notifications
+- **Pending**: Subscription tracking and management
+- **Pending**: Advanced query methods (listSubscribers, getHistory, getPresence, listTopics)
+
+### Available Methods
+
+**Subscription Management:**
+- `subscribe(topic)` - Subscribe to topic with default options (returns subscription ID)
+- `subscribeSimple(topic)` - Convenience wrapper for basic subscription
+- `isSubscribed(subId)` - Check if subscription is active (locally tracked)
+- `unsubscribe(subId)` - Remove specific subscription (sends UNSUBSCRIBE command)
+- `unsubscribeAll()` - Remove all tracked subscriptions
+
+**Publishing:**
+- `publish(topic, msgType, payload, headers)` - Publish message with custom message type
+- `publishData(topic, payload)` - Publish data message (convenience)
+- `publishPresence(topic, payload)` - Publish presence message
+
+**Query Methods (Pending Implementation):**
+- `listSubscribers(topic)` - List subscribers for a topic
+- `listTopics()` - List all available topics
+- `getHistory(topic, request)` - Get message history for topic
+- `getPresence(topic)` - Get presence info for topic
+
+### Example
+
+```dart
+// Basic PubSub usage (subscribe/publish working)
+import 'package:bitbarrel/bitbarrel.dart';
+
+void main() async {
+  final client = BitBarrelClient.localhost();
+  await client.connect();
+
+  // Create and use a barrel
+  await client.createBarrel('mydb');
+  await client.useBarrel('mydb');
+
+  // Subscribe to pattern
+  final subId = await client.subscribe('user:notifications:*');
+  print('Subscribed with ID: $subId');
+
+  // Publish message
+  final seq = await client.publishData('user:notifications:123', 'Welcome!');
+  print('Published message with sequence: $seq');
+
+  // Check subscription status
+  if (await client.isSubscribed(subId)) {
+    print('Subscription is active');
+  }
+
+  // Note: Event handling not yet implemented
+  // You can publish and subscribe, but receiving events requires
+  // background event receiver implementation
+
+  await client.unsubscribe(subId);
+  await client.close();
+}
+```
+
+See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details.
 
 ## Testing
 
