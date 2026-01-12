@@ -118,6 +118,45 @@ suite "Subscribe and Publish":
     finally:
       client.close()
 
+  test "subscribe with options":
+    var client = newClient()
+
+    type TestData = ref object
+      received: seq[PubSubEvent]
+
+    let data = TestData(received: @[])
+
+    client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+      {.gcsafe.}:
+        data.received.add(event)
+
+    try:
+      client.connect()
+
+      let topic = uniqueTopicName("test/options")
+
+      # Subscribe with presence enabled
+      var opts = SubscriptionOptions(
+        enableKvEvents: false,
+        enablePresence: true,
+        replayHistory: false
+      )
+      let subId = client.subscribe(topic, opts)
+
+      sleep(100)
+
+      check subId.len > 0
+      check client.isSubscribed(subId)
+
+      # Verify option fields are accessible
+      check opts.enablePresence == true
+      check opts.enableKvEvents == false
+      check opts.replayHistory == false
+
+      discard client.unsubscribe(subId)
+    finally:
+      client.close()
+
   test "unsubscribe all":
     var client = newClient()
     try:
@@ -137,6 +176,103 @@ suite "Subscribe and Publish":
       check not client.isSubscribed(sub1)
       check not client.isSubscribed(sub2)
       check not client.isSubscribed(sub3)
+    finally:
+      client.close()
+
+  test "unsubscribe non-existent subscription":
+    var client = newClient()
+    try:
+      client.connect()
+
+      # Try to unsubscribe from a non-existent subscription
+      let result = client.unsubscribe("non_existent_sub_id")
+
+      # Should return false for non-existent subscription
+      check result == false
+    finally:
+      client.close()
+
+  test "publish with different message types":
+    var client = newClient()
+
+    type TestData = ref object
+      received: seq[PubSubEvent]
+
+    let data = TestData(received: @[])
+
+    client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+      {.gcsafe.}:
+        data.received.add(event)
+
+    try:
+      client.connect()
+
+      let topic = uniqueTopicName("test/msgtypes")
+      let subId = client.subscribe(topic)
+
+      sleep(100)
+
+      # Publish different message types
+      discard client.publish(topic, mtData, "data message")
+      discard client.publish(topic, mtPresence, "presence message")
+      discard client.publish(topic, mtKvChange, "kv change message")
+
+      # Wait for messages
+      let startTime = epochTime()
+      while data.received.len < 3 and (epochTime() - startTime) < 3.0:
+        client.receiveMessages(100)
+        sleep(50)
+
+      check data.received.len >= 3
+
+      # Verify message types
+      var types: set[PubSubMessageType] = {}
+      for event in data.received:
+        types.incl(event.messageType)
+
+      check mtData in types
+      discard client.unsubscribe(subId)
+    finally:
+      client.close()
+
+  test "publish with headers":
+    var client = newClient()
+
+    type TestData = ref object
+      received: seq[PubSubEvent]
+
+    let data = TestData(received: @[])
+
+    client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+      {.gcsafe.}:
+        data.received.add(event)
+
+    try:
+      client.connect()
+
+      let topic = uniqueTopicName("test/headers")
+      let subId = client.subscribe(topic)
+
+      sleep(100)
+
+      # Publish with headers
+      let headers = """{"userId": "123", "source": "test"}"""
+      let seqNo = client.publish(topic, mtData, "message with headers", headers)
+
+      check seqNo > 0
+
+      # Wait for message
+      let startTime = epochTime()
+      while data.received.len == 0 and (epochTime() - startTime) < 3.0:
+        client.receiveMessages(100)
+        sleep(50)
+
+      check data.received.len >= 1
+      if data.received.len > 0:
+        check data.received[0].headers.len > 0
+        check data.received[0].payload == "message with headers"
+
+      discard client.unsubscribe(subId)
     finally:
       client.close()
 
@@ -171,6 +307,19 @@ suite "Query Methods":
     finally:
       client1.close()
       client2.close()
+
+  test "list subscribers for non-existent topic":
+    var client = newClient()
+    try:
+      client.connect()
+
+      # Try to list subscribers for a topic that doesn't exist
+      let subscribers = client.listSubscribers("non_existent_topic_12345")
+
+      # Should return empty list for non-existent topic
+      check subscribers.len == 0
+    finally:
+      client.close()
 
   test "list topics":
     var client = newClient()
