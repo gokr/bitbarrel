@@ -31,7 +31,7 @@ This document consolidates all planned and potential future enhancements for Bit
 ### Network Layer ✅ COMPLETED
 - ✅ WebSocket server using MummyX
 - ✅ REST API endpoints for all operations
-- ✅ Binary protocol (21 command types)
+- ✅ Binary protocol (28 command types)
 - ✅ Session management with BarrelRegistry
 - ✅ Automatic barrel discovery on server startup
 - ✅ WebSocket client using whisky library
@@ -39,6 +39,8 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ Keys-only range queries (RANGE_KEYS, PREFIX_KEYS) for efficiency
 - ✅ Barrel configuration (get/set with YAML persistence)
 - ✅ Cursor-based pagination for range queries
+- ✅ Pub/Sub messaging (SUBSCRIBE, UNSUBSCRIBE, PUBLISH, LIST_SUBSCRIBERS, HISTORY, LIST_TOPICS, PRESENCE)
+- ✅ Barrel statistics (GET_BARREL_STATS)
 
 ### HugeBarrel Mode (Network-Supported)
 - ✅ Basic two-tier storage for massive datasets
@@ -182,55 +184,48 @@ flutter run -d chrome --web-port 8080
 # Access at http://localhost:8080
 ```
 
-## Priority 2: Pub/Sub Messaging System
+## Pub/Sub Messaging System ✅ COMPLETED
 
 ### Overview
-Build a generic pub/sub messaging system on top of BitBarrel, targeting medium scale (10K topics, 10K msgs/sec) with hybrid storage for chat rooms and similar use cases.
+A generic pub/sub messaging system implemented in BitBarrel, supporting topic-based subscriptions over WebSocket connections.
 
-### Design
-
-**Architecture:**
-```
-Client → WebSocket → PubSubBroker → Message routing → Subscribers
-                          ↓
-                    MessageStore (BitBarrel backend)
-                    • In-memory ring buffer (recent)
-                    • Persistent storage (BitBarrel)
-```
+### Implemented Features
 
 **Core Components:**
-1. **PubSubBroker** (`src/pubsub/broker.nim`)
-   - Topic management with hash table
-   - Subscription tracking
-   - Message routing with sequence numbers
-   - Client connection management
+- ✅ **PubSubManager** (`src/pubsub/manager.nim`) - Topic management, message routing
+- ✅ **EventBroker** (`src/pubsub/eventbroker.nim`) - WebSocket event delivery to subscribers
+- ✅ **PubSubHooks** (`src/pubsub/hooks.nim`) - Key-value change notifications (optional)
+- ✅ **Pattern matching** (`src/pubsub/pattern.nim`) - Wildcard topic subscriptions
 
-2. **MessageStore** (`src/pubsub/messagestore.nim`)
-   - Hybrid storage combining memory and BitBarrel
-   - In-memory ring buffer per topic for recent messages
-   - BitBarrel backend for persistence
+**Protocol Commands (0x40-0x46):**
+- ✅ SUBSCRIBE (0x40) - Subscribe to a topic
+- ✅ UNSUBSCRIBE (0x41) - Unsubscribe from a topic
+- ✅ PUBLISH (0x42) - Publish message to topic
+- ✅ LIST_SUBSCRIBERS (0x43) - List topic subscribers
+- ✅ HISTORY (0x44) - Get message history
+- ✅ LIST_TOPICS (0x45) - List all topics
+- ✅ PRESENCE (0x46) - Get online members for topic
 
-3. **Protocol Handler** (`src/pubsub/protocol.nim`)
-   - WebSocket command handling (SUB, UNSUB, PUB, ACK)
-   - JSON message serialization
-   - Error responses
+**Event Types:**
+- mtData - Normal published messages
+- mtPresence - Member join/leave notifications
+- mtKvChange - Key-value change events (optional via PubSubHooks)
 
 **Data Model:**
 ```nim
-Message = object
-  id: string              # UUID
-  topic: string           # Topic/channel name
-  payload: string         # Message content
-  timestamp: int64        # Unix timestamp
+PubSubEvent = object
+  topic: string
+  messageType: PubSubMessageType
   sequence: uint64        # Topic-specific sequence
-  headers: Table[string, string]  # Optional metadata
+  timestamp: int64
+  headers: string
+  payload: string
 
 Subscription = object
-  id: string              # Subscription ID
-  topic: string           # Subscribed topic
-  clientId: string        # Client identifier
-  lastDelivered: uint64   # Last sequence delivered
-  created: int64
+  id: string
+  clientId: uint64
+  topic: string
+  pattern: string         # For wildcard subscriptions
 ```
 
 **BitBarrel Integration:**
@@ -410,10 +405,11 @@ Ensure threads complete before parent objects are destroyed. See `barrel.nim:clo
 4. ✅ Go client library - COMPLETED
 5. ✅ Reference traversal - COMPLETED
 6. ✅ Prometheus metrics endpoint - COMPLETED
+7. ✅ Pub/Sub messaging system - COMPLETED
 
 ### Short-term (2-3 Releases)
-1. Pub/Sub messaging system
-2. Replication (master-replica)
+1. Replication (master-replica)
+2. Additional client libraries (Python, Dart/Flutter, TypeScript) ✅ COMPLETED
 
 ### Medium-term (3-6 Months)
 1. Multi-key transactions
