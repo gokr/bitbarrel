@@ -579,10 +579,13 @@ def default_subscription_options() -> SubscriptionOptions:
 class PresenceMember:
     """Single member in presence data."""
 
-    def __init__(self, client_id: int, joined_at: int, last_ping: int):
+    def __init__(self, client_id: int, username: str = "",
+                 joined_at: int = 0, last_ping: int = 0, metadata: str = ""):
         self.client_id = client_id
+        self.username = username
         self.joined_at = joined_at
         self.last_ping = last_ping
+        self.metadata = metadata
 
 
 class PresenceInfo:
@@ -597,10 +600,21 @@ class PresenceInfo:
 class SubscriptionInfo:
     """Information about a subscription."""
 
-    def __init__(self, sub_id: str, topic: str, pattern: str = ""):
+    def __init__(self, sub_id: str, topic: str, pattern: str = "", client_id: int = 0):
         self.sub_id = sub_id
         self.topic = topic
         self.pattern = pattern
+        self.client_id = client_id
+
+
+class TopicInfo:
+    """Information about a topic."""
+
+    def __init__(self, name: str, sequence: int, subscriber_count: int, message_count: int):
+        self.name = name
+        self.sequence = sequence
+        self.subscriber_count = subscriber_count
+        self.message_count = message_count
 
 
 class HistoryRequest:
