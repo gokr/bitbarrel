@@ -61,3 +61,11 @@ clients/python/.pytest_cache/
 clients/python/.ruff_cache/
 clients/python/bitbarrel.egg-info/
 clients/python/venv/
+
+# Node.js
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vercel/
+.netlify/
