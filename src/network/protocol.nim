@@ -128,7 +128,7 @@ proc writeUint32BE(s: var string, v: uint32) =
   s.add(char((v shr 8) and 0xFF))
   s.add(char(v and 0xFF))
 
-proc writeUint64BE(s: var string, v: uint64) =
+proc writeUint64BE*(s: var string, v: uint64) =
   s.add(char((v shr 56) and 0xFF))
   s.add(char((v shr 48) and 0xFF))
   s.add(char((v shr 40) and 0xFF))
