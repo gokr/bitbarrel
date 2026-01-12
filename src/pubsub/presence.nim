@@ -75,7 +75,7 @@ proc cleanupWorker(args: PresenceCleanupArgs) {.thread.} =
               # Remove from presence
               discard info.removeMember(clientId)
 
-    echo "[Presence] Cleanup worker stopped"
+  echo "[Presence] Cleanup worker stopped"
 
 proc newPresenceManager*(eventBroker: EventBroker = nil,
                          checkIntervalMs: int = 5000,
