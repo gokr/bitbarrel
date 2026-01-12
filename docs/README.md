@@ -68,6 +68,7 @@ BitBarrel provides client libraries for multiple programming languages and a web
 | Web support | - | - | ✅ | - | ✅ |
 | Visual UI | - | - | - | - | ✅ |
 | JSON visualization | - | - | - | - | ✅ |
+| Import/Export | - | - | - | - | ✅ |
 
 
 ### Historical and Research
