@@ -879,7 +879,7 @@ proc handleWebSocketMessage*(
       resp.value = "Pub/sub not enabled"
     else:
       try:
-        if server.pubSubManager.unsubscribe(ws.clientId, req.value):
+        if server.pubSubManager.unsubscribe(ws.clientId, req.key):
           resp.status = statusOk
         else:
           resp.status = statusInvalid

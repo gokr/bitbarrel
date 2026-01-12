@@ -92,19 +92,19 @@ proc demoBarrelModes() =
 
   echo "  ✓ Stored 100 temperature readings"
 
-  # Range query
+  # Range query (using keysInRange to get only keys)
   let startRange = baseTime
   let endRange = baseTime + 50
   let keysInRange = timeSeriesDb.keysInRange(
     &"sensor:temp:{startRange}", &"sensor:temp:{endRange}")
   echo &"  ✓ Range query found {keysInRange.len} readings"
 
-  # Prefix search
-  let tempKeys = timeSeriesDb.keysWithPrefix("sensor:temp:")
+  # Prefix search (using keysByPrefix which returns only keys with cursor pagination)
+  let (tempKeys, _, _) = timeSeriesDb.keysByPrefix("sensor:temp:")
   echo &"  ✓ Prefix search found {tempKeys.len} temperature readings"
 
-  # Count with prefix
-  let count = timeSeriesDb.countWithPrefix("sensor:temp:")
+  # Count with prefix (count items returned by keysByPrefix)
+  let count = tempKeys.len
   echo &"  ✓ Count with prefix: {count} temperature readings"
 
   echo "  ★ bmCritBit is perfect for: Time-series, leaderboards, ordered traversal"
@@ -242,6 +242,7 @@ proc demoConfiguration() =
   for i in 0..<10:
     discard db4.set(&"range:{i}", &"value{i}")
 
+  # Use keysInRange to get only keys
   let inRange = db4.keysInRange("range:2", "range:7")
   echo &"  ✓ Range query found {inRange.len} keys"
   echo ""

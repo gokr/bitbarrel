@@ -8,7 +8,7 @@
 ##
 ## Thread-safe using locks for all shared state
 
-import std/[tables, locks, sets, times, sequtils, json, options]
+import std/[tables, locks, sets, times, sequtils, json, options, strutils]
 import ./pubsub
 import ./pattern
 
@@ -197,6 +197,7 @@ proc unsubscribe*(manager: PubSubManager, clientId: uint64,
   ## Unsubscribe a client from a topic or pattern
   ##
   ## If topicOrPattern is empty, unsubscribes from all subscriptions
+  ## If topicOrPattern starts with "sub_", treats it as a subscription ID
   ##
   ## Returns: true if subscription was found and removed
 
@@ -211,6 +212,10 @@ proc unsubscribe*(manager: PubSubManager, clientId: uint64,
     if topicOrPattern.len == 0:
       # Unsubscribe from all subscriptions
       subsToRemove = toSeq(clientSubs)
+    elif topicOrPattern.startsWith("sub_"):
+      # Unsubscribe by subscription ID (clients send sub IDs)
+      if topicOrPattern in clientSubs:
+        subsToRemove.add(topicOrPattern)
     else:
       # Find subscriptions matching the topic or pattern
       for subId in clientSubs:
