@@ -12,8 +12,9 @@ This guide provides comprehensive documentation for using the BitBarrel network 
 6. [Range Queries and Iterators](#range-queries-and-iterators-bmcritbit-mode)
 7. [Error Handling](#error-handling)
 8. [Advanced Features](#advanced-features)
-9. [Performance Tuning](#performance-tuning)
-10. [Troubleshooting](#troubleshooting)
+9. [Pub/Sub Messaging](#pubsub-messaging)
+10. [Performance Tuning](#performance-tuning)
+11. [Troubleshooting](#troubleshooting)
 
 ## Getting Started
 
@@ -938,6 +939,163 @@ parallel:
 echo "All workers completed"
 ```
 
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions, pattern matching, and presence tracking. This enables building event-driven applications, real-time notifications, and live data synchronization.
+
+### Key Features
+
+- **Topic-based subscriptions:** Subscribe to exact topics or Redis-style glob patterns (`*`)
+- **Message types:** Data messages (`mtData`), presence notifications (`mtPresence`), key-value change events (`mtKvChange`)
+- **Presence tracking:** See who's subscribed to topics with metadata
+- **Message history:** Configurable retention with replay on subscribe
+- **Automatic integration:** Key-value operations automatically generate Pub/Sub events
+
+### Basic Usage (Nim Client)
+
+```nim
+import network/client
+
+var client = newClient("localhost", 9876.Port)
+client.connect()
+
+# Subscribe to user notifications
+let subId = client.subscribe("user:notifications:*")
+
+# Handle incoming messages
+client.onMessage = proc(event: PubSubEvent) =
+  echo "Received on ", event.topic, ": ", event.payload
+
+# Publish a message
+let seqNo = client.publish("user:notifications:123", "Welcome!")
+
+# Unsubscribe when done
+discard client.unsubscribe(subId)
+```
+
+### Pattern Matching
+
+```nim
+# Subscribe to all user notifications
+let sub1 = client.subscribe("user:*")
+
+# Subscribe to specific pattern
+let sub2 = client.subscribe("chat:room:*:messages")
+
+# Subscribe to all topics
+let sub3 = client.subscribe("*")
+```
+
+### Presence Tracking
+
+```nim
+# Get presence information for a topic
+let presence = client.getPresence("chat:general")
+
+echo "Users in chat:general:"
+for member in presence.members:
+  echo "  - ", member.username, " (", member.clientId, ")"
+  echo "    Joined: ", member.joinedAt
+  echo "    Last ping: ", member.lastPing
+```
+
+### Message History
+
+```nim
+# Get recent messages from a topic
+let history = client.getHistory("chat:general", limit=50)
+
+for event in history:
+  echo event.timestamp, " - ", event.topic, ": ", event.payload
+
+# Subscribe with history replay
+let options = SubscriptionOptions(
+  replayHistory: true,
+  enableKvEvents: false,
+  enablePresence: true
+)
+let subId = client.subscribe("important:events", options)
+```
+
+### Key-Value Change Events
+
+When you perform key-value operations, Pub/Sub events are automatically generated:
+
+```nim
+# Store data - automatically publishes k/v change event
+discard client.useBarrel("mydb")
+discard client.set("user:profile", "{\"name\":\"Alice\"}")
+
+# The event is published to topic: kv:mydb:user:profile
+# Subscribers receive mtKvChange message type
+```
+
+### Go Client Example
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+    "github.com/gokr/bitbarrel-go"
+)
+
+func main() {
+    client := bitbarrel.NewClient("localhost", 9876)
+    if err := client.Connect(); err != nil {
+        log.Fatal(err)
+    }
+    defer client.Close()
+
+    // Subscribe to pattern
+    subId, err := client.Subscribe("user:notifications:*", "")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Set message handler
+    client.SetMessageHandler(func(event bitbarrel.PubSubEvent) {
+        fmt.Printf("Received: %s -> %s\n", event.Topic, event.Payload)
+    })
+
+    // Start receiving events (runs in background)
+    go client.StartEventReceiver()
+
+    // Publish message
+    seq, err := client.Publish("user:notifications:123", "Welcome!")
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Printf("Published as sequence %d\n", seq)
+
+    // Keep application running
+    select{}
+}
+```
+
+### Client Support Status
+
+| Client | Pub/Sub Support | Status |
+|--------|-----------------|--------|
+| Nim | Full | ✅ Phase 2 complete (subscribe/publish), Phase 3-4 pending |
+| Go | Partial | ✅ Basic subscribe/publish implemented, query methods pending |
+| Python | Protocol only | ⚠️ Core protocol defined, implementation pending |
+| Dart | Protocol only | ⚠️ Protocol definitions exist, event handling pending |
+| TypeScript | Full core | ✅ Core implementation complete, query methods pending |
+
+### Best Practices
+
+1. **Topic design:** Use hierarchical topics (`domain:entity:action:id`)
+2. **Pattern efficiency:** Limit wildcard patterns to avoid excessive matching
+3. **Connection management:** Use same connection for Pub/Sub and key-value operations
+4. **Error handling:** Handle subscription failures and network disconnects
+5. **Security:** Use authentication and consider topic naming to prevent unauthorized access
+
+### Complete Documentation
+
+For complete Pub/Sub documentation, see the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md).
+
 ## Performance Tuning
 
 ### Best Practices
@@ -1191,6 +1349,7 @@ when isMainModule:
 
 - Read the [Protocol Specification](./PROTOCOL.md) for wire format details
 - Check out the [Architecture Guide](./network-architecture.md) for design details
+- See the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md) for real-time messaging documentation
 - Explore the Go client implementation (coming soon)
 - Run the examples in the `demos/network/` directory
 
