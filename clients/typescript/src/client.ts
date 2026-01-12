@@ -11,9 +11,9 @@ import type {
   ClientConfig, Request, Response, RangeRequest, PrefixRequest,
   TraverseRequest, TraverseResult, TraverseOptions, BarrelStats,
   PubSubEvent, SubscriptionOptions, SubscriptionInfo,
-  PresenceInfo, HistoryRequest,
+  PresenceInfo, HistoryRequest, TopicInfo,
 } from './types';
-import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions, defaultSubscriptionOptions } from './types';
+import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions, defaultSubscriptionOptions, defaultHistoryRequest as defaultHistoryRequestFn } from './types';
 import { Protocol } from './protocol';
 import { BitBarrelError, ConnectionError, RequestTimeoutError, BarrelError, NotFoundError } from './errors';
 import type { PubSubMessageType } from './types';
@@ -632,7 +632,7 @@ export class BitBarrelClient extends EventEmitter {
     const subId = Protocol.decodeSubscribeResponse(resp.value);
 
     // Track subscription
-    this.subscriptions.set(subId, { id: subId, topic: actualTopic, pattern: actualPattern });
+    this.subscriptions.set(subId, { id: subId, topic: actualTopic, pattern: actualPattern, clientId: 0 });
 
     return subId;
   }
@@ -723,34 +723,61 @@ export class BitBarrelClient extends EventEmitter {
 
   /**
    * List subscribers for a topic
-   * Not yet implemented
    */
-  async listSubscribers(_topic: string): Promise<SubscriptionInfo[]> {
-    throw new BitBarrelError('listSubscribers() not yet implemented');
+  async listSubscribers(topic: string): Promise<SubscriptionInfo[]> {
+    const req = Protocol.newRequest(Cmd.ListSubscribers, topic, '');
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`List subscribers failed: ${resp.status}`);
+    }
+
+    return Protocol.decodeListSubscribersResponse(resp.value);
   }
 
   /**
    * List all topics
-   * Not yet implemented
    */
-  async listTopics(): Promise<string[]> {
-    throw new BitBarrelError('listTopics() not yet implemented');
+  async listTopics(): Promise<TopicInfo[]> {
+    const req = Protocol.newRequest(Cmd.ListTopics, '', '');
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`List topics failed: ${resp.status}`);
+    }
+
+    return Protocol.decodeListTopicsResponse(resp.value);
   }
 
   /**
    * Get message history for topic
-   * Not yet implemented
    */
-  async getHistory(_topic: string, _request: HistoryRequest): Promise<PubSubEvent[]> {
-    throw new BitBarrelError('getHistory() not yet implemented');
+  async getHistory(topic: string, request?: HistoryRequest): Promise<PubSubEvent[]> {
+    const req = request ?? defaultHistoryRequestFn();
+    const historyData = Protocol.encodeHistoryRequest(topic, req.limit ?? 100, req.sinceSeq ?? 0).toString('base64');
+    const reqPacket = Protocol.newRequest(Cmd.History, '', historyData);
+    const resp = await this.sendAndWait(reqPacket);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Get history failed: ${resp.status}`);
+    }
+
+    return Protocol.decodeHistoryResponse(resp.value);
   }
 
   /**
    * Get presence info for topic
-   * Not yet implemented
    */
-  async getPresence(_topic: string): Promise<PresenceInfo> {
-    throw new BitBarrelError('getPresence() not yet implemented');
+  async getPresence(topic: string): Promise<PresenceInfo> {
+    const presenceData = Protocol.encodePresenceRequest(0).toString('base64');
+    const req = Protocol.newRequest(Cmd.Presence, topic, presenceData);
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Get presence failed: ${resp.status}`);
+    }
+
+    return Protocol.decodePresenceResponse(topic, resp.value);
   }
 
   /**

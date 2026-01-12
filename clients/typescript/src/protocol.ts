@@ -10,7 +10,8 @@ import { ProtocolError } from './errors';
 import type {
   Request, Response, RangeRequest, PrefixRequest, RangeResponse,
   KeysResponse, TraverseRequest, TraverseResult,
-  PubSubEvent, SubscriptionOptions,
+  PubSubEvent, SubscriptionOptions, SubscriptionInfo,
+  PresenceInfo, TopicInfo,
 } from './types';
 import type { PubSubMessageType } from './types';
 
@@ -752,11 +753,11 @@ export class Protocol {
 
   /**
    * Decode a PubSub event from server
-   * Format: [cmd:1][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+   * Format: [cmd:1][msg_seq:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:4][headers][payloadLen:4][payload]
    */
   static decodePubSubEvent(data: Buffer): PubSubEvent {
-    if (data.length < 32) {
-      throw new ProtocolError(`PubSub event too short: ${data.length} bytes (min 32)`);
+    if (data.length < 36) {
+      throw new ProtocolError(`PubSub event too short: ${data.length} bytes (min 36)`);
     }
 
     let offset = 0;
@@ -766,6 +767,9 @@ export class Protocol {
     if (cmd !== Command.PubSubEvent) {
       throw new ProtocolError(`Not a PubSub event: cmd=0x${cmd.toString(16)}`);
     }
+
+    // Message sequence (4 bytes, for matching responses)
+    offset += 4;
 
     // Topic
     const topicLen = data.readUInt16BE(offset);
@@ -779,17 +783,17 @@ export class Protocol {
     // Message type
     const messageType = data.readUInt8(offset++) as PubSubMessageType;
 
-    // Sequence
+    // Event sequence (8 bytes)
     const sequence = data.readBigUInt64BE(offset);
     offset += 8;
 
-    // Timestamp
+    // Timestamp (8 bytes)
     const timestamp = Number(data.readBigUInt64BE(offset));
     offset += 8;
 
-    // Headers
-    const headersLen = data.readUInt16BE(offset);
-    offset += 2;
+    // Headers length (4 bytes)
+    const headersLen = data.readUInt32BE(offset);
+    offset += 4;
     let headers = '';
     if (headersLen > 0) {
       if (offset + headersLen > data.length) {
@@ -799,7 +803,7 @@ export class Protocol {
       offset += headersLen;
     }
 
-    // Payload
+    // Payload length (4 bytes)
     const payloadLen = data.readUInt32BE(offset);
     offset += 4;
     let payload = '';
@@ -829,5 +833,128 @@ export class Protocol {
     if (options.enablePresence) encoded |= 0x02;
     if (options.replayHistory) encoded |= 0x04;
     return encoded;
+  }
+
+  // ============================================================================
+  // Pub/Sub Phase 3-4 Query Methods
+  // ============================================================================
+
+  /**
+   * Encode a history request: [topicLen:2][topic][count:4][sinceSeq:8]
+   */
+  static encodeHistoryRequest(topic: string, count: number, sinceSeq: number): Buffer {
+    const topicLen = topic.length;
+    const buffer = Buffer.allocUnsafe(2 + topicLen + 4 + 8);
+
+    let offset = 0;
+    buffer.writeUInt16BE(topicLen, offset);
+    offset += 2;
+    buffer.write(topic, offset);
+    offset += topicLen;
+
+    buffer.writeUInt32BE(count, offset);
+    offset += 4;
+
+    buffer.writeBigUInt64BE(BigInt(sinceSeq), offset);
+
+    return buffer;
+  }
+
+  /**
+   * Encode a presence request: [operation:1]
+   * operation: 0 = get online, 1 = broadcast update
+   */
+  static encodePresenceRequest(operation: number): Buffer {
+    const buffer = Buffer.allocUnsafe(1);
+    buffer.writeUInt8(operation, 0);
+    return buffer;
+  }
+
+  /**
+   * Decode list subscribers response (JSON array)
+   */
+  static decodeListSubscribersResponse(data: string): SubscriptionInfo[] {
+    if (!data || data.length === 0) {
+      return [];
+    }
+    const parsed = JSON.parse(data);
+    return parsed.map((item: any) => ({
+      id: item.subscriptionId || item.id || '',
+      topic: item.topic || '',
+      pattern: item.pattern || '',
+      clientId: item.clientId || 0,
+    }));
+  }
+
+  /**
+   * Decode list topics response (JSON array)
+   */
+  static decodeListTopicsResponse(data: string): TopicInfo[] {
+    if (!data || data.length === 0) {
+      return [];
+    }
+    const parsed = JSON.parse(data);
+    return parsed.map((item: any) => ({
+      name: item.name || '',
+      sequence: item.sequence || 0,
+      subscriberCount: item.subscriberCount || 0,
+      messageCount: item.messageCount || 0,
+    }));
+  }
+
+  /**
+   * Decode history response (JSON array of PubSubEvent)
+   */
+  static decodeHistoryResponse(data: string): PubSubEvent[] {
+    if (!data || data.length === 0) {
+      return [];
+    }
+    const parsed = JSON.parse(data);
+    return parsed.map((item: any) => {
+      let payload = item.payload;
+      if (payload && typeof payload === 'object') {
+        payload = JSON.stringify(payload);
+      }
+      return {
+        topic: item.topic || '',
+        messageType: item.messageType ?? 0,
+        sequence: item.sequence ?? 0,
+        timestamp: item.timestamp ?? 0,
+        headers: item.headers || '',
+        payload: payload ?? '',
+      };
+    });
+  }
+
+  /**
+   * Decode presence response (JSON array with topic and members)
+   */
+  static decodePresenceResponse(topic: string, data: string): PresenceInfo {
+    if (!data || data.length === 0) {
+      return { topic, members: [], lastUpdate: 0 };
+    }
+    const parsed = JSON.parse(data);
+    const result = Array.isArray(parsed) ? parsed[0] : parsed;
+    return {
+      topic: result.topic || topic,
+      lastUpdate: result.lastUpdate ?? 0,
+      members: (result.members || []).map((member: any) => {
+        let metadata = member.metadata || '';
+        if (metadata && member.metadataBase64) {
+          try {
+            metadata = Buffer.from(member.metadata, 'base64').toString('utf8');
+          } catch (e) {
+            // Keep original if base64 decode fails
+          }
+        }
+        return {
+          clientId: member.clientId || 0,
+          username: member.username || '',
+          joinedAt: member.joinedAt ?? 0,
+          lastPing: member.lastPing ?? 0,
+          metadata,
+        };
+      }),
+    };
   }
 }

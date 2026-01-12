@@ -232,12 +232,15 @@ export interface SubscriptionInfo {
   id: string;
   topic: string;
   pattern: string;
+  clientId: number;
 }
 
 export interface PresenceMember {
   clientId: number;
+  username: string;
   joinedAt: number;
   lastPing: number;
+  metadata: string;
 }
 
 export interface PresenceInfo {
@@ -246,9 +249,23 @@ export interface PresenceInfo {
   lastUpdate: number;
 }
 
+export interface TopicInfo {
+  name: string;
+  sequence: number;
+  subscriberCount: number;
+  messageCount: number;
+}
+
 export interface HistoryRequest {
   limit?: number;
   sinceSeq?: number;
+}
+
+export function defaultHistoryRequest(): Required<HistoryRequest> {
+  return {
+    limit: 100,
+    sinceSeq: 0,
+  };
 }
 
 export function encodeSubscriptionOptions(opts: SubscriptionOptions): number {
