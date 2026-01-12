@@ -343,6 +343,9 @@ class SubscriptionInfo {
   /// Subscription ID
   final String id;
 
+  /// Client ID
+  final int clientId;
+
   /// Topic name
   final String topic;
 
@@ -351,12 +354,24 @@ class SubscriptionInfo {
 
   const SubscriptionInfo({
     required this.id,
+    required this.clientId,
     required this.topic,
     required this.pattern,
   });
 
   @override
-  String toString() => 'SubscriptionInfo(id: $id, topic: $topic, pattern: $pattern)';
+  String toString() =>
+      'SubscriptionInfo(id: $id, clientId: $clientId, topic: $topic, pattern: $pattern)';
+
+  /// Create SubscriptionInfo from JSON
+  factory SubscriptionInfo.fromJson(Map<String, dynamic> json) {
+    return SubscriptionInfo(
+      id: json['subscriptionId'] as String? ?? '',
+      clientId: json['clientId'] as int? ?? 0,
+      topic: json['topic'] as String? ?? '',
+      pattern: json['pattern'] as String? ?? '',
+    );
+  }
 }
 
 /// Single member in presence data
@@ -364,20 +379,41 @@ class PresenceMember {
   /// Client ID
   final int clientId;
 
+  /// Username
+  final String username;
+
   /// Unix timestamp when client joined
   final int joinedAt;
 
   /// Unix timestamp of last ping
   final int lastPing;
 
+  /// Metadata (optional JSON string)
+  final String metadata;
+
   const PresenceMember({
     required this.clientId,
+    required this.username,
     required this.joinedAt,
     required this.lastPing,
+    this.metadata = '',
   });
 
   @override
-  String toString() => 'PresenceMember(clientId: $clientId)';
+  String toString() => 'PresenceMember(clientId: $clientId, username: $username)';
+
+  /// Create PresenceMember from JSON
+  factory PresenceMember.fromJson(Map<String, dynamic> json) {
+    return PresenceMember(
+      clientId: json['clientId'] as int? ?? 0,
+      username: json['username'] as String? ?? '',
+      joinedAt: json['joinedAt'] as int? ?? 0,
+      lastPing: json['lastPing'] as int? ?? 0,
+      metadata: json['metadata'] != null
+          ? jsonEncode(json['metadata'])
+          : '',
+    );
+  }
 }
 
 /// Presence information for a topic
@@ -399,6 +435,42 @@ class PresenceInfo {
 
   @override
   String toString() => 'PresenceInfo(topic: $topic, members: ${members.length})';
+}
+
+/// Information about a topic
+class TopicInfo {
+  /// Topic name
+  final String name;
+
+  /// Current sequence number
+  final int sequence;
+
+  /// Number of active subscribers
+  final int subscriberCount;
+
+  /// Total message count
+  final int messageCount;
+
+  const TopicInfo({
+    required this.name,
+    required this.sequence,
+    required this.subscriberCount,
+    required this.messageCount,
+  });
+
+  @override
+  String toString() =>
+      'TopicInfo(name: $name, seq: $sequence, subs: $subscriberCount, msgs: $messageCount)';
+
+  /// Create TopicInfo from JSON
+  factory TopicInfo.fromJson(Map<String, dynamic> json) {
+    return TopicInfo(
+      name: json['name'] as String? ?? '',
+      sequence: json['sequence'] as int? ?? 0,
+      subscriberCount: json['subscriberCount'] as int? ?? 0,
+      messageCount: json['messageCount'] as int? ?? 0,
+    );
+  }
 }
 
 /// Parameters for history queries

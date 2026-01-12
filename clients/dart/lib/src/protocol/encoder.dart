@@ -282,4 +282,51 @@ class ProtocolEncoder {
 
     return buffer.buffer.asUint8List();
   }
+
+  /// Encode history request
+  /// Format: [topicLen:2][topic:topic][count:4][sinceSeq:8]
+  static Uint8List encodeHistoryRequest({
+    required String topic,
+    required int count,
+    required int sinceSeq,
+  }) {
+    final topicBytes = utf8.encode(topic);
+    final totalSize = 2 + topicBytes.length + 4 + 8;
+    final buffer = ByteData(totalSize);
+
+    var offset = 0;
+
+    // Topic length
+    buffer.setUint16(offset, topicBytes.length, Endian.big);
+    offset += 2;
+
+    // Topic
+    for (int i = 0; i < topicBytes.length; i++) {
+      buffer.setUint8(offset++, topicBytes[i]);
+    }
+
+    // Count
+    buffer.setUint32(offset, count, Endian.big);
+    offset += 4;
+
+    // Since sequence (64-bit)
+    final seqHigh = (sinceSeq >> 32) & 0xFFFFFFFF;
+    final seqLow = sinceSeq & 0xFFFFFFFF;
+    buffer.setUint32(offset, seqHigh, Endian.big);
+    offset += 4;
+    buffer.setUint32(offset, seqLow, Endian.big);
+
+    return buffer.buffer.asUint8List();
+  }
+
+  /// Encode presence request
+  /// Format: [operation:1]
+  /// operation: 0 = get_online, 1 = broadcast_update
+  static Uint8List encodePresenceRequest({
+    required int operation,
+  }) {
+    final buffer = ByteData(1);
+    buffer.setUint8(0, operation);
+    return buffer.buffer.asUint8List();
+  }
 }

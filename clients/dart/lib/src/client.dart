@@ -33,6 +33,8 @@ class BitBarrelClient {
   int _seq = 0;
   String? _currentBarrel;
   final _lock = Mutex(); // Internal lock for thread-safe operations
+  final Set<String> _subscriptions = {}; // Active subscription IDs
+  void Function(PubSubEvent)? _onMessage; // PubSub event callback
 
   BitBarrelClient(this._config);
 
@@ -69,6 +71,8 @@ class BitBarrelClient {
   Future<void> close() async {
     await _lock.protect(() async {
       _currentBarrel = null;
+      _subscriptions.clear();
+      _onMessage = null;
       if (_ws != null) {
         await _ws!.close();
         _ws = null;
@@ -525,6 +529,64 @@ class BitBarrelClient {
 
   // ============ Pub/Sub Operations ============
 
+  /// Set the PubSub message handler callback
+  ///
+  /// The callback will be invoked whenever a pub/sub event is received
+  /// for any active subscription. Call [receiveMessages] to poll for events.
+  ///
+  /// Example:
+  /// ```dart
+  /// client.onMessage = (event) {
+  ///   print('Received: ${event.topic} -> ${event.payload}');
+  /// };
+  /// ```
+  void setOnMessage(void Function(PubSubEvent) callback) {
+    _onMessage = callback;
+  }
+
+  /// Receive and process pending pub/sub messages
+  ///
+  /// This method should be called periodically (or in a loop) to process
+  /// pub/sub events that arrive from the server. Events will be passed to
+  /// the callback set via [setOnMessage].
+  ///
+  /// Returns the number of events processed.
+  Future<int> receiveMessages({Duration timeout = const Duration(milliseconds: 100)}) async {
+    if (!isConnected || _onMessage == null) {
+      return 0;
+    }
+
+    final ws = _ws;
+    if (ws == null) return 0;
+
+    var processed = 0;
+
+    // Try to receive messages (non-blocking with timeout)
+    try {
+      final data = await ws.receive().timeout(timeout, onTimeout: () {
+        throw TimeoutException('timeout');
+      });
+
+      // Check if this is a pub/sub event (command 0xFF)
+      if (ProtocolDecoder.isPubSubEvent(data)) {
+        try {
+          final event = ProtocolDecoder.decodePubSubEvent(data);
+          _onMessage!(event);
+          processed++;
+        } catch (e) {
+          // Log error but don't throw
+        }
+      }
+      // If not an event, it's a response (shouldn't happen here)
+    } on TimeoutException {
+      // Expected when no messages available
+    } catch (e) {
+      // Ignore other errors
+    }
+
+    return processed;
+  }
+
   /// Subscribe to topic with options (supports pattern matching with *)
   /// Returns the subscription ID
   Future<String> subscribe(
@@ -554,8 +616,8 @@ class BitBarrelClient {
     // Response value is the subscription ID
     final subId = ProtocolDecoder.decodeSubscribeResponse(value);
 
-    // Track subscription (need to add subscription tracking to the client)
-    // For now, just return the subId
+    // Track subscription
+    _subscriptions.add(subId);
 
     return subId;
   }
@@ -566,30 +628,41 @@ class BitBarrelClient {
   }
 
   /// Check if subscription is active
-  /// Note: This requires maintaining subscription tracking
-  /// Currently returns false as subscription tracking is not implemented
   bool isSubscribed(String subId) {
-    // TODO: Implement subscription tracking
-    return false;
+    return _subscriptions.contains(subId);
   }
 
   /// Unsubscribe from subscription
   /// Returns true if subscription existed and was removed
   Future<bool> unsubscribe(String subId) async {
-    // TODO: Implement subscription tracking
+    final existed = _subscriptions.contains(subId);
+
     await _sendRequest(
       command: Command.unsubscribe,
       key: subId,
       value: '',
     );
+
+    if (existed) {
+      _subscriptions.remove(subId);
+      return true;
+    }
     return false;
   }
 
   /// Unsubscribe from all active subscriptions
   /// Returns the number of subscriptions removed
   Future<int> unsubscribeAll() async {
-    // TODO: Implement subscription tracking
-    return 0;
+    final subIds = _subscriptions.toList();
+    var removed = 0;
+
+    for (final subId in subIds) {
+      if (await unsubscribe(subId)) {
+        removed++;
+      }
+    }
+
+    return removed;
   }
 
   /// Publish message with type and headers to topic
@@ -638,29 +711,75 @@ class BitBarrelClient {
   }
 
   /// List subscribers for a topic
-  /// Not yet implemented
+  ///
+  /// Returns a list of subscription information including subscription ID,
+  /// client ID, and topic/pattern details.
   Future<List<SubscriptionInfo>> listSubscribers(String topic) async {
-    throw UnimplementedError('listSubscribers() not yet implemented');
+    final value = await _sendRequest(
+      command: Command.listSubscribers,
+      key: topic,
+      value: '',
+    );
+
+    return ProtocolDecoder.decodeListSubscribersResponse(value);
   }
 
   /// List all topics
-  /// Not yet implemented
-  Future<List<String>> listTopics() async {
-    throw UnimplementedError('listTopics() not yet implemented');
+  ///
+  /// Returns a list of topic information including name, sequence number,
+  /// subscriber count, and message count.
+  Future<List<TopicInfo>> listTopics() async {
+    final value = await _sendRequest(
+      command: Command.listTopics,
+      key: '',
+      value: '',
+    );
+
+    return ProtocolDecoder.decodeListTopicsResponse(value);
   }
 
   /// Get message history for topic
-  /// Not yet implemented
+  ///
+  /// Returns a sequence of historical pub/sub events.
+  /// [limit]: Maximum number of messages to return (default: 100)
+  /// [sinceSeq]: Only return messages with sequence >= this value (default: 0)
   Future<List<PubSubEvent>> getHistory(
     String topic, {
-    HistoryRequest? request,
+    int limit = 100,
+    int sinceSeq = 0,
   }) async {
-    throw UnimplementedError('getHistory() not yet implemented');
+    final encodedParams = ProtocolEncoder.encodeHistoryRequest(
+      topic: topic,
+      count: limit,
+      sinceSeq: sinceSeq,
+    );
+
+    final value = await _sendRequest(
+      command: Command.history,
+      key: '',
+      binaryValue: encodedParams,
+    );
+
+    return ProtocolDecoder.decodeHistoryResponse(value);
   }
 
   /// Get presence info for topic
-  /// Not yet implemented
+  ///
+  /// Returns presence information for subscribers on a topic.
+  /// Requires clients to have subscribed with enablePresence: true.
   Future<PresenceInfo> getPresence(String topic) async {
-    throw UnimplementedError('getPresence() not yet implemented');
+    // Request: topic as key, presence operation as value
+    // Presence request is encoded separately
+    final encodedParams = ProtocolEncoder.encodePresenceRequest(
+      operation: 0, // Get online presence
+    );
+
+    final value = await _sendRequest(
+      command: Command.presence,
+      key: topic,
+      binaryValue: encodedParams,
+    );
+
+    return ProtocolDecoder.decodePresenceResponse(topic, value);
   }
 }

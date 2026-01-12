@@ -37,7 +37,7 @@ void main() {
     test('encodeRequest throws on invalid command', () {
       expect(
         () => ProtocolEncoder.encodeRequest(
-          command: 0xFF,
+          command: 0xFE,  // 0xFF is now pubsubEvent, use 0xFE which is unused
           seq: 1,
           key: 'key',
         ),
@@ -242,7 +242,7 @@ void main() {
     });
 
     test('allValues contains all expected commands', () {
-      expect(Command.allValues.length, equals(22));
+      expect(Command.allValues.length, equals(30));  // Including Pub/Sub commands
       expect(Command.allValues.contains(Command.get), isTrue);
       expect(Command.allValues.contains(Command.set), isTrue);
       expect(Command.allValues.contains(Command.delete), isTrue);
@@ -265,6 +265,14 @@ void main() {
       expect(Command.allValues.contains(Command.getBarrelConfig), isTrue);
       expect(Command.allValues.contains(Command.setBarrelConfig), isTrue);
       expect(Command.allValues.contains(Command.getBarrelStats), isTrue);
+      expect(Command.allValues.contains(Command.subscribe), isTrue);
+      expect(Command.allValues.contains(Command.unsubscribe), isTrue);
+      expect(Command.allValues.contains(Command.publish), isTrue);
+      expect(Command.allValues.contains(Command.listSubscribers), isTrue);
+      expect(Command.allValues.contains(Command.history), isTrue);
+      expect(Command.allValues.contains(Command.listTopics), isTrue);
+      expect(Command.allValues.contains(Command.presence), isTrue);
+      expect(Command.allValues.contains(Command.pubsubEvent), isTrue);
     });
   });
 

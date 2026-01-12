@@ -437,4 +437,90 @@ class ProtocolDecoder {
     }
     return 0;
   }
+
+  /// Decode listSubscribers response
+  /// Returns a list of SubscriptionInfo from JSON array
+  static List<SubscriptionInfo> decodeListSubscribersResponse(String data) {
+    try {
+      final json = jsonDecode(data) as List<dynamic>;
+      return json
+          .map((item) => SubscriptionInfo.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      throw ProtocolException('Failed to parse subscribers response: $e');
+    }
+  }
+
+  /// Decode listTopics response
+  /// Returns a list of TopicInfo from JSON array
+  static List<TopicInfo> decodeListTopicsResponse(String data) {
+    try {
+      final json = jsonDecode(data) as List<dynamic>;
+      return json
+          .map((item) => TopicInfo.fromJson(item as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      throw ProtocolException('Failed to parse topics response: $e');
+    }
+  }
+
+  /// Decode getHistory response
+  /// Returns a list of PubSubEvent from JSON array
+  static List<PubSubEvent> decodeHistoryResponse(String data) {
+    try {
+      final json = jsonDecode(data) as List<dynamic>;
+      return json.map((item) {
+        final obj = item as Map<String, dynamic>;
+        return PubSubEvent(
+          topic: obj['topic'] as String? ?? '',
+          messageType: obj['messageType'] as int? ?? 0,
+          sequence: obj['sequence'] as int? ?? 0,
+          timestamp: obj['timestamp'] as int? ?? 0,
+          headers: obj['headers'] != null ? jsonEncode(obj['headers']) : '',
+          payload: obj['payload'] as String? ?? '',
+        );
+      }).toList();
+    } catch (e) {
+      throw ProtocolException('Failed to parse history response: $e');
+    }
+  }
+
+  /// Decode getPresence response
+  /// Returns a PresenceInfo object from JSON
+  static PresenceInfo decodePresenceResponse(String topic, String data) {
+    try {
+      // Response can be either:
+      // 1. Single topic response: [{"topic": "...", "members": [...], "lastUpdate": ...}]
+      // 2. Multiple topics response (but we only requested one topic)
+      final json = jsonDecode(data) as List<dynamic>;
+
+      List<PresenceMember> members = [];
+      int lastUpdate = DateTime.now().millisecondsSinceEpoch;
+
+      for (final item in json) {
+        final obj = item as Map<String, dynamic>;
+        if (obj['topic'] == topic) {
+          // Found our topic
+          lastUpdate = obj['lastUpdate'] as int? ?? lastUpdate;
+
+          final membersArray = obj['members'] as List<dynamic>?;
+          if (membersArray != null) {
+            members = membersArray
+                .map((m) =>
+                    PresenceMember.fromJson(m as Map<String, dynamic>))
+                .toList();
+          }
+          break;
+        }
+      }
+
+      return PresenceInfo(
+        topic: topic,
+        members: members,
+        lastUpdate: lastUpdate,
+      );
+    } catch (e) {
+      throw ProtocolException('Failed to parse presence response: $e');
+    }
+  }
 }
