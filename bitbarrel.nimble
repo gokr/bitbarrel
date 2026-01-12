@@ -369,12 +369,8 @@ task build, "Build with default settings (LZ4 compression)":
 
 # Docker tasks
 
-task dockerBuild, "Build Docker image (builds bitbarrel and webadmin first)":
+task dockerBuild, "Build Docker image (builds bitbarrel and webadmin in multi-stage)":
   exec """
-    echo "Building bitbarrel binary..."
-    nimble build
-    echo "Building webadmin..."
-    (cd webadmin && flutter build web --release)
     echo "Building Docker image..."
     docker build -t bitbarrel:latest .
   """
