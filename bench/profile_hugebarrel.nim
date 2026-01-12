@@ -7,9 +7,9 @@ when isMainModule:
   echo "Note: Run gprof after completion to see detailed results\n"
 
   # Import only what we need to avoid compilation issues
-  import std/[os, strformat, times]
+  import std/[os, strformat, times, strutils]
   import ../src/storage/hugebarrel
-  import ../src/bitbarrel/types
+  import ../src/bitbarrel/barrel
 
   var config = defaultBarrelConfig()
   config.mode = bmHugeCritBit
