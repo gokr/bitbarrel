@@ -14,7 +14,7 @@
 ## Usage:
 ##   ./pubsub_demo
 
-import std/[os, strformat, times, strutils, locks, threads]
+import std/[os, strformat, locks, net]
 import bitbarrel_client
 
 proc main() =
