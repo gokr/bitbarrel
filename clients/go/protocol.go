@@ -30,6 +30,16 @@ const (
 	CmdGetBarrelConfig byte = 0x16
 	CmdSetBarrelConfig byte = 0x17
 	CmdGetBarrelStats  byte = 0x18
+	// Pub/Sub commands
+	CmdSubscribe      byte = 0x40
+	CmdUnsubscribe    byte = 0x41
+	CmdPublish        byte = 0x42
+	CmdListSubscribers byte = 0x43
+	CmdHistory        byte = 0x44
+	CmdListTopics     byte = 0x45
+	CmdPresence       byte = 0x46
+	// PubSubEvent is sent as push notification
+	CmdPubSubEvent byte = 0xFF
 )
 
 // Status codes - must match BitBarrel protocol
@@ -71,7 +81,8 @@ func IsValidCommand(cmd byte) bool {
 		CmdTraverse, CmdRangeQuery, CmdPrefixQuery, CmdRangeCount, CmdRangeKeys, CmdPrefixKeys,
 		CmdCreateBarrel, CmdOpenBarrel, CmdUseBarrel,
 		CmdCloseBarrel, CmdListBarrels, CmdDropBarrel,
-		CmdGetBarrelConfig, CmdSetBarrelConfig, CmdGetBarrelStats:
+		CmdGetBarrelConfig, CmdSetBarrelConfig, CmdGetBarrelStats,
+		CmdSubscribe, CmdUnsubscribe, CmdPublish, CmdListSubscribers, CmdHistory, CmdListTopics, CmdPresence:
 		return true
 	default:
 		return false
@@ -702,4 +713,186 @@ func DecodeTraverseResults(data string) (byte, uint32, []TraverseResult, error) 
 	}
 
 	return status, seq, results, nil
+}
+
+// ============================================================================
+// Pub/Sub Protocol Functions
+// ============================================================================
+
+// EncodeSubscribeRequest encodes a subscribe request
+// Format: [options:1][topicLen:2][topic:N][patternLen:2][pattern:M]
+func EncodeSubscribeRequest(topic, pattern string, opts SubscriptionOptions) ([]byte, error) {
+	if len(topic) > MaxKeySize {
+		return nil, fmt.Errorf("topic too large: %d bytes (max %d)", len(topic), MaxKeySize)
+	}
+	if len(pattern) > MaxKeySize {
+		return nil, fmt.Errorf("pattern too large: %d bytes (max %d)", len(pattern), MaxKeySize)
+	}
+
+	buf := make([]byte, 0,
+		1+2+len(topic)+2+len(pattern))
+
+	var optionsByte byte
+	if opts.EnableKvEvents {
+		optionsByte |= 0x01
+	}
+	if opts.EnablePresence {
+		optionsByte |= 0x02
+	}
+	if opts.ReplayHistory {
+		optionsByte |= 0x04
+	}
+
+	buf = append(buf, optionsByte)
+
+	buf = append(buf, byte(len(topic)>>8), byte(len(topic)))
+	buf = append(buf, []byte(topic)...)
+
+	buf = append(buf, byte(len(pattern)>>8), byte(len(pattern)))
+	buf = append(buf, []byte(pattern)...)
+
+	return buf, nil
+}
+
+// DecodeSubscribeResponse decodes a subscribe response
+// Returns the subscription ID
+func DecodeSubscribeResponse(data string) string {
+	return data
+}
+
+// EncodePublishRequest encodes a publish request
+// Format: [topicLen:2][topic:N][msgType:1][headersLen:4][headers:M][payloadLen:4][payload:P]
+func EncodePublishRequest(topic string, msgType PubSubMessageType, payload string, headers string) ([]byte, error) {
+	if len(topic) > MaxKeySize {
+		return nil, fmt.Errorf("topic too large: %d bytes (max %d)", len(topic), MaxKeySize)
+	}
+	if len(payload) > MaxValueSize {
+		return nil, fmt.Errorf("payload too large: %d bytes (max %d)", len(payload), MaxValueSize)
+	}
+	if len(headers) > MaxValueSize {
+		return nil, fmt.Errorf("headers too large: %d bytes (max %d)", len(headers), MaxValueSize)
+	}
+
+	buf := make([]byte, 0,
+		2+len(topic)+1+
+			4+len(headers)+
+			4+len(payload))
+
+	buf = append(buf, byte(len(topic)>>8), byte(len(topic)))
+	buf = append(buf, []byte(topic)...)
+
+	buf = append(buf, byte(msgType))
+
+	buf = append(buf,
+		byte(len(headers)>>24),
+		byte(len(headers)>>16),
+		byte(len(headers)>>8),
+		byte(len(headers)))
+	buf = append(buf, []byte(headers)...)
+
+	buf = append(buf,
+		byte(len(payload)>>24),
+		byte(len(payload)>>16),
+		byte(len(payload)>>8),
+		byte(len(payload)))
+	buf = append(buf, []byte(payload)...)
+
+	return buf, nil
+}
+
+// DecodePublishResponse decodes a publish response
+// Returns the sequence number
+func DecodePublishResponse(data string) (uint64, error) {
+	if len(data) < 8 {
+		return 0, errors.New("publish response too short")
+	}
+	return binary.BigEndian.Uint64([]byte(data)), nil
+}
+
+// DecodePubSubEvent decodes a PubSub event (command 0xFF)
+// Format: [cmd:1][seq:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:4][headers][payloadLen:4][payload]
+func DecodePubSubEvent(data []byte) (PubSubEvent, error) {
+	var result PubSubEvent
+
+	if len(data) < 30 { // Minimum: 1+4+2+0+1+8+8+4+0+4+0
+		return result, errors.New("pubsub event too short")
+	}
+
+	offset := 0
+
+	// Skip command byte (0xFF) and sequence (not used for events)
+	offset += 5
+
+	// Read topic
+	if offset+2 > len(data) {
+		return result, errors.New("truncated topic length")
+	}
+	topicLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
+	offset += 2
+
+	if offset+topicLen > len(data) {
+		return result, errors.New("truncated topic")
+	}
+	result.Topic = string(data[offset : offset+topicLen])
+	offset += topicLen
+
+	// Read message type
+	if offset >= len(data) {
+		return result, errors.New("truncated message type")
+	}
+	result.MessageType = PubSubMessageType(data[offset])
+	offset += 1
+
+	// Read sequence number
+	if offset+8 > len(data) {
+		return result, errors.New("truncated sequence")
+	}
+	result.Sequence = binary.BigEndian.Uint64(data[offset : offset+8])
+	offset += 8
+
+	// Read timestamp
+	if offset+8 > len(data) {
+		return result, errors.New("truncated timestamp")
+	}
+	result.Timestamp = int64(binary.BigEndian.Uint64(data[offset : offset+8]))
+	offset += 8
+
+	// Read headers
+	if offset+4 > len(data) {
+		return result, errors.New("truncated headers length")
+	}
+	headersLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 4
+
+	if headersLen > 0 {
+		if offset+headersLen > len(data) {
+			return result, errors.New("truncated headers")
+		}
+		result.Headers = string(data[offset : offset+headersLen])
+		offset += headersLen
+	}
+
+	// Read payload
+	if offset+4 > len(data) {
+		return result, errors.New("truncated payload length")
+	}
+	payloadLen := int(binary.BigEndian.Uint32(data[offset : offset+4]))
+	offset += 4
+
+	if payloadLen > 0 {
+		if offset+payloadLen > len(data) {
+			return result, errors.New("truncated payload")
+		}
+		result.Payload = string(data[offset : offset+payloadLen])
+	}
+
+	return result, nil
+}
+
+// IsPubSubEvent checks if binary data is a PubSub event (command 0xFF)
+func IsPubSubEvent(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	return data[0] == CmdPubSubEvent
 }

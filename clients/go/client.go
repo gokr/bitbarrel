@@ -3,6 +3,8 @@ package bitbarrel
 import (
 	"errors"
 	"fmt"
+	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +21,11 @@ type Client struct {
 	connectTimeout time.Duration
 	requestTimeout time.Duration
 	token        string  // JWT authorization token
+
+	// Pub/Sub support
+	subscriptions sync.Map    // map[string]SubscriptionInfo
+	onMessage     func(PubSubEvent)
+	eventRecvDone chan struct{}
 }
 
 // ClientConfig holds client configuration
@@ -833,6 +840,253 @@ func (c *Client) TraversePath(key, pathSpec string) ([]TraverseResult, error) {
 		FirstOnly:       false,
 	}
 	return c.Traverse(key, pathSpec, options)
+}
+
+// ============================================================================
+// Pub/Sub Methods
+// ============================================================================
+
+// Subscribe to topic with options (supports pattern matching with *)
+// Returns subscription ID
+func (c *Client) Subscribe(topic string, opts SubscriptionOptions) (string, error) {
+	if err := c.ensureConnected(); err != nil {
+		return "", err
+	}
+
+	// Determine if this is a pattern subscription (contains *)
+	isPattern := strings.Contains(topic, "*")
+	actualTopic := ""
+	actualPattern := ""
+	if isPattern {
+		actualPattern = topic
+	} else {
+		actualTopic = topic
+	}
+
+	// Encode subscribe request
+	subscribeData, err := EncodeSubscribeRequest(actualTopic, actualPattern, opts)
+	if err != nil {
+		return "", NewError("subscribe", err)
+	}
+
+	req := NewRequest(CmdSubscribe, "", string(subscribeData))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return "", err
+	}
+
+	if resp.Status != StatusOk {
+		return "", NewError("subscribe", errors.New(resp.Value))
+	}
+
+	// Response value is the subscription ID
+	subId := DecodeSubscribeResponse(resp.Value)
+
+	// Track subscription
+	c.subscriptions.Store(subId, SubscriptionInfo{
+		ID:      subId,
+		Topic:   actualTopic,
+		Pattern: actualPattern,
+	})
+
+	return subId, nil
+}
+
+// SubscribeSimple subscribes to exact topic with default options
+func (c *Client) SubscribeSimple(topic string) (string, error) {
+	opts := DefaultSubscriptionOptions()
+	return c.Subscribe(topic, opts)
+}
+
+// IsSubscribed checks if subscription is active
+func (c *Client) IsSubscribed(subId string) bool {
+	_, ok := c.subscriptions.Load(subId)
+	return ok
+}
+
+// Unsubscribe from subscription
+// Returns true if subscription existed and was removed
+func (c *Client) Unsubscribe(subId string) (bool, error) {
+	if err := c.ensureConnected(); err != nil {
+		return false, err
+	}
+
+	// Check if subscription exists
+	_, ok := c.subscriptions.Load(subId)
+	if !ok {
+		return false, nil
+	}
+
+	req := NewRequest(CmdUnsubscribe, subId, "")
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return false, err
+	}
+
+	if resp.Status == StatusOk {
+		c.subscriptions.Delete(subId)
+		return true, nil
+	}
+	return false, nil
+}
+
+// UnsubscribeAll unsubscribes from all active subscriptions
+// Returns number of subscriptions removed
+func (c *Client) UnsubscribeAll() (int, error) {
+	count := 0
+	c.subscriptions.Range(func(key, value interface{}) bool {
+		subId := key.(string)
+		if removed, err := c.Unsubscribe(subId); err == nil && removed {
+			count++
+		}
+		return true
+	})
+	return count, nil
+}
+
+// Publish message with type and headers to topic
+// Returns sequence number
+func (c *Client) Publish(topic string, msgType PubSubMessageType, payload string, headers string) (uint64, error) {
+	if err := c.ensureConnected(); err != nil {
+		return 0, err
+	}
+
+	publishData, err := EncodePublishRequest(topic, msgType, payload, headers)
+	if err != nil {
+		return 0, NewError("publish", err)
+	}
+
+	req := NewRequest(CmdPublish, "", string(publishData))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return 0, err
+	}
+
+	if resp.Status != StatusOk {
+		return 0, NewError("publish", errors.New(resp.Value))
+	}
+
+	// Response value contains the sequence number as uint64
+	seq, err := DecodePublishResponse(resp.Value)
+	if err != nil {
+		return 0, NewError("publish", err)
+	}
+
+	return seq, nil
+}
+
+// PublishSimple publishes message with type to topic
+func (c *Client) PublishSimple(topic string, msgType PubSubMessageType, payload string) (uint64, error) {
+	return c.Publish(topic, msgType, payload, "")
+}
+
+// PublishData publishes data message to topic
+func (c *Client) PublishData(topic string, payload string) (uint64, error) {
+	return c.Publish(topic, MessageTypeData, payload, "")
+}
+
+// ListSubscribers lists subscribers for a topic
+// Not yet implemented
+func (c *Client) ListSubscribers(topic string) ([]SubscriptionInfo, error) {
+	return nil, errors.New("listSubscribers() not yet implemented")
+}
+
+// ListTopics lists all topics
+// Not yet implemented
+func (c *Client) ListTopics() ([]string, error) {
+	return nil, errors.New("listTopics() not yet implemented")
+}
+
+// GetHistory gets message history for topic
+// Not yet implemented
+func (c *Client) GetHistory(topic string, req HistoryRequest) ([]PubSubEvent, error) {
+	return nil, errors.New("getHistory() not yet implemented")
+}
+
+// GetPresence gets presence info for topic
+// Not yet implemented
+func (c *Client) GetPresence(topic string) (PresenceInfo, error) {
+	return PresenceInfo{}, errors.New("getPresence() not yet implemented")
+}
+
+// SetMessageHandler sets the callback function for PubSub events
+func (c *Client) SetMessageHandler(handler func(PubSubEvent)) {
+	c.onMessage = handler
+}
+
+// StartEventReceiver starts a background goroutine to receive PubSub events
+// The goroutine continuously reads messages and calls the message handler
+// for any PubSub events (command 0xFF)
+func (c *Client) StartEventReceiver() {
+	c.mu.Lock()
+	if c.eventRecvDone != nil {
+		c.mu.Unlock()
+		return // Already running
+	}
+	c.eventRecvDone = make(chan struct{})
+	c.mu.Unlock()
+
+	// Start goroutine to handle PubSub events
+	go c.receivePubSubEvent()
+}
+
+// StopEventReceiver stops the event receiver goroutine
+func (c *Client) StopEventReceiver() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.eventRecvDone != nil {
+		close(c.eventRecvDone)
+		c.eventRecvDone = nil
+	}
+}
+
+// receivePubSubEvent continuously reads messages and handles PubSub events
+func (c *Client) receivePubSubEvent() {
+	for {
+		c.mu.Lock()
+		ws := c.ws
+		done := c.eventRecvDone
+		c.mu.Unlock()
+
+		if ws == nil {
+			return // Connection closed
+		}
+
+		// Check if we should stop
+		select {
+		case <-done:
+			return
+		default:
+		}
+
+		// Try to read a message without blocking
+		ws.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		_, data, err := ws.ReadMessage()
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				continue // Timeout is expected
+			}
+			return // Connection error
+		}
+
+		// Check if this is a PubSub event (command 0xFF)
+		if IsPubSubEvent(data) {
+			event, err := DecodePubSubEvent(data)
+			if err != nil {
+				continue // Skip malformed events
+			}
+
+			// Call message handler if set
+			c.mu.Lock()
+			handler := c.onMessage
+			c.mu.Unlock()
+
+			if handler != nil {
+				handler(event)
+			}
+		}
+	}
 }
 
 // Helper functions

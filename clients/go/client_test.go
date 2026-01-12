@@ -1343,3 +1343,333 @@ func TestConnectWithoutToken(t *testing.T) {
 	}
 }
 
+// ============================================================================
+// Pub/Sub Tests
+// ============================================================================
+
+// uniqueTopicName returns a unique topic name for testing
+func uniqueTopicName(prefix string) string {
+	return fmt.Sprintf("%s_%d_%d", prefix, time.Now().UnixNano(), time.Now().UnixNano()%1000000)
+}
+
+// TestSubscribe tests subscribing to a topic
+func TestSubscribe(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	topic := uniqueTopicName("test/exact")
+	subId, err := client.SubscribeSimple(topic)
+	if err != nil {
+		t.Fatalf("SubscribeSimple() error = %v", err)
+	}
+
+	if subId == "" {
+		t.Error("SubscribeSimple() returned empty subscription ID")
+	}
+
+	if !client.IsSubscribed(subId) {
+		t.Error("IsSubscribed() returned false for newly created subscription")
+	}
+
+	// Cleanup
+	removed, err := client.Unsubscribe(subId)
+	if err != nil {
+		t.Fatalf("Unsubscribe() error = %v", err)
+	}
+	if !removed {
+		t.Error("Unsubscribe() returned false for existing subscription")
+	}
+
+	if client.IsSubscribed(subId) {
+		t.Error("IsSubscribed() returned true after unsubscribe")
+	}
+}
+
+// TestPublish tests publishing a message
+func TestPublish(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	topic := uniqueTopicName("test/publish")
+	seqNo, err := client.PublishData(topic, "test message")
+	if err != nil {
+		t.Fatalf("PublishData() error = %v", err)
+	}
+
+	if seqNo == 0 {
+		t.Error("PublishData() returned zero sequence number")
+	}
+}
+
+// TestSubscribeAndReceive tests subscribing and receiving a message
+func TestSubscribeAndReceive(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Set up message handler
+	var received []PubSubEvent
+	var mu sync.Mutex
+
+	client.SetMessageHandler(func(event PubSubEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, event)
+	})
+
+	// Start event receiver
+	client.StartEventReceiver()
+	defer client.StopEventReceiver()
+
+	topic := uniqueTopicName("test/receive")
+	subId, err := client.SubscribeSimple(topic)
+	if err != nil {
+		t.Fatalf("SubscribeSimple() error = %v", err)
+	}
+
+	// Give subscription time to activate
+	time.Sleep(100 * time.Millisecond)
+
+	// Publish message
+	seqNo, err := client.PublishData(topic, "test payload")
+	if err != nil {
+		t.Fatalf("PublishData() error = %v", err)
+	}
+
+	// Wait for message to arrive
+	timeout := time.After(3 * time.Second)
+	found := false
+
+	for {
+		select {
+		case <-timeout:
+			t.Fatal("Timeout waiting for message")
+		case <-time.After(50 * time.Millisecond):
+			mu.Lock()
+			if len(received) >= 1 {
+				found = true
+				event := received[0]
+				if event.Topic != topic {
+					t.Errorf("Received topic = %q, want %q", event.Topic, topic)
+				}
+				if event.Payload != "test payload" {
+					t.Errorf("Received payload = %q, want 'test payload'", event.Payload)
+				}
+				if event.Sequence != seqNo {
+					t.Errorf("Received sequence = %d, want %d", event.Sequence, seqNo)
+				}
+			}
+			mu.Unlock()
+
+			if found {
+				goto cleanup
+			}
+		}
+	}
+
+cleanup:
+	client.Unsubscribe(subId)
+}
+
+// TestPatternSubscription tests pattern-based subscriptions
+func TestPatternSubscription(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Set up message handler
+	var received []PubSubEvent
+	var mu sync.Mutex
+
+	client.SetMessageHandler(func(event PubSubEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		received = append(received, event)
+	})
+
+	// Start event receiver
+	client.StartEventReceiver()
+	defer client.StopEventReceiver()
+
+	// Subscribe to pattern
+	subId, err := client.Subscribe("user/*", DefaultSubscriptionOptions())
+	if err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	defer client.Unsubscribe(subId)
+
+	time.Sleep(100 * time.Millisecond)
+
+	// Publish matching messages
+	_, _ = client.PublishData("user/login", "user logged in")
+	_, _ = client.PublishData("user/logout", "user logged out")
+
+	// Publish non-matching message
+	_, _ = client.PublishData("system/start", "should not receive")
+
+	// Wait for messages
+	timeout := time.After(3 * time.Second)
+
+	for {
+		select {
+		case <-timeout:
+			break
+		case <-time.After(50 * time.Millisecond):
+			mu.Lock()
+			if len(received) >= 2 {
+				mu.Unlock()
+				break
+			}
+			mu.Unlock()
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	if len(received) < 2 {
+		t.Errorf("Expected at least 2 received messages, got %d", len(received))
+	}
+
+	// Verify we didn't receive the non-matching message
+	for _, event := range received {
+		if event.Topic == "system/start" {
+			t.Error("Received message for non-matching topic 'system/start'")
+		}
+	}
+}
+
+// TestUnsubscribeAll tests unsubscribing from all subscriptions
+func TestUnsubscribeAll(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	sub1, _ := client.SubscribeSimple("topic1")
+	sub2, _ := client.SubscribeSimple("topic2")
+	sub3, _ := client.SubscribeSimple("topic3")
+
+	if !client.IsSubscribed(sub1) {
+		t.Error("IsSubscribed(sub1) returned false")
+	}
+	if !client.IsSubscribed(sub2) {
+		t.Error("IsSubscribed(sub2) returned false")
+	}
+	if !client.IsSubscribed(sub3) {
+		t.Error("IsSubscribed(sub3) returned false")
+	}
+
+	count, err := client.UnsubscribeAll()
+	if err != nil {
+		t.Fatalf("UnsubscribeAll() error = %v", err)
+	}
+
+	if count != 3 {
+		t.Errorf("UnsubscribeAll() count = %d, want 3", count)
+	}
+
+	if client.IsSubscribed(sub1) {
+		t.Error("IsSubscribed(sub1) returned true after UnsubscribeAll")
+	}
+	if client.IsSubscribed(sub2) {
+		t.Error("IsSubscribed(sub2) returned true after UnsubscribeAll")
+	}
+	if client.IsSubscribed(sub3) {
+		t.Error("IsSubscribed(sub3) returned true after UnsubscribeAll")
+	}
+}
+
+// TestPublishWithMessageType tests publishing with custom message type
+func TestPublishWithMessageType(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	topic := uniqueTopicName("test/presence")
+
+	// Test with presence message type
+	seqNo1, err := client.PublishSimple(topic, MessageTypePresence, "user joined")
+	if err != nil {
+		t.Fatalf("PublishSimple() with presence error = %v", err)
+	}
+	if seqNo1 == 0 {
+		t.Error("PublishSimple() returned zero sequence number")
+	}
+
+	// Test with data message type
+	seqNo2, err := client.PublishSimple(topic, MessageTypeData, "data message")
+	if err != nil {
+		t.Fatalf("PublishSimple() with data error = %v", err)
+	}
+	if seqNo2 == 0 {
+		t.Error("PublishSimple() returned zero sequence number")
+	}
+
+	// Sequence numbers should be different
+	if seqNo1 == seqNo2 {
+		t.Error("Sequence numbers should be different for different messages")
+	}
+}
+
+// TestPublishWithHeaders tests publishing with headers
+func TestPublishWithHeaders(t *testing.T) {
+	skipIfNoServer(t)
+
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	err := client.Connect()
+	if err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	topic := uniqueTopicName("test/headers")
+	headers := `{"userId": "123", "source": "web"}`
+	payload := "button clicked"
+
+	seqNo, err := client.Publish(topic, MessageTypeData, payload, headers)
+	if err != nil {
+		t.Fatalf("Publish() with headers error = %v", err)
+	}
+	if seqNo == 0 {
+		t.Error("Publish() returned zero sequence number")
+	}
+}
