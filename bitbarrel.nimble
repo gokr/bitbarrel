@@ -29,9 +29,10 @@ task checkDemos, "Compile all demos and benchmarks (verification check) - exits 
     set -e
 
     # Compile all demos (demo_utils.nim is excluded as it's a utility module)
+    # Note: pubsub_demo.nim requires --path:clients/nim/src to find bitbarrel_client
     find demos -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
       echo "Compiling $file..."
-      nim c --verbosity:0 --path:src "$file"
+      nim c --verbosity:0 --path:src --path:clients/nim/src "$file"
     done
 
     # Compile all benchmarks
@@ -196,6 +197,290 @@ task benchNetworkComprehensive, "Run comprehensive network benchmark (100K ops, 
 
 # Test all client libraries - starts server, runs tests, stops server
 
+task testNimClient, "Test Nim client library - starts server on port 9876":
+  exec """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 5
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo ""
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Test Nim client
+    if [ -d "clients/nim" ]; then
+      echo ""
+      echo "=== Testing Nim client ==="
+      if [ -f "clients/nim/bitbarrel_client.nimble" ]; then
+        cd clients/nim
+        if nimble test 2>/dev/null; then
+          echo "✓ Nim client tests passed"
+          exit 0
+        else
+          echo "✗ Nim client tests failed"
+          exit 1
+        fi
+      else
+        echo "⚠ Nim client has no nimble file, skipping"
+        exit 0
+      fi
+    else
+      echo "⚠ Nim client directory not found"
+      exit 0
+    fi
+  """
+
+task testGoClient, "Test Go client library - starts server on port 9876":
+  exec """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 5
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo ""
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Test Go client
+    if [ -d "clients/go" ]; then
+      echo ""
+      echo "=== Testing Go client ==="
+      if [ -f "clients/go/go.mod" ]; then
+        cd clients/go
+        # Run only package tests (not examples), with server environment
+        export BITBARREL_TEST_SERVER=true
+        if go test -v $(go list ./... | grep -v examples); then
+          echo "✓ Go client tests passed"
+          exit 0
+        else
+          echo "✗ Go client tests failed"
+          exit 1
+        fi
+      else
+        echo "⚠ Go client has no go.mod, skipping"
+        exit 0
+      fi
+    else
+      echo "⚠ Go client directory not found"
+      exit 0
+    fi
+  """
+
+task testPythonClient, "Test Python client library - starts server on port 9876":
+  exec """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 5
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo ""
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Test Python client
+    if [ -d "clients/python" ]; then
+      echo ""
+      echo "=== Testing Python client ==="
+      ORIG_DIR=$(pwd)
+      if [ -f "clients/python/venv/bin/activate" ]; then
+        cd clients/python
+        # Use . instead of source for sh compatibility
+        . venv/bin/activate
+        # Add the package to Python path
+        PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
+        TEST_RESULT=$?
+        deactivate
+        cd "$ORIG_DIR"
+        if [ $TEST_RESULT -eq 0 ]; then
+          echo "✓ Python client tests passed"
+          exit 0
+        else
+          echo "✗ Python client tests failed"
+          exit 1
+        fi
+      else
+        echo "⚠ Python client has no venv, trying system Python..."
+        cd clients/python
+        PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
+        if [ $? -eq 0 ]; then
+          echo "✓ Python client tests passed"
+          exit 0
+        else
+          echo "✗ Python client tests failed"
+          exit 1
+        fi
+        cd "$ORIG_DIR"
+      fi
+    else
+      echo "⚠ Python client directory not found"
+      exit 0
+    fi
+  """
+
+task testDartClient, "Test Dart client library - starts server on port 9876":
+  exec """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 5
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo ""
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Test Dart client
+    if [ -d "clients/dart" ]; then
+      echo ""
+      echo "=== Testing Dart client ==="
+      if [ -f "clients/dart/pubspec.yaml" ]; then
+        cd clients/dart
+        if which dart >/dev/null 2>&1; then
+          if dart test 2>/dev/null; then
+            echo "✓ Dart client tests passed"
+            exit 0
+          else
+            echo "✗ Dart client tests failed"
+            exit 1
+          fi
+        else
+          echo "⚠ Dart not installed, skipping"
+          exit 0
+        fi
+      else
+        echo "⚠ Dart client has no pubspec.yaml, skipping"
+        exit 0
+      fi
+    else
+      echo "⚠ Dart client directory not found"
+      exit 0
+    fi
+  """
+
+task testTypeScriptClient, "Test TypeScript client library - starts server on port 9876":
+  exec """
+    # Start BitBarrel server in background
+    echo "Starting BitBarrel server on port 9876..."
+    ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
+    SERVER_PID=$!
+
+    # Give server time to start
+    sleep 5
+
+    # Check if server started successfully
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "ERROR: Failed to start BitBarrel server"
+      cat /tmp/bitbarrel_server.log
+      exit 1
+    fi
+
+    echo "✓ Server started (PID: $SERVER_PID)"
+
+    # Function to stop server on exit
+    cleanup() {
+      echo ""
+      echo "Stopping BitBarrel server..."
+      kill $SERVER_PID 2>/dev/null
+      wait $SERVER_PID 2>/dev/null
+      echo "✓ Server stopped"
+    }
+    trap cleanup EXIT
+
+    # Test TypeScript client
+    if [ -d "clients/typescript" ]; then
+      echo ""
+      echo "=== Testing TypeScript client ==="
+      if [ -f "clients/typescript/package.json" ]; then
+        cd clients/typescript
+        if npm test 2>/dev/null; then
+          echo "✓ TypeScript client tests passed"
+          exit 0
+        else
+          echo "✗ TypeScript client tests failed"
+          exit 1
+        fi
+      else
+        echo "⚠ TypeScript client package.json not found, skipping"
+        exit 0
+      fi
+    else
+      echo "⚠ TypeScript client directory not found"
+      exit 0
+    fi
+  """
+
 task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript) - starts server on port 9876":
   exec """
     # Start BitBarrel server in background
@@ -204,7 +489,7 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
     SERVER_PID=$!
 
     # Give server time to start
-    sleep 2
+    sleep 5
 
     # Check if server started successfully
     if ! kill -0 $SERVER_PID 2>/dev/null; then
@@ -258,7 +543,7 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
         # Use . instead of source for sh compatibility
         . venv/bin/activate
         # Add the package to Python path
-        PYTHONPATH=.:$PYTHONPATH pytest tests/test_client.py -v
+        PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
         TEST_RESULT=$?
         deactivate
         cd "$ORIG_DIR"
@@ -271,7 +556,7 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
       else
         echo "⚠ Python client has no venv, trying system Python..."
         cd clients/python
-        PYTHONPATH=.:$PYTHONPATH pytest tests/test_client.py -v
+        PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
         if [ $? -eq 0 ]; then
           echo "✓ Python client tests passed"
         else
@@ -292,7 +577,8 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
           if dart test 2>/dev/null; then
             echo "✓ Dart client tests passed"
           else
-            echo "⚠ Dart client tests not found or failed"
+            echo "✗ Dart client tests failed"
+            ALL_PASSED=false
           fi
         else
           echo "⚠ Dart not installed, skipping"
@@ -330,7 +616,8 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
         if nimble test 2>/dev/null; then
           echo "✓ Nim client tests passed"
         else
-          echo "⚠ Nim client tests not configured or failed"
+          echo "✗ Nim client tests failed"
+          ALL_PASSED=false
         fi
         cd ../..
       else
