@@ -288,10 +288,9 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Storage | Append‑only log, three index modes, compression (LZ4 by default, Snappy optional), binary record encoding |
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
-| Network | WebSocket binary protocol (21 commands), REST API, JWT authentication, session management, automatic barrel discovery, thread‑safe operations |
-| Monitoring | Prometheus metrics endpoint, operation counters, latency histograms, storage metrics, Grafana dashboards |
+| Network | WebSocket binary protocol (28 commands), REST API, JWT authentication, session management, Pub/Sub messaging, presence, message history |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
-| Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
+| Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection |
 
 **Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
 
@@ -584,8 +583,8 @@ See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation including
 
 ## Future Enhancements
 
-- **Pub/Sub Messaging**: Real-time messaging system
-- **Monitoring & Observability**: Prometheus metrics, health checks
+- **Pub/Sub Messaging**: Real-time messaging system ✅ (implemented - see PROTOCOL.md)
+- **Monitoring & Observability**: Prometheus metrics, health checks ✅ (implemented)
 - **Replication**: Master-replica for high availability
 - **Advanced Query Features**: Filtering and aggregation
 - **Backup & Snapshots**: Online backup and point-in-time recovery
