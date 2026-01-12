@@ -341,6 +341,33 @@ Update the configuration of a barrel. Changes are persisted to a YAML file along
 
 **Note:** The `mode` field cannot be changed at runtime as it requires rebuilding the entire index structure.
 
+#### GET_BARREL_STATS (0x18)
+Get statistics for a barrel.
+
+**Request:**
+- Command: 0x18
+- Key: Barrel name
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00) with statistics JSON, BARREL_NOT_FOUND (0x06) if not exists
+- Value: JSON object containing barrel statistics
+
+**Example Response:**
+```json
+{
+  "keyCount": 12345,
+  "totalKeys": 12500,
+  "deletedKeys": 150,
+  "fileCount": 3,
+  "totalSize": 5242880,
+  "fragmentationRatio": 0.15,
+  "oldestTimestamp": 1734800000,
+  "newestTimestamp": 1734806400,
+  "compactionInProgress": false
+}
+```
+
 ### Range Queries
 
 Range queries require the barrel to be opened in `bmCritBit` mode (ordered index).
@@ -428,6 +455,162 @@ Get only keys with a prefix (values omitted). More efficient than PREFIX_QUERY w
 
 **Response:**
 - Same format as RANGE_KEYS response
+
+### Pub/Sub Messaging
+
+Pub/Sub commands enable real-time messaging with topic-based subscriptions. WebSocket clients receive push notifications for published messages.
+
+#### SUBSCRIBE (0x40)
+Subscribe to a topic to receive published messages.
+
+**Request:**
+- Command: 0x40
+- Key: Topic name
+- Value: JSON options (optional, for subscription configuration)
+
+**Subscription Options:**
+```json
+{
+  "enableKvEvents": false
+}
+```
+
+**Response:**
+- Status: OK (0x00) on success
+- Value: Empty
+
+**Note:** Subscribed clients will receive push messages when other clients publish to this topic.
+
+#### UNSUBSCRIBE (0x41)
+Unsubscribe from a topic.
+
+**Request:**
+- Command: 0x41
+- Key: Topic name
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00) on success
+- Status: ERROR (0x02) if not subscribed
+- Value: Empty
+
+#### PUBLISH (0x42)
+Publish a message to a topic.
+
+**Request:**
+- Command: 0x42
+- Key: Topic name
+- Value: Payload string (JSON, text, or binary data)
+
+**Response:**
+- Status: OK (0x00) on success
+- Value: Empty
+
+**Note:** All subscribed WebSocket clients receive the published message as a push event.
+
+#### LIST_SUBSCRIBERS (0x43)
+List all subscribers for a topic.
+
+**Request:**
+- Command: 0x43
+- Key: Topic name
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00) with subscribers JSON
+- Value: JSON array of subscriber info
+
+**Example Response:**
+```json
+[
+  {
+    "id": "sub123",
+    "clientId": "client456",
+    "topic": "chat:general",
+    "joinedAt": 1734800000,
+    "lastPing": 1734800600
+  }
+]
+```
+
+#### HISTORY (0x44)
+Get message history for a topic.
+
+**Request:**
+- Command: 0x44
+- Key: Topic name
+- Value: JSON options for query
+
+**History Options:**
+```json
+{
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**Response:**
+- Status: OK (0x00) with history JSON
+- Value: JSON array of messages with metadata
+
+**Example Response:**
+```json
+[
+  {
+    "topic": "chat:general",
+    "sequence": 123,
+    "messageType": 0,
+    "timestamp": 1734800000,
+    "headers": "{}",
+    "payload": "Hello, world!"
+  }
+]
+```
+
+#### LIST_TOPICS (0x45)
+List all available topics.
+
+**Request:**
+- Command: 0x45
+- Key: Empty
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00)
+- Value: JSON array of topic names
+
+**Example Response:**
+```json
+["chat:general", "chat:private", "metrics:cpu"]
+```
+
+#### PRESENCE (0x46)
+Get presence information for a topic (online subscribers).
+
+**Request:**
+- Command: 0x46
+- Key: Topic name
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00) with presence JSON
+- Value: JSON object with member list
+
+**Example Response:**
+```json
+{
+  "topic": "chat:general",
+  "members": [
+    {
+      "clientId": "client123",
+      "joinedAt": 1734800000,
+      "lastPing": 1734800600,
+      "metadata": "{\"username\":\"alice\"}"
+    }
+  ],
+  "lastUpdate": 1734800600
+}
+```
 
 ### Reference Traversal
 
@@ -735,5 +918,4 @@ except ClientError as e:
 - Automatic reconnection with backoff
 - Compression for large values
 - Bulk operations (multi-get, multi-set)
-- Pub/sub notifications
 - Streaming responses for large queries
