@@ -126,9 +126,9 @@ proc wrapperKeysInRangeCursor(wrapper: BarrelWrapper, startKey: string, endKey: 
   ## Keys-only range query with cursor-based pagination
   case wrapper.kind
   of bkRegular:
-    wrapper.regularBarrel.keysInRange(startKey, endKey, limit, cursor)
+    wrapper.regularBarrel.keysByRange(startKey, endKey, limit, cursor)
   of bkHuge:
-    # HugeBarrel doesn't support keysInRange - return empty
+    # HugeBarrel doesn't support keysByRange - return empty
     (@[], "", false)
 
 proc wrapperKeysWithPrefix(wrapper: BarrelWrapper, prefix: string,
@@ -136,9 +136,9 @@ proc wrapperKeysWithPrefix(wrapper: BarrelWrapper, prefix: string,
   ## Keys-only prefix query with cursor-based pagination
   case wrapper.kind
   of bkRegular:
-    wrapper.regularBarrel.keysWithPrefix(prefix, limit, cursor)
+    wrapper.regularBarrel.keysByPrefix(prefix, limit, cursor)
   of bkHuge:
-    # HugeBarrel doesn't support keysWithPrefix - return empty
+    # HugeBarrel doesn't support keysByPrefix - return empty
     (@[], "", false)
 
 type

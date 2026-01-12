@@ -810,8 +810,8 @@ proc keysWithPrefixOffset*(barrel: Barrel, prefix: string, limit: int = 1000, of
     # TODO: HugeBarrel keysWithPrefix (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
-proc keysWithPrefix*(barrel: Barrel, prefix: string,
-                    limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
+proc keysByPrefix*(barrel: Barrel, prefix: string,
+                   limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
   ## Get keys with prefix with cursor-based pagination
   ##
   ## Only available in bmCritBit mode
@@ -847,7 +847,7 @@ proc keysWithPrefix*(barrel: Barrel, prefix: string,
   case barrel.mode
   of bmCritBit:
     # Use the CritBit index's cursor-based API
-    result = barrel.critBit.keysWithPrefix(prefix, limit, cursor)
+    result = barrel.critBit.keysByPrefix(prefix, limit, cursor)
   of bmHash:
     # Hash mode doesn't support ordered prefix queries
     raise newException(ValueError, "keysWithPrefix requires bmCritBit mode")
@@ -896,7 +896,7 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string, limit: int =
     # TODO: HugeBarrel keysInRange (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
-proc keysInRange*(barrel: Barrel, startKey: string, endKey: string,
+proc keysByRange*(barrel: Barrel, startKey: string, endKey: string,
                   limit: int = 1000, cursor: string = ""): (seq[string], string, bool) =
   ## Get keys in the range [startKey, endKey) with cursor-based pagination
   ##
@@ -932,7 +932,35 @@ proc keysInRange*(barrel: Barrel, startKey: string, endKey: string,
   case barrel.mode
   of bmCritBit:
     # Use the CritBit index's cursor-based API
-    result = barrel.critBit.keysInRange(startKey, endKey, limit, cursor)
+    # Handle default values for empty startKey/endKey
+    var actualStart = startKey
+    var actualEnd = endKey
+
+    if startKey == "":
+      # Get first key from index
+      if barrel.critBit.minKey().isSome():
+        actualStart = barrel.critBit.minKey().get()
+      else:
+        return (@[], "", false)
+
+    if endKey == "":
+      # Get last key from index and increment by one character
+      if barrel.critBit.maxKey().isSome():
+        let maxKey = barrel.critBit.maxKey().get()
+        # Create a key just after the maximum key
+        var endStr = maxKey
+        if endStr.len > 0:
+          let lastChar = endStr[^1]
+          if lastChar < char(255):
+            endStr[^1] = chr(ord(lastChar) + 1)
+          else:
+            # Append a character if the last one is already max
+            endStr.add(char(1))
+        actualEnd = endStr
+      else:
+        return (@[], "", false)
+
+    result = barrel.critBit.keysByRange(actualStart, actualEnd, limit, cursor)
   of bmHash:
     # Hash mode doesn't support ordered range queries
     raise newException(ValueError, "keysInRange requires bmCritBit mode")

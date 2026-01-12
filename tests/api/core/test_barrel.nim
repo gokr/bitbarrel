@@ -144,18 +144,18 @@ suite "Barrel API - CritBit Mode":
     check barrel.set("session:abc", "data1")
     check barrel.set("session:def", "data2")
 
-    let (user1Keys, _, _) = barrel.keysWithPrefix("user:1:", limit = 1000)
+    let (user1Keys, _, _) = barrel.keysByPrefix("user:1:", limit = 1000)
     check user1Keys.len == 2
     check "user:1:name" in user1Keys
     check "user:1:email" in user1Keys
 
-    let (userKeys, _, _) = barrel.keysWithPrefix("user:", limit = 1000)
+    let (userKeys, _, _) = barrel.keysByPrefix("user:", limit = 1000)
     check userKeys.len == 4
 
-    let (sessionKeys, _, _) = barrel.keysWithPrefix("session:", limit = 1000)
+    let (sessionKeys, _, _) = barrel.keysByPrefix("session:", limit = 1000)
     check sessionKeys.len == 2
 
-    let (noMatch, _, _) = barrel.keysWithPrefix("nonexistent:", limit = 1000)
+    let (noMatch, _, _) = barrel.keysByPrefix("nonexistent:", limit = 1000)
     check noMatch.len == 0
 
     barrel.close()
@@ -255,7 +255,7 @@ suite "CritBit Index Unit Tests":
 
   test "keys are sorted":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 5)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 10, recordSize: 0, keyLen: 5)
 
     index.add("zebra", entry)
     index.add("apple", entry)
@@ -270,8 +270,8 @@ suite "CritBit Index Unit Tests":
   test "add always overwrites":
     var index = critbitindex.init()
 
-    let oldEntry = KeyDirEntry(recordPos: 100, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 4)
-    let newEntry = KeyDirEntry(recordPos: 200, fileId: 2, valueSize: 0, recordSize: 0, keyLen: 4)
+    let oldEntry = KeyDirEntry(recordPos: 100, fileId: 1, valueSize: 10, recordSize: 0, keyLen: 4)
+    let newEntry = KeyDirEntry(recordPos: 200, fileId: 2, valueSize: 20, recordSize: 0, keyLen: 4)
 
     index.add("key1", oldEntry)
     check index.get("key1").get().recordPos == 100
@@ -284,7 +284,7 @@ suite "CritBit Index Unit Tests":
 
   test "keysWithPrefix":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 8)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 10, recordSize: 0, keyLen: 8)
 
     index.add("prefix:a", entry)
     index.add("prefix:b", entry)
@@ -292,18 +292,18 @@ suite "CritBit Index Unit Tests":
     index.add("other:x", entry)
     index.add("other:y", entry)
 
-    let (prefixKeys, _, _) = index.keysWithPrefix("prefix:", 1000)
+    let (prefixKeys, _, _) = index.keysByPrefix("prefix:", 1000, "")
     check prefixKeys.len == 3
     check prefixKeys == @["prefix:a", "prefix:b", "prefix:c"]
 
-    let (otherKeys, _, _) = index.keysWithPrefix("other:", 1000)
+    let (otherKeys, _, _) = index.keysByPrefix("other:", 1000, "")
     check otherKeys.len == 2
 
     index.deinit()
 
   test "keysInRange":
     var index = critbitindex.init()
-    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 0, recordSize: 0, keyLen: 1)
+    let entry = KeyDirEntry(recordPos: 0, fileId: 1, valueSize: 10, recordSize: 0, keyLen: 1)
 
     index.add("a", entry)
     index.add("b", entry)

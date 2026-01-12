@@ -82,6 +82,23 @@ proc deinit*(index: var CritBitIndex) =
   ## Cleanup resources
   deinitLock(index.lock)
 
+proc minKey*(index: var CritBitIndex): Option[string] =
+  ## Get the minimum (first) key in the index
+  withLock(index.lock):
+    for key in index.tree.keys:
+      return some(key)
+    return none(string)
+
+proc maxKey*(index: var CritBitIndex): Option[string] =
+  ## Get the maximum (last) key in the index
+  withLock(index.lock):
+    var resultKey: string = ""
+    for key in index.tree.keys:
+      resultKey = key
+    if resultKey == "":
+      return none(string)
+    return some(resultKey)
+
 # Range query operations
 
 proc keysWithPrefix*(index: var CritBitIndex, prefix: string): seq[string] =
@@ -245,8 +262,8 @@ proc countWithPrefix*(index: var CritBitIndex, prefix: string): int =
     for _ in index.tree.keysWithPrefix(prefix):
       inc result
 
-proc keysInRange*(index: var CritBitIndex, startKey: string, endKey: string,
-                 limit: int, cursor: string = ""): (seq[string], string, bool) =
+proc keysByRange*(index: var CritBitIndex, startKey: string, endKey: string,
+                  limit: int, cursor: string = ""): (seq[string], string, bool) =
   ## Get keys in range [startKey, endKey) with cursor-based pagination
   ## limit: Maximum number of keys to return
   ## cursor: Last key from previous page (empty string for first page)
@@ -255,6 +272,7 @@ proc keysInRange*(index: var CritBitIndex, startKey: string, endKey: string,
     result = (newSeq[string](), "", false)
     var collected = 0
     var started = cursor == ""
+    var lastKey = ""
 
     # Find common prefix between start and end for efficient iteration
     var commonPrefix = ""
@@ -281,13 +299,19 @@ proc keysInRange*(index: var CritBitIndex, startKey: string, endKey: string,
             continue
           started = true
 
-        if collected >= limit:
-          result[1] = key
-          result[2] = true
-          break
+        # Skip deleted entries
+        let entry = index.tree[key]
+        if entry.isDeleted:
+          continue
 
         result[0].add(key)
         inc collected
+        lastKey = key
+
+        if collected >= limit:
+          result[1] = lastKey
+          result[2] = true
+          break
     else:
       for key in index.tree.keysWithPrefix(commonPrefix):
         if key < startKey or key >= endKey:
@@ -298,16 +322,22 @@ proc keysInRange*(index: var CritBitIndex, startKey: string, endKey: string,
             continue
           started = true
 
-        if collected >= limit:
-          result[1] = key
-          result[2] = true
-          break
+        # Skip deleted entries
+        let entry = index.tree[key]
+        if entry.isDeleted:
+          continue
 
         result[0].add(key)
         inc collected
+        lastKey = key
 
-proc keysWithPrefix*(index: var CritBitIndex, prefix: string,
-                    limit: int, cursor: string = ""): (seq[string], string, bool) =
+        if collected >= limit:
+          result[1] = lastKey
+          result[2] = true
+          break
+
+proc keysByPrefix*(index: var CritBitIndex, prefix: string,
+                   limit: int, cursor: string = ""): (seq[string], string, bool) =
   ## Get keys with prefix with cursor-based pagination
   ## limit: Maximum number of keys to return
   ## cursor: Last key from previous page (empty string for first page)
@@ -316,6 +346,7 @@ proc keysWithPrefix*(index: var CritBitIndex, prefix: string,
     result = (newSeq[string](), "", false)
     var collected = 0
     var started = cursor == ""
+    var lastKey = ""
 
     for key in index.tree.keysWithPrefix(prefix):
       if not started:
@@ -323,13 +354,19 @@ proc keysWithPrefix*(index: var CritBitIndex, prefix: string,
           continue
         started = true
 
-      if collected >= limit:
-        result[1] = key
-        result[2] = true
-        break
+      # Skip deleted entries
+      let entry = index.tree[key]
+      if entry.isDeleted:
+        continue
 
       result[0].add(key)
       inc collected
+      lastKey = key
+
+      if collected >= limit:
+        result[1] = lastKey
+        result[2] = true
+        break
 
 iterator pairs*(index: var CritBitIndex): (string, KeyDirEntry) =
   ## Iterate over all key-entry pairs (sorted by key)

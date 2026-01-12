@@ -448,7 +448,7 @@ suite "CritBitIndex - Keys-Only Range Queries":
     index.add("user:bbb", KeyDirEntry(recordPos: 150'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
     index.add("user:ccc", KeyDirEntry(recordPos: 200'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 8))
 
-    let (keys, nextCursor, hasMore) = index.keysInRange("user:aaa", "user:zzz", 10, "")
+    let (keys, nextCursor, hasMore) = index.keysByRange("user:aaa", "user:zzz", 10, "")
     check keys.len == 3
     check keys[0] == "user:aaa"
     check keys[1] == "user:bbb"
@@ -463,25 +463,25 @@ suite "CritBitIndex - Keys-Only Range Queries":
       let key = "user:" & chr(ord('a') + i)
       index.add(key, KeyDirEntry(recordPos: uint64(100 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
-    let (page1, cursor1, hasMore1) = index.keysInRange("user:a", "user:z", 5, "")
+    let (page1, cursor1, hasMore1) = index.keysByRange("user:a", "user:z", 5, "")
     check page1.len == 5
     check page1[0] == "user:a"
     check page1[4] == "user:e"
     check hasMore1 == true
 
-    let (page2, cursor2, hasMore2) = index.keysInRange("user:a", "user:z", 5, cursor1)
+    let (page2, cursor2, hasMore2) = index.keysByRange("user:a", "user:z", 5, cursor1)
     check page2.len == 5
     check page2[0] == "user:f"
     check page2[4] == "user:j"
     check hasMore2 == true
 
-    let (page3, cursor3, hasMore3) = index.keysInRange("user:a", "user:z", 5, cursor2)
+    let (page3, cursor3, hasMore3) = index.keysByRange("user:a", "user:z", 5, cursor2)
     check page3.len == 5
     check page3[0] == "user:k"
     check page3[4] == "user:o"
     check hasMore3 == true
 
-    let (page4, cursor4, hasMore4) = index.keysInRange("user:a", "user:z", 5, cursor3)
+    let (page4, cursor4, hasMore4) = index.keysByRange("user:a", "user:z", 5, cursor3)
     check page4.len == 5
     check page4[0] == "user:p"
     check page4[4] == "user:t"
@@ -493,11 +493,14 @@ suite "CritBitIndex - Keys-Only Range Queries":
     index.add("user:a", KeyDirEntry(recordPos: 100'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
     index.add("user:b", KeyDirEntry(recordPos: 150'u64, fileId: 1'u32, valueSize: 0'u32, recordSize: 50'u32, keyLen: 6))  # deleted
     index.add("user:c", KeyDirEntry(recordPos: 200'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
+    index.add("user:d", KeyDirEntry(recordPos: 250'u64, fileId: 1'u32, valueSize: 0'u32, recordSize: 50'u32, keyLen: 6))  # deleted
+    index.add("user:e", KeyDirEntry(recordPos: 300'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
-    let (keys, _, _) = index.keysInRange("user:a", "user:z", 10, "")
-    check keys.len == 2
+    let (keys, _, _) = index.keysByRange("user:a", "user:z", 10, "")
+    check keys.len == 3
     check keys[0] == "user:a"
     check keys[1] == "user:c"
+    check keys[2] == "user:e"
 
   test "keysWithPrefix returns only keys with prefix":
     var index = critbitindex.init()
@@ -506,7 +509,7 @@ suite "CritBitIndex - Keys-Only Range Queries":
     index.add("user:ab", KeyDirEntry(recordPos: 150'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 7))
     index.add("post:aa", KeyDirEntry(recordPos: 200'u64, fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 7))
 
-    let (keys, _, _) = index.keysWithPrefix("user:", 10, "")
+    let (keys, _, _) = index.keysByPrefix("user:", 10, "")
     check keys.len == 2
     check keys[0] == "user:aa"
     check keys[1] == "user:ab"
@@ -520,13 +523,13 @@ suite "CritBitIndex - Keys-Only Range Queries":
       index.add(userKey, KeyDirEntry(recordPos: uint64(100 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
       index.add(postKey, KeyDirEntry(recordPos: uint64(500 + i * 50), fileId: 1'u32, valueSize: 10'u32, recordSize: 50'u32, keyLen: 6))
 
-    let (users, cursor, _) = index.keysWithPrefix("user:", 3, "")
+    let (users, cursor, _) = index.keysByPrefix("user:", 3, "")
     check users.len == 3
     check users[0] == "user:a"
     check users[1] == "user:b"
     check users[2] == "user:c"
 
-    let (users2, _, _) = index.keysWithPrefix("user:", 3, cursor)
+    let (users2, _, _) = index.keysByPrefix("user:", 3, cursor)
     check users2.len == 3
     check users2[0] == "user:d"
     check users2[1] == "user:e"
@@ -548,7 +551,7 @@ suite "Barrel API - Keys-Only Range Queries":
     check barrel.set("user:ab", "Bob")
     check barrel.set("user:ac", "Charlie")
 
-    let (keys, cursor, hasMore) = barrel.keysInRange("user:aa", "user:ad", 10, "")
+    let (keys, cursor, hasMore) = barrel.keysByRange("user:aa", "user:ad", 10, "")
     check keys.len == 3
     check keys[0] == "user:aa"
     check keys[1] == "user:ab"
@@ -567,19 +570,19 @@ suite "Barrel API - Keys-Only Range Queries":
       let key = "user:" & chr(ord('a') + i)
       check barrel.set(key, "User" & $(i))
 
-    let (page1, cursor1, hasMore1) = barrel.keysInRange("user:a", "user:k", 3, "")
+    let (page1, cursor1, hasMore1) = barrel.keysByRange("user:a", "user:k", 3, "")
     check page1.len == 3
     check page1[0] == "user:a"
     check page1[2] == "user:c"
     check hasMore1 == true
 
-    let (page2, cursor2, hasMore2) = barrel.keysInRange("user:a", "user:k", 3, cursor1)
+    let (page2, cursor2, hasMore2) = barrel.keysByRange("user:a", "user:k", 3, cursor1)
     check page2.len == 3
     check page2[0] == "user:d"
     check page2[2] == "user:f"
     check hasMore2 == true
 
-    let (page3, _, hasMore3) = barrel.keysInRange("user:a", "user:k", 3, cursor2)
+    let (page3, _, hasMore3) = barrel.keysByRange("user:a", "user:k", 3, cursor2)
     check page3.len == 3
     check page3[0] == "user:g"
     check page3[2] == "user:i"
@@ -597,12 +600,12 @@ suite "Barrel API - Keys-Only Range Queries":
     check barrel.set("post:aa", "Post by Alice")
     check barrel.set("post:ab", "Post by Bob")
 
-    let (users, _, _) = barrel.keysWithPrefix("user:", 10, "")
+    let (users, _, _) = barrel.keysByPrefix("user:", 10, "")
     check users.len == 2
     check users[0] == "user:aa"
     check users[1] == "user:ab"
 
-    let (posts, _, _) = barrel.keysWithPrefix("post:", 10, "")
+    let (posts, _, _) = barrel.keysByPrefix("post:", 10, "")
     check posts.len == 2
     check posts[0] == "post:aa"
     check posts[1] == "post:ab"
@@ -620,7 +623,7 @@ suite "Barrel API - Keys-Only Range Queries":
 
     check barrel.delete("user:b")
 
-    let (keys, _, _) = barrel.keysInRange("user:a", "user:d", 10, "")
+    let (keys, _, _) = barrel.keysByRange("user:a", "user:d", 10, "")
     check keys.len == 2
     check keys[0] == "user:a"
     check keys[1] == "user:c"
@@ -636,7 +639,7 @@ suite "Barrel API - Keys-Only Range Queries":
     check barrel.set("user:b", "Two")
 
     expect ValueError:
-      let _ = barrel.keysInRange("user:a", "user:c", 10, "")
+      let _ = barrel.keysByRange("user:a", "user:c", 10, "")
 
     barrel.close()
 
@@ -649,7 +652,7 @@ suite "Barrel API - Keys-Only Range Queries":
     check barrel.set("b", "Second")
     check barrel.set("c", "Third")
 
-    let (keys, _, _) = barrel.keysInRange("", "", 10, "")
+    let (keys, _, _) = barrel.keysByRange("", "", 10, "")
     check keys.len == 3
     check keys[0] == "a"
     check keys[1] == "b"
@@ -666,12 +669,12 @@ suite "Barrel API - Keys-Only Range Queries":
       let key = "user:" & chr(ord('a') + i)
       check barrel.set(key, "User" & $(i))
 
-    let (page1, cursor, _) = barrel.keysWithPrefix("user:", 3, "")
+    let (page1, cursor, _) = barrel.keysByPrefix("user:", 3, "")
     check page1.len == 3
     check page1[0] == "user:a"
     check page1[2] == "user:c"
 
-    let (page2, _, _) = barrel.keysWithPrefix("user:", 3, cursor)
+    let (page2, _, _) = barrel.keysByPrefix("user:", 3, cursor)
     check page2.len == 3
     check page2[0] == "user:d"
     check page2[2] == "user:f"
