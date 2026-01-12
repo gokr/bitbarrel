@@ -1,0 +1,402 @@
+{
+  "publishers": [
+    { "id": 1, "name": "Marvel Comics" },
+    { "id": 2, "name": "DC Comics" },
+    { "id": 3, "name": "Image Comics" },
+    { "id": 4, "name": "Dark Horse" }
+  ],
+  "powers": [
+    { "id": 1, "name": "Super Strength", "description": "Immense physical strength" },
+    { "id": 2, "name": "Flight", "description": "Ability to fly" },
+    { "id": 3, "name": "Super Speed", "description": "Extraordinary speed" },
+    { "id": 4, "name": "Invulnerability", "description": "Resistant to damage" },
+    { "id": 5, "name": "Regeneration", "description": "Rapid healing" },
+    { "id": 6, "name": "Telepathy", "description": "Mind reading" },
+    { "id": 7, "name": "Telekinesis", "description": "Move objects with mind" },
+    { "id": 8, "name": "Energy Projection", "description": "Project energy blasts" },
+    { "id": 9, "name": "Intelligence", "description": "Superior intellect" },
+    { "id": 10, "name": "Agility", "description": "Enhanced dexterity" },
+    { "id": 11, "name": "Durability", "description": "Withstand damage" },
+    { "id": 12, "name": "Wealth", "description": "Vast resources" },
+    { "id": 13, "name": "Martial Arts", "description": "Expert combat skills" },
+    { "id": 14, "name": "Technology", "description": "Advanced tech" },
+    { "id": 15, "name": "Stealth", "description": "Move undetected" },
+    { "id": 16, "name": "Magic", "description": "Sorcery" },
+    { "id": 17, "name": "Immortality", "description": "Eternal life" },
+    { "id": 18, "name": "Teleportation", "description": "Instant travel" },
+    { "id": 19, "name": "Weapons", "description": "Combat proficiency" },
+    { "id": 20, "name": "Vision Powers", "description": "Enhanced sight abilities" }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "name": "Iron Man",
+      "realName": "Tony Stark",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1963-03-01",
+      "powers": [
+        { "id": 14, "name": "Technology" },
+        { "id": 9, "name": "Intelligence" },
+        { "id": 12, "name": "Wealth" }
+      ],
+      "teams": ["Avengers", "Illuminati"],
+      "alignment": "Good",
+      "stats": { "strength": 6, "speed": 5, "intelligence": 10, "power": 7 },
+      "bio": "Genius billionaire inventor Tony Stark created the Iron Man suit to fight evil and protect the world as part of the Avengers.",
+      "image": ""
+    },
+    {
+      "id": 2,
+      "name": "Superman",
+      "realName": "Clark Kent",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1938-06-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 2, "name": "Flight" },
+        { "id": 3, "name": "Super Speed" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 20, "name": "Vision Powers" }
+      ],
+      "teams": ["Justice League"],
+      "alignment": "Good",
+      "stats": { "strength": 10, "speed": 10, "intelligence": 8, "power": 10 },
+      "bio": "The last son of Krypton, sent to Earth as a baby before his planet's destruction, Superman uses his god-like powers to protect humanity.",
+      "image": ""
+    },
+    {
+      "id": 3,
+      "name": "Batman",
+      "realName": "Bruce Wayne",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1939-05-01",
+      "powers": [
+        { "id": 13, "name": "Martial Arts" },
+        { "id": 12, "name": "Wealth" },
+        { "id": 15, "name": "Stealth" },
+        { "id": 14, "name": "Technology" }
+      ],
+      "teams": ["Justice League"],
+      "alignment": "Good",
+      "stats": { "strength": 6, "speed": 5, "intelligence": 10, "power": 5 },
+      "bio": "After losing his parents to crime, billionaire Bruce Wayne became Batman to protect Gotham City from evil.",
+      "image": ""
+    },
+    {
+      "id": 4,
+      "name": "Spider-Man",
+      "realName": "Peter Parker",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1962-08-01",
+      "powers": [
+        { "id": 3, "name": "Super Speed" },
+        { "id": 10, "name": "Agility" },
+        { "id": 5, "name": "Regeneration" },
+        { "id": 9, "name": "Intelligence" }
+      ],
+      "teams": ["Avengers"],
+      "alignment": "Good",
+      "stats": { "strength": 7, "speed": 8, "intelligence": 9, "power": 6 },
+      "bio": "Bitten by a radioactive spider, Peter Parker gained amazing powers and became Spider-Man to protect New York City.",
+      "image": ""
+    },
+    {
+      "id": 5,
+      "name": "Wonder Woman",
+      "realName": "Diana Prince",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1941-10-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 10, "name": "Agility" },
+        { "id": 13, "name": "Martial Arts" }
+      ],
+      "teams": ["Justice League"],
+      "alignment": "Good",
+      "stats": { "strength": 9, "speed": 7, "intelligence": 8, "power": 8 },
+      "bio": "Amazonian princess Diana of Themyscira who came to the world of man to fight for peace and justice.",
+      "image": ""
+    },
+    {
+      "id": 6,
+      "name": "Captain America",
+      "realName": "Steve Rogers",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1941-03-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 10, "name": "Agility" },
+        { "id": 13, "name": "Martial Arts" }
+      ],
+      "teams": ["Avengers"],
+      "alignment": "Good",
+      "stats": { "strength": 7, "speed": 8, "intelligence": 7, "power": 5 },
+      "bio": "Enhanced with a Super Soldier serum during World War II, Steve Rogers became Captain America to fight for freedom.",
+      "image": ""
+    },
+    {
+      "id": 7,
+      "name": "Thor",
+      "realName": "Thor Odinson",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1962-08-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 16, "name": "Magic" },
+        { "id": 17, "name": "Immortality" }
+      ],
+      "teams": ["Avengers"],
+      "alignment": "Good",
+      "stats": { "strength": 10, "speed": 6, "intelligence": 7, "power": 10 },
+      "bio": "God of Thunder and prince of Asgard, Thor wields the mystical hammer Mjolnir to protect the Nine Realms.",
+      "image": ""
+    },
+    {
+      "id": 8,
+      "name": "Hulk",
+      "realName": "Bruce Banner",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1962-05-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 5, "name": "Regeneration" },
+        { "id": 11, "name": "Durability" }
+      ],
+      "teams": ["Avengers"],
+      "alignment": "Good",
+      "stats": { "strength": 10, "speed": 4, "intelligence": 6, "power": 9 },
+      "bio": " Scientist Bruce Banner transforms into the Hulk when angry, possessing incredible strength and near-invincibility.",
+      "image": ""
+    },
+    {
+      "id": 9,
+      "name": "Black Widow",
+      "realName": "Natasha Romanoff",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1964-04-01",
+      "powers": [
+        { "id": 13, "name": "Martial Arts" },
+        { "id": 15, "name": "Stealth" },
+        { "id": 10, "name": "Agility" }
+      ],
+      "teams": ["Avengers"],
+      "alignment": "Good",
+      "stats": { "strength": 4, "speed": 7, "intelligence": 8, "power": 4 },
+      "bio": "Former Russian spy Natasha Romanoff defected to the US and became Black Widow, a master spy and assassin.",
+      "image": ""
+    },
+    {
+      "id": 10,
+      "name": "Wolverine",
+      "realName": "James Howlett",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1974-10-01",
+      "powers": [
+        { "id": 5, "name": "Regeneration" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 1, "name": "Super Strength" },
+        { "id": 19, "name": "Weapons" }
+      ],
+      "teams": ["X-Men"],
+      "alignment": "Good",
+      "stats": { "strength": 6, "speed": 7, "intelligence": 7, "power": 7 },
+      "bio": "Mutant with retractable claws and unstoppable healing factor, Wolverine is a deadly warrior.",
+      "image": ""
+    },
+    {
+      "id": 11,
+      "name": "The Flash",
+      "realName": "Barry Allen",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1956-10-01",
+      "powers": [
+        { "id": 3, "name": "Super Speed" },
+        { "id": 10, "name": "Agility" },
+        { "id": 5, "name": "Regeneration" }
+      ],
+      "teams": ["Justice League"],
+      "alignment": "Good",
+      "stats": { "strength": 5, "speed": 10, "intelligence": 7, "power": 8 },
+      "bio": "Police scientist Barry Allen gained super speed after a chemical accident and became The Flash, the fastest man alive.",
+      "image": ""
+    },
+    {
+      "id": 12,
+      "name": "Green Lantern",
+      "realName": "Hal Jordan",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1959-10-01",
+      "powers": [
+        { "id": 8, "name": "Energy Projection" },
+        { "id": 2, "name": "Flight" },
+        { "id": 4, "name": "Invulnerability" }
+      ],
+      "teams": ["Justice League", "Green Lantern Corps"],
+      "alignment": "Good",
+      "stats": { "strength": 5, "speed": 8, "intelligence": 7, "power": 9 },
+      "bio": "Test pilot Hal Jordan was chosen to wield a Green Lantern Power Ring, becoming a guardian of peace across the universe.",
+      "image": ""
+    },
+    {
+      "id": 13,
+      "name": "Aquaman",
+      "realName": "Arthur Curry",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1941-11-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 6, "name": "Telepathy" },
+        { "id": 5, "name": "Regeneration" }
+      ],
+      "teams": ["Justice League"],
+      "alignment": "Good",
+      "stats": { "strength": 8, "speed": 7, "intelligence": 7, "power": 7 },
+      "bio": "King of Atlantis, Aquaman can communicate with sea creatures and possesses enhanced abilities both in and out of water.",
+      "image": ""
+    },
+    {
+      "id": 14,
+      "name": "Thanos",
+      "realName": "Thanos",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1973-02-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 8, "name": "Energy Projection" }
+      ],
+      "teams": ["Black Order"],
+      "alignment": "Bad",
+      "stats": { "strength": 10, "speed": 5, "intelligence": 10, "power": 10 },
+      "bio": "The Mad Titan seeks to gather the Infinity Stones to wipe out half of all life in the universe.",
+      "image": ""
+    },
+    {
+      "id": 15,
+      "name": "Joker",
+      "realName": "Unknown",
+      "publisher": "DC Comics",
+      "publisherId": 2,
+      "firstAppearance": "1940-04-01",
+      "powers": [
+        { "id": 9, "name": "Intelligence" },
+        { "id": 15, "name": "Stealth" }
+      ],
+      "teams": [],
+      "alignment": "Bad",
+      "stats": { "strength": 4, "speed": 5, "intelligence": 9, "power": 4 },
+      "bio": "Batman's arch-nemesis, the Joker is a criminal mastermind obsessed with chaos and bringing out the worst in Gotham.",
+      "image": ""
+    },
+    {
+      "id": 16,
+      "name": "Doctor Strange",
+      "realName": "Stephen Strange",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1963-07-01",
+      "powers": [
+        { "id": 16, "name": "Magic" },
+        { "id": 9, "name": "Intelligence" },
+        { "id": 7, "name": "Telekinesis" }
+      ],
+      "teams": ["Avengers", "Illuminati"],
+      "alignment": "Good",
+      "stats": { "strength": 5, "speed": 6, "intelligence": 10, "power": 10 },
+      "bio": "Former surgeon Stephen Strange became the Sorcerer Supreme, protecting Earth from mystical threats with powerful magic.",
+      "image": ""
+    },
+    {
+      "id": 17,
+      "name": "Black Panther",
+      "realName": "T'Challa",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1966-07-01",
+      "powers": [
+        { "id": 10, "name": "Agility" },
+        { "id": 13, "name": "Martial Arts" },
+        { "id": 14, "name": "Technology" }
+      ],
+      "teams": ["Avengers"],
+      "alignment": "Good",
+      "stats": { "strength": 6, "speed": 8, "intelligence": 9, "power": 6 },
+      "bio": "King of Wakanda and ruler of the most technologically advanced nation on Earth, T'Challa wields the power of the Black Panther.",
+      "image": ""
+    },
+    {
+      "id": 18,
+      "name": "Venom",
+      "realName": "Eddie Brock",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1988-05-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 5, "name": "Regeneration" },
+        { "id": 11, "name": "Durability" }
+      ],
+      "teams": [],
+      "alignment": "Good",
+      "stats": { "strength": 9, "speed": 7, "intelligence": 6, "power": 8 },
+      "bio": "Eddie Bond merged with the alien symbiote Venom, granting him incredible powers as an anti-hero.",
+      "image": ""
+    },
+    {
+      "id": 19,
+      "name": "Doctor Doom",
+      "realName": "Victor Von Doom",
+      "publisher": "Marvel Comics",
+      "publisherId": 1,
+      "firstAppearance": "1962-07-01",
+      "powers": [
+        { "id": 16, "name": "Magic" },
+        { "id": 9, "name": "Intelligence" },
+        { "id": 14, "name": "Technology" },
+        { "id": 12, "name": "Wealth" }
+      ],
+      "teams": [],
+      "alignment": "Bad",
+      "stats": { "strength": 7, "speed": 6, "intelligence": 10, "power": 9 },
+      "bio": "Ruler of Latveria, Doctor Doom combines genius-level intellect with powerful magic and advanced technology.",
+      "image": ""
+    },
+    {
+      "id": 20,
+      "name": "Spawn",
+      "realName": "Al Simmons",
+      "publisher": "Image Comics",
+      "publisherId": 3,
+      "firstAppearance": "1992-05-01",
+      "powers": [
+        { "id": 1, "name": "Super Strength" },
+        { "id": 4, "name": "Invulnerability" },
+        { "id": 18, "name": "Teleportation" },
+        { "id": 7, "name": "Telekinesis" }
+      ],
+      "teams": [],
+      "alignment": "Neutral",
+      "stats": { "strength": 8, "speed": 7, "intelligence": 7, "power": 9 },
+      "bio": "Former assassin Al Simmons was betrayed and reborn as Spawn, a hellspawn with god-like powers seeking redemption.",
+      "image": ""
+    }
+  ]
+}
