@@ -102,6 +102,20 @@ type
     topic*: string
     pattern*: string
 
+  TopicInfo* = object
+    name*: string
+    sequence*: uint64
+    subscriberCount*: int
+    messageCount*: int64
+
+  HistoryRequest* = object
+    topic*: string
+    count*: int
+    sinceSeq*: uint64
+
+  PresenceRequest* = object
+    operation*: uint8              ## 0 = get_online, 1 = broadcast_update
+
   ProtocolError* = object of CatchableError
 
 const
@@ -700,3 +714,18 @@ proc isPubSubEvent*(data: string): bool =
   # First byte of event is command (0xFF)
   # First byte of response is status (< 0x10)
   return byte(data[0]) == 0xFF'u8
+
+proc encodeHistoryRequest*(req: HistoryRequest): string =
+  ## Encode a history request
+  ## Format: ``[topicLen:2][topic:N][count:4][sinceSeq:8]``
+  result = newStringOfCap(2 + req.topic.len + 4 + 8)
+  result.writeUint16BE(uint16(req.topic.len))
+  result.add(req.topic)
+  result.writeUint32BE(uint32(req.count))
+  result.writeUint64BE(req.sinceSeq)
+
+proc encodePresenceRequest*(req: PresenceRequest): string =
+  ## Encode a presence request
+  ## Format: ``[operation:1]``
+  result = newStringOfCap(1)
+  result.writeByte(req.operation)
