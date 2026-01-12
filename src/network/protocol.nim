@@ -734,6 +734,18 @@ type
     headers*: string               ## JSON-encoded headers
     payload*: string
 
+  SubscriptionInfo* = object
+    subscriptionId*: string        ## UUID of the subscription
+    clientId*: uint64              ## Client ID that owns the subscription
+    topic*: string                 ## Exact topic (empty if pattern subscription)
+    pattern*: string               ## Pattern (empty if exact topic subscription)
+
+  TopicInfo* = object
+    name*: string
+    sequence*: uint64
+    subscriberCount*: int
+    messageCount*: int64
+
 proc encodeSubscribeRequest*(req: SubscribeRequest): string =
   ## Encode a subscribe request
   ## Format: ``[options:1][topicLen:2][topic:N][patternLen:2][pattern:M]``
@@ -930,3 +942,26 @@ proc decodePubSubEvent*(data: string): PubSubEvent =
     result.payload = readString(data, pos, int(payloadLen))
   else:
     result.payload = ""
+
+
+## Pub/Sub response decoding
+
+proc isPubSubEvent*(data: string): bool =
+  ## Check if binary data is a pub/sub event (command byte 0xFF)
+  if data.len == 0:
+    return false
+  return byte(data[0]) == 0xFF
+
+proc decodeSubscribeResponse*(value: string): string =
+  ## Decode subscribe response
+  ## The value field contains the subscription ID (UUID string)
+  result = value
+
+proc decodePublishResponse*(value: string): uint64 =
+  ## Decode publish response
+  ## The value field contains the sequence number as 8-byte big-endian uint64
+  var pos = 0
+  result = readUint64BE(value, pos)
+
+type
+  SubscriptionOptions* = SubscribeOptions  ## Alias for SubscribeOptions
