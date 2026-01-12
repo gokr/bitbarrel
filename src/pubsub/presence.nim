@@ -41,7 +41,8 @@ type
 proc cleanupWorker(args: PresenceCleanupArgs) {.thread.} =
   ## Background thread that removes stale clients
 
-  let manager = cast[ptr PresenceManager](args.manager)
+  # Cast the pointer back to PresenceManager ref
+  let manager = cast[PresenceManager](args.manager)
   var running = cast[ptr bool](args.running)
 
   echo "[Presence] Cleanup worker started"
@@ -105,8 +106,13 @@ proc startCleanupThread*(manager: PresenceManager) =
     if manager.threadRunning:
       return
 
+    # Allocate thread object if not already allocated
+    if manager.cleanupThread == nil:
+      manager.cleanupThread = new(Thread[PresenceCleanupArgs])
+
+    # Get pointer to the object that the ref points to
     var args = PresenceCleanupArgs(
-      manager: cast[ptr PresenceManager](manager),
+      manager: cast[ptr PresenceManager](cast[pointer](manager)),
       running: addr manager.threadRunning
     )
     manager.threadRunning = true
