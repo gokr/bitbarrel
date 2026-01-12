@@ -450,7 +450,7 @@ var events = openBarrel("analytics.db", analyticsCfg)
 discard events.set(fmt"event:{userId}:{eventType}:{timestamp}", eventData)
 
 # Query specific user's events
-let userEvents = events.keysWithPrefix(fmt"event:{userId}:")
+let userEvents = events.keysByPrefix(fmt"event:{userId}:")
 ```
 
 **Why BitBarrel**: bmRanged handles billions of events while keeping memory usage low.

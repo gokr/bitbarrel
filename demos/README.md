@@ -171,11 +171,11 @@ var rangeConfig = defaultBarrelConfig()
 rangeConfig.mode = BarrelMode.bmCritBit
 var rangeDb = openBarrel("timeseries.db", rangeConfig)
 
-# Query range
-let items = rangeDb.itemsInRange("key:100", "key:200")
+# Query range (returns (items, cursor, hasMore))
+let (items, _, _) = rangeDb.itemsInRange("key:100", "key:200")
 
-# Query prefix
-let keys = rangeDb.keysWithPrefix("user:")
+# Query prefix (returns (keys, cursor, hasMore))
+let (keys, _, _) = rangeDb.keysByPrefix("user:")
 ```
 
 ## Performance Characteristics

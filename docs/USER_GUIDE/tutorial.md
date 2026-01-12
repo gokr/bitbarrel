@@ -488,7 +488,7 @@ for key in januaryKeys:
   echo key, " = ", db.get(key)
 
 # Prefix search: Get all keys of type "temp"
-let (tempKeys, _, _) = db.keysWithPrefix("2024-01-:temp", limit = 1000)
+let (tempKeys, _, _) = db.keysByPrefix("2024-01-:temp")
 echo "Temperature readings: ", tempKeys.len
 
 # Count keys with prefix (faster than retrieving all keys)
