@@ -907,6 +907,8 @@ class Client:
                 self._ws.set_timeout(0.1)  # 100ms timeout
                 try:
                     data = self._ws.recv_binary()
+                    # Reset timeout back to original after receiving
+                    self._ws.reset_timeout()
                 except TimeoutError:
                     continue
                 except ConnectionError:

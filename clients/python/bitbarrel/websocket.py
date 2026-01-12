@@ -31,6 +31,7 @@ class WebSocket:
         self.address = address
         self.connect_timeout = connect_timeout
         self.request_timeout = request_timeout
+        self._original_request_timeout = request_timeout  # Store original for reset
         self.headers = headers or {}
         self._ws: Optional[ws_lib.WebSocket] = None
         self._lock = threading.Lock()
@@ -200,6 +201,18 @@ class WebSocket:
                     pass
                 self._ws = None
             self._connected = False
+
+    def set_timeout(self, timeout: float) -> None:
+        """Set a temporary timeout for the next operation.
+
+        Args:
+            timeout: Timeout in seconds for the next operation
+        """
+        self.request_timeout = timeout
+
+    def reset_timeout(self) -> None:
+        """Reset timeout to the original value."""
+        self.request_timeout = self._original_request_timeout
 
     @property
     def connected(self) -> bool:

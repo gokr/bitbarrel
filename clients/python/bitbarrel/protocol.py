@@ -631,9 +631,12 @@ def encode_subscribe_request(topic: str, pattern: str,
                             options: SubscriptionOptions) -> bytes:
     """Encode a subscribe request.
 
-    Format: [topicLen:2][topic][patternLen:2][pattern][options:1]
+    Format: [options:1][topicLen:2][topic][patternLen:2][pattern]
     """
     buf = bytearray()
+
+    # Options byte (first, per server protocol)
+    buf.append(options.encode())
 
     # Topic
     buf.extend(struct.pack(">H", len(topic)))
@@ -642,9 +645,6 @@ def encode_subscribe_request(topic: str, pattern: str,
     # Pattern
     buf.extend(struct.pack(">H", len(pattern)))
     buf.extend(pattern.encode("utf-8"))
-
-    # Options
-    buf.append(options.encode())
 
     return bytes(buf)
 
@@ -661,7 +661,7 @@ def encode_publish_request(topic: str, msg_type: int,
                           payload: str, headers: str) -> bytes:
     """Encode a publish request.
 
-    Format: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
+    Format: [topicLen:2][topic][msgType:1][headersLen:4][headers][payloadLen:4][payload]
     """
     buf = bytearray()
 
@@ -672,8 +672,8 @@ def encode_publish_request(topic: str, msg_type: int,
     # Message type
     buf.append(msg_type)
 
-    # Headers length and headers
-    buf.extend(struct.pack(">H", len(headers)))
+    # Headers length and headers (4 bytes, not 2!)
+    buf.extend(struct.pack(">I", len(headers)))
     buf.extend(headers.encode("utf-8"))
 
     # Payload length and payload
@@ -694,7 +694,7 @@ def decode_publish_response(data: bytes) -> int:
 def decode_pubsub_event(data: bytes) -> PubSubEvent:
     """Decode a PubSub event from server.
 
-    Format: [cmd:1][seq:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+    Format: [cmd:1][seq:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:4][headers][payloadLen:4][payload]
 
     The first seq (4 bytes) is the message sequence number for matching responses.
     The second seq (8 bytes) is the event sequence number.
@@ -732,9 +732,9 @@ def decode_pubsub_event(data: bytes) -> PubSubEvent:
     timestamp = struct.unpack(">Q", data[offset:offset+8])[0]
     offset += 8
 
-    # Headers length and headers
-    headers_len = struct.unpack(">H", data[offset:offset+2])[0]
-    offset += 2
+    # Headers length and headers (4 bytes, not 2!)
+    headers_len = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
     headers = data[offset:offset+headers_len].decode("utf-8") if headers_len > 0 else ""
     offset += headers_len
 

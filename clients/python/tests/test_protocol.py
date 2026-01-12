@@ -406,8 +406,8 @@ class TestPubSubEncoders:
         """Test encoding subscribe request with options."""
         opts = SubscriptionOptions(enable_kv_events=True, enable_presence=True)
         encoded = encode_subscribe_request("topic", "", opts)
-        # Last byte should be 0x01 | 0x02 = 0x03
-        assert encoded[-1] == 0x03
+        # First byte (options) should be 0x01 | 0x02 = 0x03
+        assert encoded[0] == 0x03
 
     def test_decode_subscribe_response(self):
         """Test decoding subscribe response."""
@@ -424,15 +424,15 @@ class TestPubSubEncoders:
         """Test encoding a data publish request."""
         encoded = encode_publish_request(
             "events/user", PubSubMessageType.DATA, "user logged in", "")
-        # Format: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
-        assert len(encoded) == 2 + 11 + 1 + 2 + 0 + 4 + 14
+        # Format: [topicLen:2][topic][msgType:1][headersLen:4][headers][payloadLen:4][payload]
+        assert len(encoded) == 2 + 11 + 1 + 4 + 0 + 4 + 14
 
     def test_encode_publish_request_with_headers(self):
         """Test encoding a publish request with headers."""
         encoded = encode_publish_request(
             "topic", PubSubMessageType.DATA, "payload", '{"key":"value"}')
         # JSON length is 15, not 16
-        assert len(encoded) == 2 + 5 + 1 + 2 + 15 + 4 + 7
+        assert len(encoded) == 2 + 5 + 1 + 4 + 15 + 4 + 7
 
     def test_decode_publish_response(self):
         """Test decoding publish response (64-bit sequence)."""
@@ -508,7 +508,7 @@ class TestPubSubDecoders:
         buf.extend(struct.pack(">Q", timestamp))
 
         # Headers (empty)
-        buf.extend(struct.pack(">H", 0))
+        buf.extend(struct.pack(">I", 0))
 
         # Payload
         payload = "test payload"
@@ -549,7 +549,7 @@ class TestPubSubDecoders:
 
         # Headers
         headers = '{"priority":"high"}'
-        buf.extend(struct.pack(">H", len(headers)))
+        buf.extend(struct.pack(">I", len(headers)))
         buf.extend(headers.encode("utf-8"))
 
         # Payload
