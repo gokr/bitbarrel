@@ -51,6 +51,7 @@ client.close()
 - **Iterator-based queries** - Memory-efficient streaming for large datasets
 - Reference traversal for graph-like data
 - Statistics support: Get comprehensive barrel statistics and metrics
+- **Pub/Sub messaging** - Basic subscribe/publish operations (Phase 2 complete, advanced features pending)
 - Thread-safe request handling
 
 ## Concurrency Model
@@ -266,6 +267,69 @@ let results = client.traverse("user:1", "->friend", options)
 # Or with defaults
 let results = client.traversePath("user:1", "->friend")
 ```
+
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Nim client currently has Phase 2 implementation complete (basic subscribe/publish operations). Event handling (Phase 3) and query methods (Phase 4) are pending.
+
+**Current Status:**
+- Phase 1: Protocol types and test infrastructure ✅
+- Phase 2: Basic subscribe/publish operations ✅
+- Phase 3: Message receiving and event handling ⏳ Pending
+- Phase 4: Query methods (listSubscribers, getHistory, etc.) ⏳ Pending
+
+### Available Methods (Phase 2 Complete)
+
+**Subscription Management:**
+- `subscribe(topic: string, options: SubscriptionOptions): string` - Subscribe to topic or pattern
+- `subscribeSimple(topic: string): string` - Convenience wrapper for basic subscription
+- `isSubscribed(subId: string): bool` - Check if subscription is active
+- `unsubscribe(subId: string): bool` - Remove specific subscription
+- `unsubscribeAll(): int` - Remove all subscriptions
+
+**Publishing:**
+- `publish(topic: string, msgType: PubSubMessageType, payload: string, headers: string = ""): uint64` - Publish message
+- `publishData(topic: string, payload: string): uint64` - Publish data message (convenience)
+
+**Pending Implementation (Phases 3-4):**
+- Event handling for incoming Pub/Sub events
+- Background message receiver
+- Query methods: `listSubscribers`, `listTopics`, `getHistory`, `getPresence`
+
+### Example (Basic Subscribe/Publish)
+
+```nim
+import bitbarrel_client
+
+var client = newClient("localhost", 9876.Port)
+client.connect()
+
+# Subscribe to pattern (Phase 2 implemented)
+let subId = client.subscribe("user:notifications:*", SubscriptionOptions())
+
+# Publish message (Phase 2 implemented)
+let seq = client.publishData("user:notifications:123", "Welcome to the system!")
+echo "Published message with sequence: ", seq
+
+# Check subscription status
+if client.isSubscribed(subId):
+  echo "Subscription is active"
+
+# Note: Event handling not yet implemented (Phase 3 pending)
+# client.onMessage = proc(event: PubSubEvent) =
+#   echo "Received event: ", event.topic, " -> ", event.payload
+
+client.unsubscribe(subId)
+client.close()
+```
+
+### Pub/Sub Event Types
+
+- `mtData` (0) - Normal published messages
+- `mtPresence` (1) - Member join/leave notifications
+- `mtKvChange` (2) - Key-value change events (server-side)
+
+See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details and [PUBSUB_STATUS.md](PUBSUB_STATUS.md) for implementation progress.
 
 ## Error Handling
 

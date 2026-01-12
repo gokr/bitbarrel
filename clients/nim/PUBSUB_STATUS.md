@@ -52,27 +52,27 @@ nim c -r tests/test_pubsub.nim
 
 Expected output: Tests will compile but fail with `ClientError: "subscribe() not yet implemented"` etc.
 
-## 📋 Next Steps: TDD Implementation
+## 📋 Implementation Status
 
-Follow the implementation plan in `PUBSUB_TODO.md`:
+Refer to `PUBSUB_TODO.md` for detailed task list.
 
-### Phase 2: Basic Subscribe/Publish
-1. Implement protocol encoding/decoding:
+### ✅ Phase 2: Basic Subscribe/Publish Complete
+1. Protocol encoding/decoding implemented:
    - `encodeSubscribeRequest()` / `decodeSubscribeResponse()`
    - `encodePublishRequest()` / `decodePublishResponse()`
-2. Implement client methods:
+2. Client methods implemented:
    - `subscribe()` - send subscribe request, track subscription
    - `publish()` - send publish request, return sequence number
-3. Test: `suite "Subscribe"` and `suite "Publish"` should pass
+3. Tests: `suite "Subscribe"` and `suite "Publish"` should pass
 
-### Phase 3: Message Receiving
+### ⏳ Phase 3: Message Receiving (Pending)
 1. Handle incoming 0xFF pub/sub events
 2. Decode `PubSubEvent` from binary format
 3. Call `onMessage` callback when events arrive
 4. Implement `unsubscribe()` and subscription tracking
 5. Test: `suite "Receive Messages"` should pass
 
-### Phase 4: Query Methods
+### ⏳ Phase 4: Query Methods (Pending)
 1. Implement remaining encoding/decoding
 2. Implement `listSubscribers()`, `listTopics()`, `getHistory()`, `getPresence()`
 3. Test: All remaining test suites should pass

@@ -5,28 +5,28 @@ This document tracks what needs to be implemented to make the pub/sub tests pass
 ## Protocol Types (protocol.nim)
 
 ### Commands
-- [ ] `cmdSubscribe = 0x40` - Subscribe to topic/pattern
-- [ ] `cmdUnsubscribe = 0x41` - Unsubscribe from subscription
-- [ ] `cmdPublish = 0x42` - Publish message to topic
+- [x] `cmdSubscribe = 0x40` - Subscribe to topic/pattern
+- [x] `cmdUnsubscribe = 0x41` - Unsubscribe from subscription
+- [x] `cmdPublish = 0x42` - Publish message to topic
 - [ ] `cmdListSubscribers = 0x43` - List subscribers for topic
 - [ ] `cmdHistory = 0x44` - Get message history
 - [ ] `cmdListTopics = 0x45` - List all topics
 - [ ] `cmdPresence = 0x46` - Get presence info for topic
 
 ### Types
-- [ ] `PubSubMessageType` enum (mtData, mtPresence, mtKvChange)
-- [ ] `PubSubEvent` object (topic, messageType, sequence, timestamp, headers, payload)
-- [ ] `SubscriptionOptions` object (enableKvEvents, enablePresence, replayHistory)
-- [ ] `PresenceInfo` object (topic, members, lastUpdate)
-- [ ] `PresenceMember` object (clientId, username, joinedAt, lastPing, metadata)
+- [x] `PubSubMessageType` enum (mtData, mtPresence, mtKvChange)
+- [x] `PubSubEvent` object (topic, messageType, sequence, timestamp, headers, payload)
+- [x] `SubscriptionOptions` object (enableKvEvents, enablePresence, replayHistory)
+- [x] `PresenceInfo` object (topic, members, lastUpdate)
+- [x] `PresenceMember` object (clientId, username, joinedAt, lastPing, metadata)
 
 ### Encoding/Decoding Functions
-- [ ] `encodeSubscribeRequest(topic, pattern, options)` -> string
-- [ ] `decodeSubscribeResponse(data)` -> subscriptionId
+- [x] `encodeSubscribeRequest(topic, pattern, options)` -> string
+- [x] `decodeSubscribeResponse(data)` -> subscriptionId
 - [ ] `encodeUnsubscribeRequest(subId)` -> string
-- [ ] `encodePublishRequest(topic, msgType, payload, headers)` -> string
-- [ ] `decodePublishResponse(data)` -> sequence number
-- [ ] `decodePubSubEvent(data)` -> PubSubEvent
+- [x] `encodePublishRequest(topic, msgType, payload, headers)` -> string
+- [x] `decodePublishResponse(data)` -> sequence number
+- [x] `decodePubSubEvent(data)` -> PubSubEvent
 - [ ] `encodeListSubscribersRequest(topic)` -> string
 - [ ] `decodeListSubscribersResponse(data)` -> seq[Subscription]
 - [ ] `encodeHistoryRequest(topic, limit, sinceSeq)` -> string
@@ -39,19 +39,19 @@ This document tracks what needs to be implemented to make the pub/sub tests pass
 ## Client Methods (client.nim)
 
 ### Properties
-- [ ] `onMessage: proc(event: PubSubEvent)` - Message handler callback
+- [x] `onMessage: proc(event: PubSubEvent)` - Message handler callback
 
 ### Subscription Methods
-- [ ] `subscribe(topic: string): string` - Subscribe to exact topic
-- [ ] `subscribe(topic: string, options: SubscriptionOptions): string` - Subscribe with options
-- [ ] `isSubscribed(subId: string): bool` - Check if subscription is active
-- [ ] `unsubscribe(subId: string): bool` - Unsubscribe by ID
-- [ ] `unsubscribeAll(): int` - Unsubscribe from all, return count
+- [x] `subscribe(topic: string): string` - Subscribe to exact topic
+- [x] `subscribe(topic: string, options: SubscriptionOptions): string` - Subscribe with options
+- [x] `isSubscribed(subId: string): bool` - Check if subscription is active
+- [x] `unsubscribe(subId: string): bool` - Unsubscribe by ID
+- [x] `unsubscribeAll(): int` - Unsubscribe from all, return count
 
 ### Publishing Methods
-- [ ] `publish(topic: string, payload: string): uint64` - Publish data message
-- [ ] `publish(topic: string, msgType: PubSubMessageType, payload: string): uint64`
-- [ ] `publish(topic: string, msgType: PubSubMessageType, payload: string, headers: string): uint64`
+- [x] `publish(topic: string, payload: string): uint64` - Publish data message
+- [x] `publish(topic: string, msgType: PubSubMessageType, payload: string): uint64`
+- [x] `publish(topic: string, msgType: PubSubMessageType, payload: string, headers: string): uint64`
 
 ### Query Methods
 - [ ] `listSubscribers(topic: string): seq[Subscription]` - Get subscribers for topic
@@ -60,9 +60,9 @@ This document tracks what needs to be implemented to make the pub/sub tests pass
 - [ ] `getPresence(topic: string): PresenceInfo` - Get presence info
 
 ### Internal
-- [ ] Background message receiver/dispatcher
-- [ ] Subscription tracking (Table[string, bool] for active subscriptions)
-- [ ] Handle incoming pub/sub events (command 0xFF)
+- [x] Background message receiver/dispatcher
+- [x] Subscription tracking (Table[string, bool] for active subscriptions)
+- [x] Handle incoming pub/sub events (command 0xFF)
 
 ## Implementation Order
 
