@@ -27,10 +27,13 @@ type
     ## Configuration commands
     cmdGetBarrelConfig = 0x16
     cmdSetBarrelConfig = 0x17
+    cmdGetBarrelStats = 0x18
     ## Range queries
     cmdRangeQuery = 0x21
     cmdPrefixQuery = 0x22
     cmdRangeCount = 0x23
+    cmdRangeKeys = 0x24
+    cmdPrefixKeys = 0x25
     ## Reference traversal
     cmdTraverse = 0x20
     ## Pub/Sub commands
@@ -363,6 +366,11 @@ type
     nextCursor*: string
     hasMore*: bool
 
+  KeysResponse* = object
+    keys*: seq[string]
+    nextCursor*: string
+    hasMore*: bool
+
 proc encodeRangeRequest*(req: RangeRequest): string =
   ## Encode a range query request
   ## Format: ``[startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]``
@@ -463,6 +471,26 @@ proc decodeRangeResponse*(data: string): RangeResponse =
     raise newException(ProtocolError, "Next cursor too large: " & $nextCursorLen)
   result.nextCursor = readString(data, pos, int(nextCursorLen))
 
+proc decodeKeysResponse*(data: string): KeysResponse =
+  ## Decode a keys-only query response
+  var pos = 0
+  let count = readUint32BE(data, pos)
+  result.keys = newSeq[string](count)
+
+  for i in 0..<count:
+    let keyLen = readUint16BE(data, pos)
+    if keyLen > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $keyLen)
+    result.keys[i] = readString(data, pos, int(keyLen))
+
+  let hasMoreByte = readByte(data, pos)
+  result.hasMore = hasMoreByte != 0
+
+  let nextCursorLen = readUint16BE(data, pos)
+  if nextCursorLen > MaxKeySize:
+    raise newException(ProtocolError, "Next cursor too large: " & $nextCursorLen)
+  result.nextCursor = readString(data, pos, int(nextCursorLen))
+
 
 proc newRequest*(command: Command, key: string = "", value: string = "", seq: uint32 = 0): Request =
   ## Create a new request.
@@ -518,6 +546,8 @@ proc `$`*(cmd: Command): string =
   of cmdRangeQuery: "RANGE_QUERY"
   of cmdPrefixQuery: "PREFIX_QUERY"
   of cmdRangeCount: "RANGE_COUNT"
+  of cmdRangeKeys: "RANGE_KEYS"
+  of cmdPrefixKeys: "PREFIX_KEYS"
   of cmdCreateBarrel: "CREATE_BARREL"
   of cmdOpenBarrel: "OPEN_BARREL"
   of cmdUseBarrel: "USE_BARREL"
@@ -526,6 +556,7 @@ proc `$`*(cmd: Command): string =
   of cmdDropBarrel: "DROP_BARREL"
   of cmdGetBarrelConfig: "GET_BARREL_CONFIG"
   of cmdSetBarrelConfig: "SET_BARREL_CONFIG"
+  of cmdGetBarrelStats: "GET_BARREL_STATS"
   of cmdTraverse: "TRAVERSE"
   of cmdSubscribe: "SUBSCRIBE"
   of cmdUnsubscribe: "UNSUBSCRIBE"
