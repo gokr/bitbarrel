@@ -8,7 +8,7 @@ All multi-byte integers use big-endian encoding.
 
 import struct
 from enum import IntEnum
-from typing import Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union
 
 
 class ProtocolError(Exception):
