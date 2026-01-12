@@ -7,6 +7,7 @@ A modern Flutter web admin console for BitBarrel key-value store, providing a us
 - **Connection Management**: Connect to BitBarrel servers via WebSocket
 - **Barrel Management**: Create, delete, and switch between barrels
 - **Data Explorer**: Browse key-value pairs with pagination, search, and CRUD operations
+- **Import/Export**: Bulk data import/export in JSONL and CSV formats
 - **Query Interface**: Execute prefix and range queries (CritBit mode only)
 - **JSON Visualization**: View formatted JSON with syntax highlighting and collapsible nodes
 - **Full CRUD**: Create, read, update, and delete key-value pairs
@@ -83,6 +84,29 @@ flutter run -d chrome --web-port 8080
    - Browse key-value pairs with pagination
    - Execute prefix and range queries (CritBit mode)
    - View JSON with syntax highlighting
+   - Import/export data in JSONL or CSV format
+
+## Import/Export Feature
+
+The admin console supports bulk data import and export in multiple formats:
+
+### Export Options
+- **JSONL** (JSON Lines): Each line contains `{"key":"...","value":"..."}`
+- **CSV**: Two columns (key, value) with proper escaping for special characters
+- **Scope**: Export all data, filtered results, or selected keys
+- **Compression**: Optional gzip compression for large exports
+
+### Import Options
+- **Format Detection**: Automatically detects JSONL or CSV format
+- **Validation**: Preview first 10 rows before committing
+- **Conflict Resolution**: Choose to skip, overwrite, or abort on duplicate keys
+- **Batch Processing**: Efficient batch imports with progress tracking
+
+### Using Import/Export
+1. Navigate to the Explorer screen for a barrel
+2. Click the 📤 Export button in the toolbar
+3. Or click the 📥 Import button to load data from a file
+4. Follow the dialog prompts to configure options and complete the operation
 
 ## Project Structure
 
@@ -96,18 +120,23 @@ lib/
 │   ├── dashboard_screen.dart      # Barrel management
 │   ├── barrel_explorer_screen.dart # Data explorer with CRUD
 │   ├── barrel_stats_screen.dart   # Statistics dashboard
-│   └── query_screen.dart          # Prefix/range query interface
+│   ├── query_screen.dart          # Prefix/range query interface
+│   └── traversal_screen.dart      # Graph traversal explorer
 ├── services/                      # Business logic
 │   ├── connection_service.dart    # Connection management
 │   ├── barrel_service.dart        # Barrel operations
-│   └── data_service.dart          # Data CRUD and query operations
+│   ├── data_service.dart          # Data CRUD and query operations
+│   └── import_export_service.dart # Import/export operations
 ├── models/                        # Data models
 │   ├── connection_state.dart      # Connection states
 │   ├── barrel.dart                # Barrel model
 │   └── key_value_item.dart        # Key-value pair model
 ├── widgets/                       # Reusable widgets
 │   ├── json_viewer.dart           # JSON visualization with syntax highlighting
-│   └── key_value_editor.dart      # Key-value create/edit dialog
+│   ├── key_value_editor.dart      # Key-value create/edit dialog
+│   ├── barrel_config_dialog.dart  # Barrel configuration editor
+│   ├── export_dialog.dart         # Data export dialog
+│   └── import_dialog.dart         # Data import dialog
 └── theme/
     └── app_theme.dart             # UI theme configuration
 ```
