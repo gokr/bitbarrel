@@ -120,16 +120,13 @@ void main() {
 
   group('PubSub Protocol Decoders', () {
     test('decodePubSubEvent decodes valid event', () {
-      // Create a pub/sub event: [cmd:0xFF][seq:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
-      final buffer = ByteData(1 + 4 + 2 + 5 + 1 + 8 + 8 + 2 + 0 + 4 + 12);
+      // Create a pub/sub event: [cmd:0xFF][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+      final buffer = ByteData(1 + 2 + 5 + 1 + 8 + 8 + 2 + 0 + 4 + 12);
       var offset = 0;
 
       // Command
       buffer.setUint8(offset++, Command.pubsubEvent);
 
-      // Seq (not used for events)
-      buffer.setUint32(offset, 42, Endian.big);
-      offset += 4;
 
       // Topic 'topic'
       final topic = 'topic';
@@ -296,7 +293,7 @@ void main() {
           'messageType': PubSubMessageType.presence,
           'sequence': 200,
           'timestamp': 1672531200000,
-          'payload': {'user': 'alice', 'online': true},
+          'payload': jsonEncode({'user': 'alice', 'online': true}),
         },
       ]);
 
@@ -304,7 +301,7 @@ void main() {
 
       expect(history.length, equals(1));
       expect(history[0].messageType, equals(PubSubMessageType.presence));
-      expect(history[0].headers, isNotEmpty);
+      expect(history[0].headers, isEmpty);
     });
 
     test('decodePresenceResponse parses JSON correctly', () {

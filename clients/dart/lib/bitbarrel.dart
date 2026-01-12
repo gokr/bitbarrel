@@ -17,7 +17,15 @@ export 'src/types.dart'
         RangeQueryResponse,
         TraverseOptions,
         TraverseResult,
-        BarrelStats;
+        BarrelStats,
+        PubSubMessageType,
+        PubSubEvent,
+        SubscriptionOptions,
+        SubscriptionInfo,
+        PresenceMember,
+        PresenceInfo,
+        TopicInfo,
+        HistoryRequest;
 
 // Exceptions
 export 'src/errors.dart';

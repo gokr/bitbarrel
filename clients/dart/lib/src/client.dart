@@ -564,7 +564,7 @@ class BitBarrelClient {
     // Try to receive messages (non-blocking with timeout)
     try {
       final data = await ws.receive().timeout(timeout, onTimeout: () {
-        throw TimeoutException('timeout');
+        throw TimeoutException(timeout);
       });
 
       // Check if this is a pub/sub event (command 0xFF)
