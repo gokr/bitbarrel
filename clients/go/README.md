@@ -9,11 +9,11 @@ Go client library for BitBarrel key-value store with WebSocket protocol support.
 - Barrel management
 - Statistics support: Get comprehensive barrel statistics and metrics
 - Context support for timeouts and cancellation
-- Pub/Sub messaging (basic subscribe/publish implemented, query methods pending)
+- Pub/Sub messaging with event handling (subscribe/publish + ListSubscribers/ListTopics)
 
 ## Pub/Sub Messaging
 
-BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Go client currently supports basic subscribe/publish operations with event handling. Query methods (`ListSubscribers`, `GetHistory`, `GetPresence`, `ListTopics`) are pending implementation.
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Go client supports subscribe/publish operations with event handling, plus `ListSubscribers` and `ListTopics` query methods.
 
 ### Available Methods
 
@@ -33,11 +33,13 @@ BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. T
 - `SetMessageHandler(handler func(PubSubEvent))` - Set callback for incoming Pub/Sub events
 - `StartEventReceiver()` - Start background goroutine to receive events
 
-**Pending Query Methods** (not yet implemented):
-- `ListSubscribers(topic string) ([]SubscriptionInfo, error)`
-- `GetHistory(topic string, req HistoryRequest) ([]PubSubEvent, error)`
-- `GetPresence(topic string) (PresenceInfo, error)`
-- `ListTopics() ([]string, error)`
+**Query Methods:**
+- `ListSubscribers(topic string) ([]SubscriptionInfo, error)` - List subscribers for a topic
+- `ListTopics() ([]string, error)` - List all available topics
+
+**Pending Query Methods:**
+- `GetHistory(topic string, req HistoryRequest) ([]PubSubEvent, error)` - Not yet implemented
+- `GetPresence(topic string) (PresenceInfo, error)` - Not yet implemented
 
 ### Example
 
