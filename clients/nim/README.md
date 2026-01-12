@@ -47,6 +47,8 @@ client.close()
 - Barrel management (create, open, use, close, drop, list)
 - Key-value operations (get, set, delete, exists, count, listKeys)
 - Range queries and prefix searches (requires bmCritBit mode barrel)
+- **Keys-only queries** - Efficient queries when you only need keys
+- **Iterator-based queries** - Memory-efficient streaming for large datasets
 - Reference traversal for graph-like data
 - Statistics support: Get comprehensive barrel statistics and metrics
 - Thread-safe request handling
@@ -196,6 +198,61 @@ let (items, nextCursor, hasMore) = client.prefixQuery("user:", limit=100)
 let count = client.rangeCount("user:0", "user:999")
 ```
 
+### Keys-Only Queries (bmCritBit mode)
+
+When you only need keys without values, use keys-only queries for better performance:
+
+```nim
+# Range query for keys only (more efficient than full queries)
+let (keys, nextCursor, hasMore) = client.rangeQueryKeys("user:0", "user:999", limit=100)
+
+# Prefix query for keys only
+let (keys, nextCursor, hasMore) = client.prefixQueryKeys("user:", limit=100)
+```
+
+**Benefits of keys-only queries:**
+- Lower network overhead (only keys transferred)
+- Reduced memory usage on client
+- Faster when you don't need the values
+- Ideal for key enumeration and validation
+
+### Iterator-Based Queries (bmCritBit mode)
+
+For memory-efficient streaming of large datasets, use iterators that fetch pages automatically:
+
+```nim
+# Create iterator for range query
+var iter = client.newRangeIterator("user:0", "user:999", pageSize=100)
+for (key, value) in iter:
+  echo key, " => ", value
+
+# Create iterator for keys-only range query
+var keysIter = client.newKeysIterator("user:0", "user:999", pageSize=100)
+for key in keysIter:
+  echo "Key: ", key
+
+# Create iterator for prefix query
+var prefixIter = client.newPrefixIterator("user:", pageSize=100)
+for (key, value) in prefixIter:
+  echo key, " => ", value
+
+# Create iterator for keys-only prefix query
+var keysPrefixIter = client.newKeysPrefixIterator("user:", pageSize=100)
+for key in keysPrefixIter:
+  echo "Key: ", key
+```
+
+**Iterator Benefits:**
+- Automatic pagination - fetches next page when needed
+- Memory efficient - only one page in memory at a time
+- Simpler code - no manual cursor management
+- Ideal for large datasets that don't fit in memory
+
+**When to use iterators vs direct queries:**
+- Use iterators for large datasets or when memory is constrained
+- Use direct queries for small datasets where you need all results at once
+- Use iterators for streaming processing patterns
+
 ### Reference Traversal
 
 ```nim
@@ -271,11 +328,13 @@ See the `examples/` directory:
 
 - `basic_usage.nim` - Basic CRUD operations
 - `error_handling.nim` - Error handling patterns
+- `range_queries.nim` - Range queries, keys-only queries, and iterators
 
 Run examples:
 
 ```bash
 nim c -r examples/basic_usage.nim
+nim c -r examples/range_queries.nim
 ```
 
 

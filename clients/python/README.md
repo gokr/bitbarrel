@@ -210,6 +210,44 @@ result = client.prefix_query("user:", limit=100, cursor="")
 count = client.range_count("user:1000", "user:2000")
 ```
 
+### Keys-Only Queries
+
+When you only need keys without values, use keys-only queries for better performance:
+
+```python
+# Range query for keys only (more efficient)
+keys_result = client.range_query_keys("user:1000", "user:2000", limit=100)
+print(keys_result.keys)  # List of keys only (no values)
+
+# Prefix query for keys only
+keys_result = client.prefix_query_keys("temp:", limit=1000)
+```
+
+**Benefits:**
+- Lower network overhead (only keys transferred)
+- Reduced memory usage
+- Faster when values aren't needed
+- Ideal for key enumeration and cleanup
+
+### Iterator Helpers
+
+For memory-efficient processing of large datasets:
+
+```python
+from bitbarrel.helpers import get_all_in_range, get_all_with_prefix
+
+# Automatically paginates through all results
+all_users = get_all_in_range(client, "user:0000", "user:9999")
+for key, value in all_users:
+    process_user(key, value)
+
+# Process keys only (even more memory efficient)
+temp_keys = client.prefix_query_keys("temp:", limit=10000)
+for key in temp_keys.keys:
+    if is_expired(key):
+        client.delete(key)
+```
+
 ### Reference Traversal
 
 ```python

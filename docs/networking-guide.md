@@ -9,10 +9,11 @@ This guide provides comprehensive documentation for using the BitBarrel network 
 3. [Connection Management](#connection-management)
 4. [Barrel Operations](#barrel-operations)
 5. [Key-Value Operations](#key-value-operations)
-6. [Error Handling](#error-handling)
-7. [Advanced Features](#advanced-features)
-8. [Performance Tuning](#performance-tuning)
-9. [Troubleshooting](#troubleshooting)
+6. [Range Queries and Iterators](#range-queries-and-iterators-bmcritbit-mode)
+7. [Error Handling](#error-handling)
+8. [Advanced Features](#advanced-features)
+9. [Performance Tuning](#performance-tuning)
+10. [Troubleshooting](#troubleshooting)
 
 ## Getting Started
 
@@ -599,6 +600,136 @@ for key, _ in items:
     results[key] = value
   except ClientError:
     echo "Key not found: " & key
+```
+
+## Range Queries and Iterators (bmCritBit Mode)
+
+Range queries require barrels created in `bmCritBit` mode, which maintains keys in sorted order.
+
+### Basic Range Queries
+
+```nim
+# Query key-value pairs in range [startKey, endKey)
+let (items, nextCursor, hasMore) = client.rangeQuery("user:100", "user:200", limit=50)
+
+for (key, value) in items:
+  echo key & " => " & value
+
+# If hasMore is true, fetch next page using cursor
+if hasMore:
+  let (nextPage, _, _) = client.rangeQuery("user:100", "user:200", limit=50, cursor=nextCursor)
+```
+
+### Prefix Queries
+
+```nim
+# Query all keys starting with prefix
+let (items, nextCursor, hasMore) = client.prefixQuery("order:2024-", limit=100)
+
+for (key, value) in items:
+  echo "Order: " & key
+```
+
+### Keys-Only Queries
+
+When you only need keys without values, keys-only queries are more efficient:
+
+```nim
+# Range query for keys only (lower network overhead)
+let (keys, cursor, hasMore) = client.rangeQueryKeys("user:100", "user:200", limit=50)
+
+# Prefix query for keys only
+let (keys, cursor, hasMore) = client.prefixQueryKeys("temp:", limit=100)
+```
+
+**Benefits:**
+- Reduced network transfer (only keys, no values)
+- Lower memory usage on client
+- Faster when values aren't needed
+- Ideal for key enumeration, validation, or existence checks
+
+### Iterator-Based Queries
+
+For memory-efficient streaming of large datasets, use iterators that automatically handle pagination:
+
+```nim
+# Create iterator for range query (fetches pages automatically)
+var iter = client.newRangeIterator("user:000", "user:999", pageSize=100)
+for (key, value) in iter:
+  # Process each item - only one page in memory at a time
+  echo key & " => " & value
+
+# Keys-only iterator (even more memory efficient)
+var keysIter = client.newKeysIterator("user:000", "user:999", pageSize=100)
+for key in keysIter:
+  echo "Processing: " & key
+
+# Prefix iterator
+var prefixIter = client.newPrefixIterator("log:2024-", pageSize=50)
+for (key, value) in prefixIter:
+  processLogEntry(key, value)
+
+# Keys-only prefix iterator
+var keysPrefixIter = client.newKeysPrefixIterator("temp:", pageSize=50)
+for key in keysPrefixIter:
+  cleanupKey(key)
+```
+
+**Iterator Benefits:**
+- **Automatic pagination** - Fetches next page when needed
+- **Memory efficient** - Only one page in memory at a time
+- **Simpler code** - No manual cursor management
+- **Ideal for large datasets** - Process millions of items without running out of memory
+
+**When to Use Iterators vs Direct Queries:**
+
+| Use Case | Recommended Approach | Reason |
+|----------|---------------------|--------|
+| Small dataset (< 1000 items) | Direct queries (`rangeQuery`, `prefixQuery`) | Simpler code, all data at once |
+| Large dataset (1000+ items) | Iterators | Memory efficient, automatic paging |
+| Memory-constrained environment | Iterators | Controlled memory usage |
+| Streaming/processing pipeline | Iterators | Process items one at a time |
+| Need all results immediately | Direct queries | Single request, no iteration overhead |
+
+### Range Count
+
+```nim
+# Count keys in range without retrieving them
+let userCount = client.rangeCount("user:100", "user:200")
+echo "Users in range: " & $userCount
+
+# Count all keys in barrel
+let totalCount = client.rangeCount()
+echo "Total keys: " & $totalCount
+```
+
+### Example: Processing Large Datasets
+
+```nim
+# Efficiently process millions of log entries without loading all into memory
+proc processLogBatch(client: var BitBarrelClient, date: string) =
+  var iter = client.newPrefixIterator("log:" & date & ":", pageSize=1000)
+
+  for (key, value) in iter:
+    # Parse and process each log entry
+    let entry = parseLogEntry(value)
+    if entry.level == "error":
+      sendAlert(entry.message)
+
+# Process all logs for a day
+processLogBatch(client, "2024-01-15")
+```
+
+### Example: Key Validation and Cleanup
+
+```nim
+# Find and validate all temporary keys
+let (tempKeys, _, _) = client.prefixQueryKeys("temp:", limit=10000)
+
+for key in tempKeys:
+  if isExpired(key):
+    echo "Removing expired: " & key
+    discard client.delete(key)
 ```
 
 ## Error Handling
