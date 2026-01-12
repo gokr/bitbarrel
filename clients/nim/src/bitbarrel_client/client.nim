@@ -3,7 +3,7 @@
 ## WebSocket client library for BitBarrel network operations using the
 ## whisky WebSocket library (https://github.com/gokr/whisky).
 
-import std/[locks, tables, strformat, net, strutils]
+import std/[locks, tables, strformat, net, strutils, json, times]
 import whisky
 import protocol
 
@@ -1014,20 +1014,161 @@ proc publish*(client: var BitBarrelClient, topic: string, payload: string): uint
 
 proc listSubscribers*(client: var BitBarrelClient, topic: string): seq[SubscriptionInfo] =
   ## List subscribers for a topic
-  raise newException(ClientError, "listSubscribers() not yet implemented")
+  ##
+  ## Returns a sequence of subscription information including subscription ID,
+  ## client ID, and topic/pattern details.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let subs = client.listSubscribers("chat:room1")
+  ## for sub in subs:
+  ##   echo &"Sub {sub.subscriptionId} by client {sub.clientId}"
+  ## ```
+  if not client.connected:
+    client.connect()
 
-proc listTopics*(client: var BitBarrelClient): seq[string] =
+  let req = Request(command: cmdListSubscribers, value: topic)
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"List subscribers failed: {resp.status}")
+
+  try:
+    let js = parseJson(resp.value)
+    result = newSeqOfCap[SubscriptionInfo](js.len)
+    for item in js:
+      var info: SubscriptionInfo
+      info.id = item["subscriptionId"].getStr()
+      info.clientId = uint64(item["clientId"].getInt())
+      if "pattern" in item:
+        info.pattern = item["pattern"].getStr()
+      else:
+        info.topic = item["topic"].getStr()
+      result.add(info)
+  except CatchableError as e:
+    raise newException(ClientError, fmt"Failed to parse subscribers response: {e.msg}")
+
+proc listTopics*(client: var BitBarrelClient): seq[TopicInfo] =
   ## List all topics
-  raise newException(ClientError, "listTopics() not yet implemented")
+  ##
+  ## Returns a sequence of topic information including name, sequence number,
+  ## subscriber count, and message count.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let topics = client.listTopics()
+  ## for topic in topics:
+  ##   echo &"{topic.name}: {topic.subscriberCount} subscribers, {topic.messageCount} messages"
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  let req = Request(command: cmdListTopics, value: "")
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"List topics failed: {resp.status}")
+
+  try:
+    let js = parseJson(resp.value)
+    result = newSeqOfCap[TopicInfo](js.len)
+    for item in js:
+      var info: TopicInfo
+      info.name = item["name"].getStr()
+      info.sequence = uint64(item["sequence"].getInt())
+      info.subscriberCount = item["subscriberCount"].getInt()
+      info.messageCount = int64(item["messageCount"].getInt())
+      result.add(info)
+  except CatchableError as e:
+    raise newException(ClientError, fmt"Failed to parse topics response: {e.msg}")
 
 proc getHistory*(client: var BitBarrelClient, topic: string,
                  limit: int = 100, sinceSeq: uint64 = 0): seq[PubSubEvent] =
   ## Get message history for topic
-  raise newException(ClientError, "getHistory() not yet implemented")
+  ##
+  ## Returns a sequence of historical pub/sub events.
+  ## limit: Maximum number of messages to return (default: 100)
+  ## sinceSeq: Only return messages with sequence >= this value (default: 0)
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let history = client.getHistory("chat:room1", limit=10)
+  ## for event in history:
+  ##   echo &"[{event.sequence}] {event.topic}: {event.payload}"
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  let histReq = HistoryRequest(topic: topic, count: limit, sinceSeq: sinceSeq)
+  let req = Request(command: cmdHistory, value: protocol.encodeHistoryRequest(histReq))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Get history failed: {resp.status}")
+
+  try:
+    let js = parseJson(resp.value)
+    result = newSeqOfCap[PubSubEvent](js.len)
+    for item in js:
+      var event: PubSubEvent
+      event.topic = item["topic"].getStr()
+      event.messageType = PubSubMessageType(item["messageType"].getInt())
+      event.payload = item["payload"].getStr()
+      event.timestamp = item["timestamp"].getInt()
+      event.sequence = uint64(item["sequence"].getInt())
+      event.headers = $item["headers"]
+      result.add(event)
+  except CatchableError as e:
+    raise newException(ClientError, fmt"Failed to parse history response: {e.msg}")
 
 proc getPresence*(client: var BitBarrelClient, topic: string): PresenceInfo =
   ## Get presence info for topic
-  raise newException(ClientError, "getPresence() not yet implemented")
+  ##
+  ## Returns presence information for subscribers on a topic.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let presence = client.getPresence("chat:room1")
+  ## echo &"{presence.members.len} members online"
+  ## for member in presence.members:
+  ##   echo &"  {member.username} (joined at {member.joinedAt})"
+  ## ```
+  if not client.connected:
+    client.connect()
+
+  let presReq = PresenceRequest(operation: 0)  # Get online
+  let req = Request(command: cmdPresence, value: protocol.encodePresenceRequest(presReq))
+  let resp = client.sendAndWait(req)
+
+  if resp.status != statusOk:
+    raise newException(ClientError, fmt"Get presence failed: {resp.status}")
+
+  try:
+    let js = parseJson(resp.value)
+    result.topic = topic
+    result.lastUpdate = int64(epochTime() * 1000)
+    result.members = @[]
+
+    for item in js:
+      let itemTopic = item["topic"].getStr()
+
+      if itemTopic == topic:
+        # Single topic response - parse members directly
+        let membersArray = if item.hasKey("members"): item["members"] else: newJArray()
+        result.lastUpdate = if item.hasKey("lastUpdate"): item["lastUpdate"].getInt()
+                             else: result.lastUpdate
+
+        for m in membersArray:
+          var member: PresenceMember
+          member.clientId = uint64(m["clientId"].getInt())
+          member.username = m["username"].getStr()
+          member.joinedAt = if m.hasKey("joinedAt"): m["joinedAt"].getInt() else: 0'i64
+          member.lastPing = if m.hasKey("lastPing"): m["lastPing"].getInt() else: 0'i64
+          member.metadata = if m.hasKey("metadata"): $m["metadata"] else: ""
+          result.members.add(member)
+        break
+  except CatchableError as e:
+    raise newException(ClientError, fmt"Failed to parse presence response: {e.msg}")
 
 # Lazy pagination iterator for Nim client
 
