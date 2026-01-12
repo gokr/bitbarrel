@@ -126,7 +126,6 @@ func main() {
 
 	var wg sync.WaitGroup
 	errors := 0
-	errorMutex := sync.Mutex{}
 
 	// Launch writer workers
 	numWriters := 5
