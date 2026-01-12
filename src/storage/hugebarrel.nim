@@ -536,18 +536,28 @@ proc set*(hb: var HugeBarrel, key: string, value: string, ttl: int = -1): bool =
   rkd.insert(key, entry)
   rkd.isDirty = true
 
-  # Save RangeKeyDir if buffer is full OR time-based flush is due
-  if rkd.shouldFlush(hb.config.maxEntriesPerRange) or hb.shouldTimeFlush():
+  # Check if range needs splitting (consider pending inserts too)
+  let needsSplit = rkd.totalLen() > hb.config.maxEntriesPerRange and hb.config.autoSplitEnabled
+
+  # Save RangeKeyDir if buffer is full OR time-based flush is due OR needs split
+  # IMPORTANT: Must flush before split so splitRangeAtomic sees latest data
+  if rkd.shouldFlush(hb.config.maxEntriesPerRange) or hb.shouldTimeFlush() or needsSplit:
     rkd.flush()
     hb.saveRangeKeyDir(rangeKey, rkd)
     hb.lastFlushTime = cpuTime() * 1000
+    # Update cache after saving to ensure cache coherency
+    if needsSplit:
+      # About to split - invalidate cache so splitRangeAtomic loads fresh from storage
+      hb.rangeKeyCache.cacheDel(rangeKey)
+    else:
+      # Normal flush - update cache with flushed version
+      hb.cachePut(rangeKey, rkd)
   else:
     # Update cache with the modified RangeKeyDir!
     hb.cachePut(rangeKey, rkd)
 
-  # Check if range needs splitting (consider pending inserts too)
-  if rkd.totalLen() > hb.config.maxEntriesPerRange and hb.config.autoSplitEnabled:
-    # Perform atomic range split (with crash recovery marker)
+  # Perform atomic range split (with crash recovery marker)
+  if needsSplit:
     discard hb.splitRangeAtomic(rangeKey)
 
   return true
