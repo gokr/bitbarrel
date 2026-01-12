@@ -12,24 +12,14 @@ type
   WebSocketSendProc* = proc(wsPtr: pointer, data: string, binary: bool) {.gcsafe.}
   WebSocketCloseProc* = proc(wsPtr: pointer) {.gcsafe.}
 
-  ## PubSub PubSubWebSocket interface for sending messages
-  ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes.
-  ## We avoid closures entirely by storing raw pointers and callback procs.
-  PubSubWebSocket* = ref PubSubWebSocketObj
-  PubSubWebSocketObj {.acyclic.} = object
-    clientId*: uint64
-    wsPtr*: pointer  # Raw pointer to WebSocket (not tracked by ORC)
-    sendProc*: WebSocketSendProc
-    closeProc*: WebSocketCloseProc
-
   ## Event Broker - routes messages to subscribers
   EventBroker* = ref EventBrokerObj
   EventBrokerObj {.acyclic.} = object
     ## Reference to pub/sub manager
     pubSubManager*: PubSubManager
 
-    ## PubSubWebSocket clients (clientId -> PubSubWebSocket)
-    clients*: Table[uint64, PubSubWebSocket]
+    ## Client IDs that are subscribed (just the IDs, not full WebSockets)
+    clients*: HashSet[uint64]
 
     ## Clients lock
     clientsLock*: Lock
@@ -39,23 +29,22 @@ proc newEventBroker*(pubSubManager: PubSubManager): EventBroker =
 
   result = EventBroker(
     pubSubManager: pubSubManager,
-    clients: initTable[uint64, PubSubWebSocket](),
+    clients: initHashSet[uint64](),
     clientsLock: Lock()
   )
   initLock(result.clientsLock)
 
-proc addClient*(broker: EventBroker, ws: PubSubWebSocket) =
-  ## Add a PubSubWebSocket client to the broker
+proc addClient*(broker: EventBroker, clientId: uint64) =
+  ## Add a client to the broker
 
   withLock broker.clientsLock:
-    broker.clients[ws.clientId] = ws
+    broker.clients.incl(clientId)
 
 proc removeClient*(broker: EventBroker, clientId: uint64) =
-  ## Remove a PubSubWebSocket client from the broker
+  ## Remove a client from the broker
 
   withLock broker.clientsLock:
-    if clientId in broker.clients:
-      broker.clients.del(clientId)
+    broker.clients.excl(clientId)
 
 proc encodeEventMessage*(topic: string, messageType: PubSubMessageType,
                         sequence: uint64, timestamp: int64,
@@ -123,15 +112,14 @@ proc encodeEventMessage*(topic: string, messageType: PubSubMessageType,
 
 proc sendToClient*(broker: EventBroker, clientId: uint64,
                   topic: string, messageType: PubSubMessageType,
-                  payload: string, headers: string) =
-  ## Send a message to a specific PubSubWebSocket client
+                  payload: string, headers: string): string =
+  ## Encode a message for a specific client (returns encoded message)
+  ## The caller (server) is responsible for actually sending it
 
   withLock broker.clientsLock:
     if clientId notin broker.clients:
       # Client not connected, skip
-      return
-
-    let ws = broker.clients[clientId]
+      return ""
 
     # Get topic sequence from manager
     let sequence = if topic in broker.pubSubManager.topics:
@@ -141,15 +129,8 @@ proc sendToClient*(broker: EventBroker, clientId: uint64,
 
     let timestamp = toUnix(getTime()) * 1000
 
-    let encoded = encodeEventMessage(topic, messageType, sequence,
-                                     timestamp, headers, payload)
-
-    try:
-      ws.sendProc(ws.wsPtr, encoded, binary = true)
-    except CatchableError as e:
-      echo fmt"[EventBroker] Error sending to client {clientId}: {e.msg}"
-      # Client may have disconnected, remove them
-      broker.removeClient(clientId)
+    result = encodeEventMessage(topic, messageType, sequence,
+                                timestamp, headers, payload)
 
 proc routeEvent*(broker: EventBroker, msg: Message) =
   ## Route a message to all matching subscribers
@@ -217,7 +198,7 @@ proc cleanup*(broker: EventBroker) =
   withLock broker.clientsLock:
     for _, ws in broker.clients:
       try:
-        ws.closeProc(ws.wsPtr)
+        ws.closeProc(ws.serverPtr)
       except CatchableError:
         discard
     broker.clients.clear()

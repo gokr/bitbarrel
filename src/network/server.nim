@@ -145,6 +145,7 @@ type
   BitBarrelServerObj* = object
     registry*: BarrelRegistry         ## All open barrels
     sessions*: Table[uint64, Session] ## WebSocket client -> session
+    webSockets*: Table[uint64, WebSocket] ## WebSocket client ID -> WebSocket (stored during OpenEvent)
     mummyServer: Server
     config*: ServerConfig              ## Server configuration (public for tests)
     sessionsLock: Lock
@@ -1065,21 +1066,30 @@ proc websocketHandler*(
       # Session created lazily on first message
       echo "WebSocket connection opened: clientId=", ws.clientId
 
+      # Store WebSocket in table for later use (e.g., pub/sub events)
+      withLock server.sessionsLock:
+        server.webSockets[ws.clientId] = ws
+
       # Register WebSocket with event broker for pub/sub
       if server.pubSubEnabled and server.eventBroker != nil:
         # Create a PubSubWebSocket wrapper for the event broker
         # Using raw pointers to avoid ORC cycle detection crashes
-        proc sendCallback(wsPtr: pointer, data: string, binary: bool) {.gcsafe.} =
-          let wsPtr = cast[ptr WebSocket](wsPtr)
-          wsPtr[].send(data, if binary: BinaryMessage else: TextMessage)
+        # Store server pointer and capture clientId in closure
+        let clientId = ws.clientId
+        proc sendCallback(serverPtr: pointer, data: string, binary: bool) {.gcsafe.} =
+          let serverPtr = cast[ptr BitBarrelServer](serverPtr)
+          withLock serverPtr[].sessionsLock:
+            if clientId in serverPtr[].webSockets:
+              let ws = serverPtr[].webSockets[clientId]
+              ws.send(data, if binary: BinaryMessage else: TextMessage)
 
-        proc closeCallback(wsPtr: pointer) {.gcsafe.} =
+        proc closeCallback(serverPtr: pointer) {.gcsafe.} =
           # Note: can't close from here, will be handled by CloseEvent
           discard
 
         let wsRef = eventbroker.PubSubWebSocket(
           clientId: ws.clientId,
-          wsPtr: addr ws,
+          serverPtr: cast[pointer](addr server),
           sendProc: sendCallback,
           closeProc: closeCallback
         )
@@ -1097,6 +1107,12 @@ proc websocketHandler*(
 
     of CloseEvent:
       echo "WebSocket connection closed: clientId=", ws.clientId
+
+      # Remove WebSocket from storage table
+      withLock server.sessionsLock:
+        if ws.clientId in server.webSockets:
+          server.webSockets.del(ws.clientId)
+
       # Clean up pub/sub subscriptions if enabled
       if server.pubSubEnabled:
         if server.pubSubManager != nil:
@@ -1490,6 +1506,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
   echo fmt("BitBarrel discovery: {discovered} barrels available, {yamlsCreated} configs created")
 
   result.sessions = initTable[uint64, Session]()
+  result.webSockets = initTable[uint64, WebSocket]()
   result.config = config
   result.sessionsLock = Lock()
   result.seqCounter = 0
