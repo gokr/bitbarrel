@@ -458,7 +458,7 @@ Get only keys with a prefix (values omitted). More efficient than PREFIX_QUERY w
 
 ### Pub/Sub Messaging
 
-Pub/Sub commands enable real-time messaging with topic-based subscriptions. WebSocket clients receive push notifications for published messages.
+Pub/Sub commands enable real-time messaging with topic-based subscriptions. WebSocket clients receive push notifications for published messages. For complete documentation including topic patterns, message types, and client examples, see the [Pub/Sub User Guide](./USER_GUIDE/pubsub.md).
 
 #### SUBSCRIBE (0x40)
 Subscribe to a topic to receive published messages.

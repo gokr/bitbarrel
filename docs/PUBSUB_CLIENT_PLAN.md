@@ -4,15 +4,25 @@ This document outlines the plan for implementing PubSub functionality across all
 
 ## Current Status
 
-- **Nim client**: ✅ Full PubSub implementation with tests (including query methods)
-- **Go client**: ✅ PubSub implementation with tests (subscribe/publish + ListSubscribers/ListTopics)
-- **Python client**: ✅ PubSub implementation with tests (subscribe/publish + listSubscribers/listTopics)
-- **Dart/Flutter client**: ✅ Basic PubSub implementation (subscribe/publish only, query methods pending)
-- **TypeScript client**: ✅ Basic PubSub implementation (subscribe/publish only, query methods pending)
+> **Note**: This plan document has been updated to reflect actual implementation status as of January 2026. For comprehensive Pub/Sub usage documentation, see the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md).
+
+- **Nim client**: ✅ Phase 2 complete (basic subscribe/publish) - Phase 3-4 pending (message receiving, query methods)
+- **Go client**: ✅ Basic PubSub implementation (subscribe/publish implemented, query methods pending)
+- **Python client**: ✅ Core PubSub implementation (subscribe/publish, query methods raise "not yet implemented")
+- **Dart/Flutter client**: ⚠️ Protocol definitions exist (subscribe/publish), event handling infrastructure pending
+- **TypeScript client**: ✅ Full core implementation (subscribe/publish, query methods pending)
+
+### Documentation Status
+- ✅ All documentation updated with Pub/Sub sections and examples
+- ✅ Comprehensive user guide created at `docs/USER_GUIDE/pubsub.md`
+- ✅ Demo program created at `demos/pubsub_demo.nim`
+- ✅ Cross-references added throughout documentation
 
 ## Reference Implementation: Nim Client
 
 The Nim client provides the reference implementation located at `clients/nim/`:
+
+> **Status Note**: As of January 2026, the Nim client has completed **Phase 2** (basic subscribe/publish). **Phase 3** (message receiving) and **Phase 4** (query methods) are pending. See `clients/nim/PUBSUB_TODO.md` for detailed status.
 
 ### Core Protocol Functions (`protocol.nim`)
 
@@ -145,6 +155,8 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 1. Go Client (`clients/go/`)
 
+> **Status**: Basic subscribe/publish implemented. Query methods (ListSubscribers, History, Presence, ListTopics) pending. See `clients/go/README.md` for current API documentation.
+
 #### Files to Modify/Add
 
 **New Files:**
@@ -209,6 +221,8 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 2. Python Client (`clients/python/`)
 
+> **Status**: Core Pub/Sub implementation complete (subscribe/publish). Query methods (list_subscribers, history, presence, list_topics) currently raise "not yet implemented". See `clients/python/README.md` for current API documentation.
+
 #### Files to Modify/Add
 
 **New Files:**
@@ -271,6 +285,8 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 3. Dart/Flutter Client (`clients/dart/`)
 
+> **Status**: Protocol definitions exist for subscribe/publish. Event handling infrastructure and query methods pending. See `clients/dart/README.md` for current API documentation.
+
 #### Files to Modify/Add
 
 **New Files:**
@@ -318,6 +334,8 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 ---
 
 ### 4. TypeScript Client (`clients/typescript/`)
+
+> **Status**: Full core implementation (subscribe/publish). Query methods (listSubscribers, history, presence, listTopics) pending. See `clients/typescript/README.md` for current API documentation.
 
 #### Files to Modify/Add
 
@@ -460,6 +478,8 @@ Client                          Server
 
 ## Timeline Estimate
 
+> **Note**: Original estimates below. As of January 2026, documentation is complete and partial implementation exists across clients. See "Success Criteria" section for current status.
+
 | Client | Estimated Lines | Implementation Time | Testing Time |
 |--------|----------------|---------------------|--------------|
 | Go | ~400 loC | 4-6 hours | 2-3 hours |
@@ -473,18 +493,48 @@ Client                          Server
 
 ## Success Criteria
 
-- [x] All clients implemented PubSub with matching API
-- [x] All clients have test coverage (basic tests for Go/Python/TypeScript, partial for Dart)
-- [x] `nimble testClients` includes PubSub tests for Go/Python/TypeScript clients
-- [x] Documentation updated for each client's PubSub API
-- [ ] Examples added for each client
-- [ ] Query methods (ListSubscribers, History, Presence, ListTopics) implement for Dart/TypeScript
+### Current Implementation Status (January 2026)
+- [✅] **Documentation**: All client READMEs updated with Pub/Sub API documentation
+- [✅] **User Guide**: Comprehensive Pub/Sub user guide created at `docs/USER_GUIDE/pubsub.md`
+- [✅] **Examples**: Pub/Sub examples added to main README and client documentation
+- [✅] **Demo**: Pub/Sub demo program created at `demos/pubsub_demo.nim`
+- [⚠️] **Nim client**: Phase 2 complete (basic subscribe/publish), Phase 3-4 pending
+- [⚠️] **Go client**: Basic subscribe/publish implemented, query methods pending
+- [⚠️] **Python client**: Core implementation complete, query methods raise "not yet implemented"
+- [❌] **Dart client**: Protocol definitions exist, event handling infrastructure pending
+- [⚠️] **TypeScript client**: Full core implementation, query methods pending
+
+### Remaining Tasks
+- [ ] Complete Nim client Phase 3 (message receiving) and Phase 4 (query methods)
+- [ ] Implement query methods in Go client (ListSubscribers, History, Presence, ListTopics)
+- [ ] Implement query methods in Python client (currently raise "not yet implemented")
+- [ ] Add event handling infrastructure to Dart client
+- [ ] Implement query methods in TypeScript client
+- [ ] Ensure all clients have comprehensive test coverage for Pub/Sub features
+- [ ] Verify `nimble testClients` runs Pub/Sub tests for all clients
+
+### Documentation Complete
+- ✅ All documentation cross-references updated
+- ✅ Pub/Sub user guide with comprehensive examples
+- ✅ Network architecture documentation updated
+- ✅ Protocol documentation cross-referenced
 
 ---
 
 ## References
 
+### Core Implementation
 - Nim Client Reference: `clients/nim/src/bitbarrel_client/protocol.nim` (lines 607-700+)
 - Nim Client API: `clients/nim/src/bitbarrel_client/client.nim` (lines 872-1000+)
 - Nim Tests: `clients/nim/tests/test_pubsub.nim`
-- Protocol Spec: `docs/PROTOCOL.md` (PubSub section)
+- Protocol Specification: `docs/PROTOCOL.md` (PubSub section)
+
+### Documentation
+- **Pub/Sub User Guide**: `docs/USER_GUIDE/pubsub.md` - Comprehensive usage guide with examples
+- **Client Documentation**: All client READMEs updated with Pub/Sub API documentation
+- **Demo Program**: `demos/pubsub_demo.nim` - Reference implementation showing all features
+- **Network Documentation**: `docs/network-architecture.md` and `docs/networking-guide.md` updated
+
+### Implementation Status Tracking
+- Nim Client TODO: `clients/nim/PUBSUB_TODO.md`
+- Nim Client Status: `clients/nim/PUBSUB_STATUS.md`
