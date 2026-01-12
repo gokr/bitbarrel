@@ -1365,7 +1365,7 @@ func TestSubscribe(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	topic := uniqueTopicName("test/exact")
+	topic := uniqueTopicName("test:exact")
 	subId, err := client.SubscribeSimple(topic)
 	if err != nil {
 		t.Fatalf("SubscribeSimple() error = %v", err)
@@ -1405,7 +1405,7 @@ func TestPublish(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	topic := uniqueTopicName("test/publish")
+	topic := uniqueTopicName("test:publish")
 	seqNo, err := client.PublishData(topic, "test message")
 	if err != nil {
 		t.Fatalf("PublishData() error = %v", err)
@@ -1442,7 +1442,7 @@ func TestSubscribeAndReceive(t *testing.T) {
 	client.StartEventReceiver()
 	defer client.StopEventReceiver()
 
-	topic := uniqueTopicName("test/receive")
+	topic := uniqueTopicName("test:receive")
 	subId, err := client.SubscribeSimple(topic)
 	if err != nil {
 		t.Fatalf("SubscribeSimple() error = %v", err)
@@ -1519,7 +1519,7 @@ func TestPatternSubscription(t *testing.T) {
 	defer client.StopEventReceiver()
 
 	// Subscribe to pattern
-	subId, err := client.Subscribe("user/*", DefaultSubscriptionOptions())
+	subId, err := client.Subscribe("user:*", DefaultSubscriptionOptions())
 	if err != nil {
 		t.Fatalf("Subscribe() error = %v", err)
 	}
@@ -1624,7 +1624,7 @@ func TestPublishWithMessageType(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	topic := uniqueTopicName("test/presence")
+	topic := uniqueTopicName("test:presence")
 
 	// Test with presence message type
 	seqNo1, err := client.PublishSimple(topic, MessageTypePresence, "user joined")
@@ -1662,7 +1662,7 @@ func TestPublishWithHeaders(t *testing.T) {
 		t.Fatalf("Connect() error = %v", err)
 	}
 
-	topic := uniqueTopicName("test/headers")
+	topic := uniqueTopicName("test:headers")
 	headers := `{"userId": "123", "source": "web"}`
 	payload := "button clicked"
 
