@@ -60,6 +60,7 @@ with ThreadPoolExecutor(max_workers=4) as executor:
 - Context manager support for automatic resource cleanup
 - Range and prefix queries with cursor-based pagination
 - Reference traversal support
+- Pub/Sub messaging (basic subscribe/publish implemented, query methods pending)
 - Comprehensive test coverage
 
 ## Installation
@@ -266,6 +267,75 @@ for r in results:
 # Convenience method
 results = client.traverse_path("user:1", "->friend")
 ```
+
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Python client currently supports basic subscribe/publish operations with event handling. Query methods (`list_subscribers`, `get_history`, `get_presence`, `list_topics`) are pending implementation.
+
+### Available Methods
+
+**Subscription Management:**
+- `subscribe(topic: str, options: SubscriptionOptions) -> str` - Subscribe to topic or pattern
+- `subscribe_simple(topic: str) -> str` - Convenience wrapper for basic subscription
+- `is_subscribed(sub_id: str) -> bool` - Check if subscription is active
+- `unsubscribe(sub_id: str) -> bool` - Remove specific subscription
+- `unsubscribe_all() -> int` - Remove all subscriptions
+
+**Publishing:**
+- `publish(topic: str, msg_type: PubSubMessageType, payload: str, headers: str = "") -> int` - Publish message
+- `publish_simple(topic: str, msg_type: PubSubMessageType, payload: str) -> int` - Publish without headers
+- `publish_data(topic: str, payload: str) -> int` - Publish data message (convenience)
+
+**Event Handling:**
+- `set_message_handler(handler: Callable[[PubSubEvent], None])` - Set callback for incoming Pub/Sub events
+- `start_event_receiver()` - Start background thread to receive events
+- `stop_event_receiver()` - Stop the background event receiver
+
+**Pending Query Methods** (not yet implemented):
+- `list_subscribers(topic: str) -> List[SubscriptionInfo]`
+- `get_history(topic: str, req: HistoryRequest) -> List[PubSubEvent]`
+- `get_presence(topic: str) -> PresenceInfo`
+- `list_topics() -> List[str]`
+
+### Example
+
+```python.compilable
+from bitbarrel import Client
+from bitbarrel.protocol import PubSubMessageType, SubscriptionOptions
+
+client = Client()
+client.connect()
+
+# Set up message handler
+def on_message(event):
+    print(f"Received event: topic={event.topic}, payload={event.payload}")
+
+client.set_message_handler(on_message)
+client.start_event_receiver()
+
+# Subscribe to pattern
+sub_id = client.subscribe("user:notifications:*", SubscriptionOptions())
+
+# Publish message
+seq = client.publish_data("user:notifications:123", "Welcome to the system!")
+print(f"Published message with sequence: {seq}")
+
+# Check subscription status
+if client.is_subscribed(sub_id):
+    print("Subscription is active")
+
+# Clean up
+client.unsubscribe(sub_id)
+client.stop_event_receiver()
+client.close()
+```
+
+### Pub/Sub Event Types
+
+- `PubSubMessageType.DATA` (0) - Normal published messages
+- `PubSubMessageType.PRESENCE` (1) - Member join/leave notifications
+
+See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details.
 
 ## Helper Functions
 
