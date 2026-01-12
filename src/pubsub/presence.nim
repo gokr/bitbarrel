@@ -66,7 +66,7 @@ proc cleanupWorker(args: PresenceCleanupArgs) {.thread.} =
               let member = info.members[idStr]
               if manager.eventBroker != nil:
                 try:
-                  manager.eventBroker.publishPresence(
+                  discard manager.eventBroker.publishPresence(
                     topic, peLeave, clientId, member.username
                   )
                 except CatchableError as e:
@@ -160,7 +160,7 @@ proc joinTopic*(manager: PresenceManager, topic: string,
     # Broadcast join event
     if manager.eventBroker != nil:
       try:
-        manager.eventBroker.publishPresence(
+        discard manager.eventBroker.publishPresence(
           topic, peJoin, clientId, username
         )
       except CatchableError as e:
@@ -189,7 +189,7 @@ proc leaveTopic*(manager: PresenceManager, topic: string,
     # Broadcast leave event
     if manager.eventBroker != nil:
       try:
-        manager.eventBroker.publishPresence(
+        discard manager.eventBroker.publishPresence(
           topic, peLeave, clientId, member.username
         )
       except CatchableError as e:
@@ -251,7 +251,7 @@ proc updateMetadata*(manager: PresenceManager, topic: string,
         # Broadcast update event
         if manager.eventBroker != nil:
           try:
-            manager.eventBroker.publishPresence(
+            discard manager.eventBroker.publishPresence(
               topic, peUpdate, clientId, info.members[idStr].username
             )
           except CatchableError as e:

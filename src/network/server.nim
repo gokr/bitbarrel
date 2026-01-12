@@ -148,7 +148,7 @@ type
     webSockets*: Table[uint64, WebSocket] ## WebSocket client ID -> WebSocket (stored during OpenEvent)
     mummyServer: Server
     config*: ServerConfig              ## Server configuration (public for tests)
-    sessionsLock: Lock
+    sessionsLock*: Lock               ## Lock for sessions and webSockets tables
     seqCounter: uint64                ## Global seq counter for requests
     startTime: float                  ## Server start time (epochTime)
     metrics*: MetricsCollector        ## Metrics collector for monitoring
@@ -846,7 +846,7 @@ proc handleWebSocketMessage*(
     else:
       try:
         let subReq = protocol.decodeSubscribeRequest(req.value)
-        let subOptions = SubscriptionOptions(
+        let subOptions = pubsub.SubscriptionOptions(
           enableKvEvents: subReq.options.enableKvEvents,
           enablePresence: subReq.options.enablePresence,
           replayHistory: subReq.options.replayHistory
@@ -1070,30 +1070,9 @@ proc websocketHandler*(
       withLock server.sessionsLock:
         server.webSockets[ws.clientId] = ws
 
-      # Register WebSocket with event broker for pub/sub
+      # Register client with event broker for pub/sub (just stores the clientId)
       if server.pubSubEnabled and server.eventBroker != nil:
-        # Create a PubSubWebSocket wrapper for the event broker
-        # Using raw pointers to avoid ORC cycle detection crashes
-        # Store server pointer and capture clientId in closure
-        let clientId = ws.clientId
-        proc sendCallback(serverPtr: pointer, data: string, binary: bool) {.gcsafe.} =
-          let serverPtr = cast[ptr BitBarrelServer](serverPtr)
-          withLock serverPtr[].sessionsLock:
-            if clientId in serverPtr[].webSockets:
-              let ws = serverPtr[].webSockets[clientId]
-              ws.send(data, if binary: BinaryMessage else: TextMessage)
-
-        proc closeCallback(serverPtr: pointer) {.gcsafe.} =
-          # Note: can't close from here, will be handled by CloseEvent
-          discard
-
-        let wsRef = eventbroker.PubSubWebSocket(
-          clientId: ws.clientId,
-          serverPtr: cast[pointer](addr server),
-          sendProc: sendCallback,
-          closeProc: closeCallback
-        )
-        server.eventBroker.addClient(wsRef)
+        server.eventBroker.addClient(ws.clientId)
 
     of MessageEvent:
       if message.kind == BinaryMessage:
@@ -1576,26 +1555,23 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
     # Capture references for closures (cannot capture 'result' directly)
     let managerRef = result.pubSubManager
     let brokerRef = result.eventBroker
+    let serverRef = result
 
     # Now set the message callback on the manager that uses the broker
     proc brokerMessageCallback(clientId: uint64, topic: string,
                                 messageType: pubsub.PubSubMessageType,
                                 payload: string, headers: string) {.gcsafe.} =
       {.gcsafe.}:
-        # Build event message
-        let event = PubSubEvent(
-          topic: topic,
-          messageType: protocol.PubSubMessageType(messageType),
-          sequence: 0,
-          timestamp: int64(epochTime() * 1000),
-          headers: headers,
-          payload: payload
-        )
+        # Encode message for client
+        let encoded = brokerRef.sendToClient(clientId, topic, messageType, payload, headers)
+        if encoded.len == 0:
+          return  # Client not connected or not subscribed
 
-        # Encode and send through event broker
-        # We'll send directly via ws here - need to track WebSocket connection
-        # For now, use the eventBroker.sendToClient which handles this
-        brokerRef.sendToClient(clientId, topic, messageType, payload, headers)
+        # Send via stored WebSocket
+        withLock serverRef[].sessionsLock:
+          if clientId in serverRef[].webSockets:
+            let ws = serverRef[].webSockets[clientId]
+            ws.send(encoded, BinaryMessage)
 
     result.pubSubManager.messageCallback = brokerMessageCallback
 
@@ -1634,8 +1610,13 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
         let headerStr = $headers
         for sub in subscribers:
           if sub.options.enableKvEvents:
-            brokerRef.sendToClient(sub.clientId, topic, mtKvChange,
-                                   payload, headerStr)
+            let encoded = brokerRef.sendToClient(sub.clientId, topic, mtKvChange,
+                                                 payload, headerStr)
+            if encoded.len > 0:
+              withLock serverRef[].sessionsLock:
+                if sub.clientId in serverRef[].webSockets:
+                  let ws = serverRef[].webSockets[sub.clientId]
+                  ws.send(encoded, BinaryMessage)
     )
 
     managerRef.kvHookId = registerBarrelHook(

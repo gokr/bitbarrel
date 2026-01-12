@@ -3,7 +3,7 @@
 ## The EventBroker receives published messages and routes them to
 ## connected PubSubWebSocket clients based on their subscriptions.
 
-import std/[tables, strformat, json, locks, times]
+import std/[tables, strformat, json, locks, times, sets]
 import ./pubsub
 import ./manager
 
@@ -132,8 +132,9 @@ proc sendToClient*(broker: EventBroker, clientId: uint64,
     result = encodeEventMessage(topic, messageType, sequence,
                                 timestamp, headers, payload)
 
-proc routeEvent*(broker: EventBroker, msg: Message) =
+proc routeEvent*(broker: EventBroker, msg: Message): seq[tuple[clientId: uint64, data: string]] =
   ## Route a message to all matching subscribers
+  ## Returns sequence of (clientId, encodedMessage) tuples for the server to send
 
   let subscribers = broker.pubSubManager.getAllSubscribersForTopic(msg.topic)
 
@@ -142,7 +143,8 @@ proc routeEvent*(broker: EventBroker, msg: Message) =
   if msg.headers != nil:
     headers = $msg.headers
 
-  # Send to each subscriber
+  # Collect messages for all subscribers
+  result = @[]
   for sub in subscribers:
     # Check if subscriber wants this message type
     if msg.messageType == mtKvChange and not sub.options.enableKvEvents:
@@ -150,13 +152,16 @@ proc routeEvent*(broker: EventBroker, msg: Message) =
     if msg.messageType == mtPresence and not sub.options.enablePresence:
       continue
 
-    broker.sendToClient(sub.clientId, msg.topic, msg.messageType,
-                        msg.payload, headers)
+    let encoded = broker.sendToClient(sub.clientId, msg.topic, msg.messageType,
+                                     msg.payload, headers)
+    if encoded.len > 0:
+      result.add((clientId: sub.clientId, data: encoded))
 
 proc publishKvChange*(broker: EventBroker, barrelName: string,
                       key: string, changeType: KvChangeType,
-                      value: string) =
+                      value: string): seq[tuple[clientId: uint64, data: string]] =
   ## Publish a k/v change event
+  ## Returns list of messages to send
 
   let topic = "kv:" & barrelName & ":" & key
   var payload = ""
@@ -165,13 +170,14 @@ proc publishKvChange*(broker: EventBroker, barrelName: string,
     payload = value
 
   let msg = newMessage(topic, mtKvChange, payload)
-  broker.routeEvent(msg)
+  result = broker.routeEvent(msg)
 
 proc publishPresence*(broker: EventBroker, topic: string,
                       eventType: PresenceEventType,
                       clientId: uint64, username: string,
-                      metadata: string = "") =
+                      metadata: string = ""): seq[tuple[clientId: uint64, data: string]] =
   ## Publish a presence event
+  ## Returns list of messages to send
 
   let headers = newJObject()
   headers["eventType"] = %ord(eventType)
@@ -184,21 +190,16 @@ proc publishPresence*(broker: EventBroker, topic: string,
       discard
 
   let msg = newMessage(topic, mtPresence, "", headers)
-  broker.routeEvent(msg)
+  result = broker.routeEvent(msg)
 
 proc getClientCount*(broker: EventBroker): int =
   ## Get the number of connected clients
 
   withLock broker.clientsLock:
-    return broker.clients.len
+    return broker.clients.card
 
 proc cleanup*(broker: EventBroker) =
   ## Clean up resources (call during shutdown)
 
   withLock broker.clientsLock:
-    for _, ws in broker.clients:
-      try:
-        ws.closeProc(ws.serverPtr)
-      except CatchableError:
-        discard
     broker.clients.clear()
