@@ -31,12 +31,14 @@ This document consolidates all planned and potential future enhancements for Bit
 ### Network Layer ✅ COMPLETED
 - ✅ WebSocket server using MummyX
 - ✅ REST API endpoints for all operations
-- ✅ Binary protocol (19 command types)
+- ✅ Binary protocol (21 command types)
 - ✅ Session management with BarrelRegistry
 - ✅ Automatic barrel discovery on server startup
 - ✅ WebSocket client using whisky library
-- ✅ Range query support over network
+- ✅ Range query support over network (RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT)
+- ✅ Keys-only range queries (RANGE_KEYS, PREFIX_KEYS) for efficiency
 - ✅ Barrel configuration (get/set with YAML persistence)
+- ✅ Cursor-based pagination for range queries
 
 ### HugeBarrel Mode (Network-Supported)
 - ✅ Basic two-tier storage for massive datasets

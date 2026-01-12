@@ -8,12 +8,12 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 
 ### Binary Protocol (`src/network/protocol.nim`)
 - Request/Response message structures
-- Commands (19 total):
+- Commands (21 total):
   - Data: GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS, PING (7)
   - Barrel: CREATE_BARREL, OPEN_BARREL, USE_BARREL, CLOSE_BARREL, LIST_BARRELS, DROP_BARREL (6)
     - Note: Discovered barrels are lazy-loaded automatically, OPEN_BARREL optional
   - Config: GET_BARREL_CONFIG, SET_BARREL_CONFIG (2)
-  - Query: TRAVERSE, RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT (4)
+  - Query: TRAVERSE, RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT, RANGE_KEYS, PREFIX_KEYS (6)
 - Status codes: OK, NOT_FOUND, ERROR, INVALID, NO_BARREL, BARREL_EXISTS, BARREL_NOT_FOUND, UNAUTHORIZED
 - Big-endian encoding for cross-platform compatibility
 - Size limits: 64KB max key, 32MB max value
@@ -214,7 +214,7 @@ client.Close()
 3. **Large frames**: 64-bit WebSocket frame lengths not supported
 4. **Concurrent requests**: Client operations are serialized (no request pipelining)
 5. **CREATE_BARREL config**: JSON config for CREATE_BARREL creates with defaults (use SET_BARREL_CONFIG after)
-6. **Pagination**: LIST_KEYS returns all keys (no pagination support)
+6. **LIST_KEYS**: Returns all keys without pagination (use RANGE_KEYS or PREFIX_KEYS with cursor pagination for large datasets)
 7. **Token refresh**: JWT tokens don't auto-refresh; clients must handle token expiry
 8. **Token storage**: JWT secret must be stored securely; lost secret invalidates all tokens
 

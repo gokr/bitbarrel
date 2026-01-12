@@ -185,10 +185,19 @@ const user = JSON.parse(await client.get('user:1'));
 console.log(`User: ${user.name}, Age: ${user.age}`);
 
 // Range queries (requires bmCritBit mode)
-const result = await client.prefixQuery('user:', { limit: 100 });
-for (const [key, value] of result.items) {
-  console.log(`${key}: ${value}`);
+// Cursor-based pagination for efficient large dataset traversal
+let cursor = '';
+let allUsers = [];
+
+while (true) {
+  const result = await client.prefixQuery('user:', { limit: 100, cursor });
+  allUsers.push(...result.items);
+
+  if (!result.hasMore) break;
+  cursor = result.nextCursor;
 }
+
+console.log(`Found ${allUsers.length} users`);
 
 // Clean up
 await client.close();
@@ -279,7 +288,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Storage | Append‑only log, three index modes, compression (LZ4 by default, Snappy optional), binary record encoding |
 | Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
-| Network | WebSocket binary protocol (19 commands), REST API, JWT authentication, session management, automatic barrel discovery, thread‑safe operations |
+| Network | WebSocket binary protocol (21 commands), REST API, JWT authentication, session management, automatic barrel discovery, thread‑safe operations |
 | Monitoring | Prometheus metrics endpoint, operation counters, latency histograms, storage metrics, Grafana dashboards |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
 | Advanced | Reference model (graph traversal), range queries, prefix search, cycle detection |
@@ -357,7 +366,7 @@ let temps = metricsDb.keysInRange("metrics:temp:1734800000", "metrics:temp:17348
 echo "Found ", temps.len, " temperature readings"
 
 # Prefix search: get all humidity metrics
-let humidityKeys = metricsDb.keysWithPrefix("metrics:humidity:")
+let (humidityKeys, _, _) = metricsDb.keysByPrefix("metrics:humidity:")
 echo "Humidity sensors: ", humidityKeys.len
 
 metricsDb.close()

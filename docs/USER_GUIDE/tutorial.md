@@ -482,12 +482,13 @@ db.set("2024-01-02:temp", "23.1")
 db.set("2024-01-03:temp", "21.8")
 
 # Range query: Get all temperature readings for January
-let januaryData = db.keysInRange("2024-01-01", "2024-01-31")
-for key in januaryData:
+# Returns (keys: seq[string], nextCursor: string, hasMore: bool)
+let (januaryKeys, cursor, hasMore) = db.keysInRange("2024-01-01", "2024-01-31", limit = 1000)
+for key in januaryKeys:
   echo key, " = ", db.get(key)
 
 # Prefix search: Get all keys of type "temp"
-let tempKeys = db.keysWithPrefix("2024-01-:temp")
+let (tempKeys, _, _) = db.keysWithPrefix("2024-01-:temp", limit = 1000)
 echo "Temperature readings: ", tempKeys.len
 
 # Count keys with prefix (faster than retrieving all keys)

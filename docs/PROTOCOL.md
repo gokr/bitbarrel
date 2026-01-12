@@ -398,6 +398,37 @@ Count keys in a range without retrieving values.
 - Status: OK (0x00)
 - Value: String representation of count
 
+#### RANGE_KEYS (0x24)
+Get only keys in a range (values omitted). More efficient than RANGE_QUERY when values aren't needed.
+
+**Request:**
+- Command: 0x24
+- Key: Empty
+- Value: Encoded range request (same format as RANGE_QUERY)
+
+**Response:**
+- Status: OK (0x00) with encoded keys response
+- Status: ERROR (0x02) if barrel not in bmCritBit mode
+
+**Keys Response Format:**
+```
+[count:4][keys...][hasMore:1][nextCursorLen:2][nextCursor]
+
+Each key:
+[keyLen:2][key]
+```
+
+#### PREFIX_KEYS (0x25)
+Get only keys with a prefix (values omitted). More efficient than PREFIX_QUERY when values aren't needed.
+
+**Request:**
+- Command: 0x25
+- Key: Empty
+- Value: Encoded prefix request (same format as PREFIX_QUERY)
+
+**Response:**
+- Same format as RANGE_KEYS response
+
 ### Reference Traversal
 
 #### TRAVERSE (0x20) - Advanced Feature
