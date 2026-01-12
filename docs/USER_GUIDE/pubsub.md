@@ -198,7 +198,7 @@ Payload format:
 ### Getting Presence Information
 
 ```nim
-# Nim client (when implemented)
+# Nim client
 let presence = client.getPresence("room:chat:general")
 echo "Members in room: ", presence.members.len
 for member in presence.members:
@@ -501,7 +501,7 @@ For complete protocol details, see [PROTOCOL.md](../PROTOCOL.md#pubsub-messaging
 
 | Client | Core Pub/Sub | Event Handling | Query Methods |
 |--------|-------------|----------------|---------------|
-| Nim | ✅ Phase 2 | ✅ Implemented | ⏳ Phase 4 pending |
+| Nim | ✅ Full | ✅ Implemented | ✅ Implemented |
 | Go | ✅ Basic | ✅ Implemented | ⏳ Pending |
 | Python | ✅ Basic | ✅ Implemented | ⏳ Pending |
 | TypeScript | ✅ Full | ✅ Implemented | ⏳ Pending |

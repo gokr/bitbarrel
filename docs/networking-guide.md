@@ -1078,9 +1078,9 @@ func main() {
 
 | Client | Pub/Sub Support | Status |
 |--------|-----------------|--------|
-| Nim | Full | ✅ Phase 2 complete (subscribe/publish), Phase 3-4 pending |
+| Nim | Full | ✅ Phase 3-4 complete (subscribe/publish + query methods) |
 | Go | Partial | ✅ Basic subscribe/publish implemented, query methods pending |
-| Python | Protocol only | ⚠️ Core protocol defined, implementation pending |
+| Python | Partial | ⚠️ Core subscribe/publish implemented, query methods pending |
 | Dart | Protocol only | ⚠️ Protocol definitions exist, event handling pending |
 | TypeScript | Full core | ✅ Core implementation complete, query methods pending |
 

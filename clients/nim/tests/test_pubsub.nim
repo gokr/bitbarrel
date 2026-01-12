@@ -96,7 +96,7 @@ suite "Subscribe and Publish":
       client.connect()
 
       # Subscribe to pattern
-      let subId = client.subscribe("user/*")
+      let subId = client.subscribe("user:*")
       sleep(100)
 
       # Publish matching messages

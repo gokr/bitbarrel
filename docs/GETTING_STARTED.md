@@ -38,11 +38,11 @@ BitBarrel provides client libraries for multiple languages:
 
 | Language | Location | Status |
 |----------|----------|--------|
-| Nim | `clients/nim/` | Full WebSocket protocol, Pub/Sub (Phase 2 complete) |
+| Nim | `clients/nim/` | Full WebSocket protocol, Pub/Sub (complete, including query methods) |
 | Go | `clients/go/` | Full WebSocket protocol, Pub/Sub (basic subscribe/publish) |
 | Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
-| Python | `clients/python/` | Feature-complete WebSocket client, Pub/Sub (full implementation) |
-| TypeScript | `clients/typescript/` | Full WebSocket protocol + types, Pub/Sub (full implementation) |
+| Python | `clients/python/` | Feature-complete WebSocket client, Pub/Sub (basic subscribe/publish) |
+| TypeScript | `clients/typescript/` | Full WebSocket protocol + types, Pub/Sub (basic subscribe/publish) |
 
 **Pub/Sub Messaging**: BitBarrel includes real-time Pub/Sub messaging with topic-based subscriptions, pattern matching, and presence tracking. See [Pub/Sub Protocol Specification](../PROTOCOL.md#pubsub-messaging) for details.
 

@@ -180,16 +180,29 @@ func (c *Client) sendRequest(req *Request) (*Response, error) {
 		return nil, NewError("write", err)
 	}
 
-	// Read response
+	// Read response (handle case where we might read a PubSub event)
 	if err := ws.SetReadDeadline(time.Now().Add(c.requestTimeout)); err != nil {
 		c.closeUnlocked()
 		return nil, NewError("timeout", err)
 	}
 
-	_, respData, err := ws.ReadMessage()
-	if err != nil {
-		c.closeUnlocked()
-		return nil, NewError("read", err)
+	var respData []byte
+	for {
+		_, data, err := ws.ReadMessage()
+		if err != nil {
+			c.closeUnlocked()
+			return nil, NewError("read", err)
+		}
+
+		// Check if this is a PubSub event (command 0xFF)
+		// If so, skip it and continue reading - it's for the event receiver
+		if len(data) > 0 && data[0] == 0xFF {
+			// This is a PubSub event, not a response. Skip it.
+			continue
+		}
+
+		respData = data
+		break
 	}
 
 	// Decode response
@@ -1086,6 +1099,7 @@ func (c *Client) receivePubSubEvent() {
 				handler(event)
 			}
 		}
+		// Skip non-event messages (responses will be read by sendRequest)
 	}
 }
 

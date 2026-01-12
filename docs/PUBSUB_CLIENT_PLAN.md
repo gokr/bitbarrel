@@ -6,7 +6,7 @@ This document outlines the plan for implementing PubSub functionality across all
 
 > **Note**: This plan document has been updated to reflect actual implementation status as of January 2026. For comprehensive Pub/Sub usage documentation, see the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md).
 
-- **Nim client**: ✅ Phase 2 complete (basic subscribe/publish) - Phase 3-4 pending (message receiving, query methods)
+- **Nim client**: ✅ Phase 3-4 complete (subscribe/publish + query methods including listSubscribers, listTopics, getHistory, getPresence)
 - **Go client**: ✅ Basic PubSub implementation (subscribe/publish implemented, query methods pending)
 - **Python client**: ✅ Core PubSub implementation (subscribe/publish, query methods raise "not yet implemented")
 - **Dart/Flutter client**: ⚠️ Protocol definitions exist (subscribe/publish), event handling infrastructure pending
@@ -22,7 +22,7 @@ This document outlines the plan for implementing PubSub functionality across all
 
 The Nim client provides the reference implementation located at `clients/nim/`:
 
-> **Status Note**: As of January 2026, the Nim client has completed **Phase 2** (basic subscribe/publish). **Phase 3** (message receiving) and **Phase 4** (query methods) are pending. See `clients/nim/PUBSUB_TODO.md` for detailed status.
+> **Status Note**: As of January 2026, the Nim client has completed **Phase 3-4** (full PubSub implementation including query methods). See `clients/nim/tests/test_pubsub.nim` for test coverage.
 
 ### Core Protocol Functions (`protocol.nim`)
 
@@ -143,6 +143,11 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 3. **subscribe and receive message** - Receive push events
 4. **pattern subscription** - Wildcard matching
 5. **unsubscribe all** - Bulk unsubscribe
+6. **list subscribers for topic** - Query method test
+7. **list topics** - Query method test
+8. **get history for topic** - Query method test
+9. **get history with limit and sinceSeq** - Query method pagination test
+10. **get presence for topic** - Query method test
 
 #### Test Utilities
 - `uniqueTopicName(prefix)` - Generate unique topic names
@@ -409,6 +414,11 @@ All clients should implement tests that match the Nim client's test suite:
 | Subscribe and receive | Subscribe, publish, receive push event |
 | Pattern subscription | Wildcard matching with `*` |
 | Unsubscribe all | Multiple subs, clear all |
+| List subscribers for topic | Query topic subscriptions |
+| List topics | Get all active topics |
+| Get history for topic | Retrieve message history |
+| Get history with pagination | Test limit and sinceSeq parameters |
+| Get presence for topic | Get presence/online members |
 
 ### Test Execution
 
@@ -498,14 +508,13 @@ Client                          Server
 - [✅] **User Guide**: Comprehensive Pub/Sub user guide created at `docs/USER_GUIDE/pubsub.md`
 - [✅] **Examples**: Pub/Sub examples added to main README and client documentation
 - [✅] **Demo**: Pub/Sub demo program created at `demos/pubsub_demo.nim`
-- [⚠️] **Nim client**: Phase 2 complete (basic subscribe/publish), Phase 3-4 pending
+- [✅] **Nim client**: Phase 3-4 complete (subscribe/publish + query methods with tests)
 - [⚠️] **Go client**: Basic subscribe/publish implemented, query methods pending
 - [⚠️] **Python client**: Core implementation complete, query methods raise "not yet implemented"
 - [❌] **Dart client**: Protocol definitions exist, event handling infrastructure pending
 - [⚠️] **TypeScript client**: Full core implementation, query methods pending
 
 ### Remaining Tasks
-- [ ] Complete Nim client Phase 3 (message receiving) and Phase 4 (query methods)
 - [ ] Implement query methods in Go client (ListSubscribers, History, Presence, ListTopics)
 - [ ] Implement query methods in Python client (currently raise "not yet implemented")
 - [ ] Add event handling infrastructure to Dart client

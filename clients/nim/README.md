@@ -51,7 +51,7 @@ client.close()
 - **Iterator-based queries** - Memory-efficient streaming for large datasets
 - Reference traversal for graph-like data
 - Statistics support: Get comprehensive barrel statistics and metrics
-- **Pub/Sub messaging** - Basic subscribe/publish operations (Phase 2 complete, advanced features pending)
+- **Pub/Sub messaging** - Full implementation including subscribe/publish, event handling, and query methods (listSubscribers, getHistory, getPresence, listTopics)
 - Thread-safe request handling
 
 ## Concurrency Model
@@ -270,15 +270,15 @@ let results = client.traversePath("user:1", "->friend")
 
 ## Pub/Sub Messaging
 
-BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Nim client currently has Phase 2 implementation complete (basic subscribe/publish operations). Event handling (Phase 3) and query methods (Phase 4) are pending.
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. The Nim client has full implementation complete including event handling and query methods.
 
 **Current Status:**
 - Phase 1: Protocol types and test infrastructure ✅
 - Phase 2: Basic subscribe/publish operations ✅
-- Phase 3: Message receiving and event handling ⏳ Pending
-- Phase 4: Query methods (listSubscribers, getHistory, etc.) ⏳ Pending
+- Phase 3: Message receiving and event handling ✅
+- Phase 4: Query methods (listSubscribers, getHistory, getPresence, listTopics) ✅
 
-### Available Methods (Phase 2 Complete)
+### Available Methods
 
 **Subscription Management:**
 - `subscribe(topic: string, options: SubscriptionOptions): string` - Subscribe to topic or pattern
@@ -291,10 +291,15 @@ BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions. T
 - `publish(topic: string, msgType: PubSubMessageType, payload: string, headers: string = ""): uint64` - Publish message
 - `publishData(topic: string, payload: string): uint64` - Publish data message (convenience)
 
-**Pending Implementation (Phases 3-4):**
-- Event handling for incoming Pub/Sub events
-- Background message receiver
-- Query methods: `listSubscribers`, `listTopics`, `getHistory`, `getPresence`
+**Event Handling:**
+- `onMessage: proc(event: PubSubEvent)` - Callback for incoming Pub/Sub events
+- `receiveMessages(timeoutMs: int)`: Process pending messages
+
+**Query Methods:**
+- `listSubscribers(topic: string): seq[SubscriptionInfo]` - Get topic subscribers
+- `listTopics(): seq[TopicInfo]` - Get all active topics
+- `getHistory(topic: string, limit: int, sinceSeq: uint64): seq[PubSubEvent]` - Get message history
+- `getPresence(topic: string): PresenceInfo` - Get presence information
 
 ### Example (Basic Subscribe/Publish)
 
@@ -304,10 +309,10 @@ import bitbarrel_client
 var client = newClient("localhost", 9876.Port)
 client.connect()
 
-# Subscribe to pattern (Phase 2 implemented)
+# Subscribe to pattern
 let subId = client.subscribe("user:notifications:*", SubscriptionOptions())
 
-# Publish message (Phase 2 implemented)
+# Publish message
 let seq = client.publishData("user:notifications:123", "Welcome to the system!")
 echo "Published message with sequence: ", seq
 
@@ -315,11 +320,46 @@ echo "Published message with sequence: ", seq
 if client.isSubscribed(subId):
   echo "Subscription is active"
 
-# Note: Event handling not yet implemented (Phase 3 pending)
-# client.onMessage = proc(event: PubSubEvent) =
-#   echo "Received event: ", event.topic, " -> ", event.payload
+# Handle incoming events
+client.onMessage = proc(event: PubSubEvent) =
+  echo "Received event: ", event.topic, " -> ", event.payload
+
+# Process pending messages
+client.receiveMessages(100)
 
 client.unsubscribe(subId)
+client.close()
+```
+
+### Example (Query Methods)
+
+```nim
+import bitbarrel_client
+
+var client = newClient("localhost", 9876.Port)
+client.connect()
+
+# List subscribers for a topic
+let subs = client.listSubscribers("chat:general")
+for s in subs:
+  echo "Sub ", s.id, " by client ", s.clientId
+
+# List all topics
+let topics = client.listTopics()
+for t in topics:
+  echo &"Topic: {t.name}, {t.subscriberCount} subscribers, {t.messageCount} messages"
+
+# Get message history
+let history = client.getHistory("chat:general", limit=10)
+for event in history:
+  echo &"  [{event.sequence}] {event.payload}"
+
+# Get presence information
+let presence = client.getPresence("chat:general")
+echo &"Members online: {presence.members.len}"
+for member in presence.members:
+  echo &"  - {member.username}"
+
 client.close()
 ```
 
@@ -329,7 +369,7 @@ client.close()
 - `mtPresence` (1) - Member join/leave notifications
 - `mtKvChange` (2) - Key-value change events (server-side)
 
-See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details and [PUBSUB_STATUS.md](PUBSUB_STATUS.md) for implementation progress.
+See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete protocol details and [tests/test_pubsub.nim](../../clients/nim/tests/test_pubsub.nim) for usage examples.
 
 ## Error Handling
 
