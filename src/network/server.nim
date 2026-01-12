@@ -1066,13 +1066,20 @@ proc websocketHandler*(
       # Register WebSocket with event broker for pub/sub
       if server.pubSubEnabled and server.eventBroker != nil:
         # Create a PubSubWebSocket wrapper for the event broker
+        # Using raw pointers to avoid ORC cycle detection crashes
+        proc sendCallback(wsPtr: pointer, data: string, binary: bool) {.gcsafe.} =
+          let wsPtr = cast[ptr WebSocket](wsPtr)
+          wsPtr[].send(data, if binary: BinaryMessage else: TextMessage)
+
+        proc closeCallback(wsPtr: pointer) {.gcsafe.} =
+          # Note: can't close from here, will be handled by CloseEvent
+          discard
+
         let wsRef = eventbroker.PubSubWebSocket(
           clientId: ws.clientId,
-          send: proc(data: string, binary: bool = false) {.gcsafe.} =
-            ws.send(data, if binary: BinaryMessage else: TextMessage),
-          close: proc() {.gcsafe.} =
-            # Note: can't close from here, will be handled by CloseEvent
-            discard
+          wsPtr: addr ws,
+          sendProc: sendCallback,
+          closeProc: closeCallback
         )
         server.eventBroker.addClient(wsRef)
 

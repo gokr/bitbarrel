@@ -8,12 +8,19 @@ import ./pubsub
 import ./manager
 
 type
+  ## Send callback type - using raw pointer to avoid ORC cycle detection crashes
+  WebSocketSendProc* = proc(wsPtr: pointer, data: string, binary: bool) {.gcsafe.}
+  WebSocketCloseProc* = proc(wsPtr: pointer) {.gcsafe.}
+
   ## PubSub PubSubWebSocket interface for sending messages
+  ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes.
+  ## We avoid closures entirely by storing raw pointers and callback procs.
   PubSubWebSocket* = ref PubSubWebSocketObj
-  PubSubWebSocketObj = object
+  PubSubWebSocketObj {.acyclic.} = object
     clientId*: uint64
-    send*: proc(data: string, binary: bool = false) {.gcsafe.}
-    close*: proc() {.gcsafe.}
+    wsPtr*: pointer  # Raw pointer to WebSocket (not tracked by ORC)
+    sendProc*: WebSocketSendProc
+    closeProc*: WebSocketCloseProc
 
   ## Event Broker - routes messages to subscribers
   EventBroker* = ref EventBrokerObj
@@ -138,7 +145,7 @@ proc sendToClient*(broker: EventBroker, clientId: uint64,
                                      timestamp, headers, payload)
 
     try:
-      ws.send(encoded, binary = true)
+      ws.sendProc(ws.wsPtr, encoded, binary = true)
     except CatchableError as e:
       echo fmt"[EventBroker] Error sending to client {clientId}: {e.msg}"
       # Client may have disconnected, remove them
@@ -210,7 +217,7 @@ proc cleanup*(broker: EventBroker) =
   withLock broker.clientsLock:
     for _, ws in broker.clients:
       try:
-        ws.close()
+        ws.closeProc(ws.wsPtr)
       except CatchableError:
         discard
     broker.clients.clear()
