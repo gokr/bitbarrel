@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-Time Activity Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>🚀 Real-Time Activity Dashboard</h1>
+
+    <div class="stats-panel">
+      <h2>📊 Hourly Statistics</h2>
+      <div id="stats">Loading statistics...</div>
+    </div>
+
+    <div class="activities-panel">
+      <h2>📋 Recent Activities</h2>
+      <div id="activities">Loading activities...</div>
+    </div>
+
+    <div class="user-panel">
+      <h2>👤 User Management</h2>
+      <div class="form-group">
+        <input type="text" id="userId" placeholder="User ID" class="form-input">
+        <input type="text" id="userName" placeholder="Display Name" class="form-input">
+        <input type="text" id="managerId" placeholder="Manager ID (optional)" class="form-input">
+        <button onclick="createUser()" class="btn btn-primary">Create User</button>
+      </div>
+      <div id="user-result"></div>
+    </div>
+
+    <div class="simulation-panel">
+      <h2>🎮 Simulation</h2>
+      <p>Simulate user activity automatically:</p>
+      <button onclick="startSimulation()" id="simulateBtn" class="btn btn-secondary">Start Simulation</button>
+      <button onclick="logManualActivity()" class="btn btn-secondary">Log Manual Activity</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

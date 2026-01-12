@@ -18,7 +18,8 @@ For users who want to use BitBarrel in their applications:
 
 - **[Getting Started](GETTING_STARTED.md)** - Quick setup and basic usage
 - **[User Guide](USER_GUIDE/)**
-  - [Tutorial](USER_GUIDE/tutorial.md) - Complete usage tutorial
+  - [Tutorial](USER_GUIDE/tutorial.md) - Complete usage tutorial (Nim)
+  - [TypeScript Tutorial](USER_GUIDE/typescript_tutorial.md) - Build a web app with BitBarrel
   - [Configuration](USER_GUIDE/configuration.md) - All configuration options
   - API Documentation - Generated from code comments via `nim doc`
 

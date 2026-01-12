@@ -638,10 +638,29 @@ npm run test:watch      # Run in watch mode
 
 ### Running Examples
 
+Basic example:
 ```bash
 npm run build           # Compile TypeScript first
 node examples/basic.js  # Run basic example
 ```
+
+**Complete Dashboard Example:**
+
+See the [dashboard example](./examples/dashboard/) for a full-stack real-time application demonstrating all BitBarrel features:
+
+```bash
+cd examples/dashboard
+npm install
+npm start
+# Then open http://localhost:3000
+```
+
+This example includes:
+- Real-time activity monitoring with WebSocket
+- Time-based analytics with range queries
+- User management with reference traversal
+- Automatic data expiration with TTL
+- Modern UI with smooth animations
 
 ## License
 
