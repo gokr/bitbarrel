@@ -40,6 +40,16 @@ class Command(IntEnum):
     GET_BARREL_CONFIG = 0x16
     SET_BARREL_CONFIG = 0x17
     GET_BARREL_STATS = 0x18
+    # Pub/Sub commands
+    SUBSCRIBE = 0x40
+    UNSUBSCRIBE = 0x41
+    PUBLISH = 0x42
+    LIST_SUBSCRIBERS = 0x43
+    HISTORY = 0x44
+    LIST_TOPICS = 0x45
+    PRESENCE = 0x46
+    # PubSubEvent is sent as push notification
+    PUBSUB_EVENT = 0xFF
 
 
 class Status(IntEnum):
@@ -510,3 +520,211 @@ def status_to_error(status: int, message: str = "") -> Optional[Exception]:
         return ServerError(message or "Server error")
     else:
         return ServerError(f"Unknown status: 0x{status:02x}")
+
+
+# ============================================================================
+# Pub/Sub Support
+# ============================================================================
+
+class PubSubMessageType(IntEnum):
+    """PubSub message type."""
+    DATA = 0
+    PRESENCE = 1
+
+
+class PubSubEvent:
+    """Event received from PubSub subscription."""
+
+    def __init__(self, topic: str, message_type: int, sequence: int,
+                 timestamp: int, headers: str, payload: str):
+        self.topic = topic
+        self.message_type = message_type
+        self.sequence = sequence
+        self.timestamp = timestamp
+        self.headers = headers
+        self.payload = payload
+
+    def __repr__(self) -> str:
+        type_name = "DATA" if self.message_type == PubSubMessageType.DATA else "PRESENCE"
+        return (f"PubSubEvent(topic={self.topic!r}, type={type_name}, "
+                f"seq={self.sequence}, payload={self.payload!r})")
+
+
+class SubscriptionOptions:
+    """Options for subscribing to a topic."""
+
+    def __init__(self, enable_kv_events: bool = False,
+                 enable_presence: bool = False, replay_history: bool = False):
+        self.enable_kv_events = enable_kv_events
+        self.enable_presence = enable_presence
+        self.replay_history = replay_history
+
+    def encode(self) -> int:
+        """Encode options to a single byte."""
+        opts = 0
+        if self.enable_kv_events:
+            opts |= 0x01
+        if self.enable_presence:
+            opts |= 0x02
+        if self.replay_history:
+            opts |= 0x04
+        return opts
+
+
+def default_subscription_options() -> SubscriptionOptions:
+    """Get default subscription options."""
+    return SubscriptionOptions()
+
+
+class PresenceMember:
+    """Single member in presence data."""
+
+    def __init__(self, client_id: int, joined_at: int, last_ping: int):
+        self.client_id = client_id
+        self.joined_at = joined_at
+        self.last_ping = last_ping
+
+
+class PresenceInfo:
+    """Presence information for a topic."""
+
+    def __init__(self, topic: str, members: List[PresenceMember], last_update: int):
+        self.topic = topic
+        self.members = members
+        self.last_update = last_update
+
+
+class SubscriptionInfo:
+    """Information about a subscription."""
+
+    def __init__(self, sub_id: str, topic: str, pattern: str = ""):
+        self.sub_id = sub_id
+        self.topic = topic
+        self.pattern = pattern
+
+
+class HistoryRequest:
+    """Parameters for history queries."""
+
+    def __init__(self, limit: int = 100, since_seq: int = 0):
+        self.limit = limit
+        self.since_seq = since_seq
+
+
+# Pub/Sub encoding/decoding
+
+def encode_subscribe_request(topic: str, pattern: str,
+                            options: SubscriptionOptions) -> bytes:
+    """Encode a subscribe request.
+
+    Format: [topicLen:2][topic][patternLen:2][pattern][options:1]
+    """
+    buf = bytearray()
+
+    # Topic
+    buf.extend(struct.pack(">H", len(topic)))
+    buf.extend(topic.encode("utf-8"))
+
+    # Pattern
+    buf.extend(struct.pack(">H", len(pattern)))
+    buf.extend(pattern.encode("utf-8"))
+
+    # Options
+    buf.append(options.encode())
+
+    return bytes(buf)
+
+
+def decode_subscribe_response(data: bytes) -> str:
+    """Decode subscribe response.
+
+    Response value is the subscription ID.
+    """
+    return data.decode("utf-8") if data else ""
+
+
+def encode_publish_request(topic: str, msg_type: int,
+                          payload: str, headers: str) -> bytes:
+    """Encode a publish request.
+
+    Format: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
+    """
+    buf = bytearray()
+
+    # Topic
+    buf.extend(struct.pack(">H", len(topic)))
+    buf.extend(topic.encode("utf-8"))
+
+    # Message type
+    buf.append(msg_type)
+
+    # Headers length and headers
+    buf.extend(struct.pack(">H", len(headers)))
+    buf.extend(headers.encode("utf-8"))
+
+    # Payload length and payload
+    buf.extend(struct.pack(">I", len(payload)))
+    buf.extend(payload.encode("utf-8"))
+
+    return bytes(buf)
+
+
+def decode_publish_response(data: bytes) -> int:
+    """Decode publish response.
+
+    Response value is the sequence number.
+    """
+    return struct.unpack(">Q", data)[0] if len(data) >= 8 else 0
+
+
+def decode_pubsub_event(data: bytes) -> PubSubEvent:
+    """Decode a PubSub event from server.
+
+    Format: [cmd:1][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+    """
+    if len(data) < 32:  # Minimum size
+        raise ProtocolError("PubSub event too short")
+
+    offset = 0
+
+    # Command (should be 0xFF)
+    cmd = data[offset]
+    if cmd != Command.PUBSUB_EVENT:
+        raise ProtocolError(f"Not a PubSub event: cmd=0x{cmd:02x}")
+    offset += 1
+
+    # Topic length and topic
+    topic_len = struct.unpack(">H", data[offset:offset+2])[0]
+    offset += 2
+    topic = data[offset:offset+topic_len].decode("utf-8")
+    offset += topic_len
+
+    # Message type
+    msg_type = data[offset]
+    offset += 1
+
+    # Sequence number
+    sequence = struct.unpack(">Q", data[offset:offset+8])[0]
+    offset += 8
+
+    # Timestamp
+    timestamp = struct.unpack(">Q", data[offset:offset+8])[0]
+    offset += 8
+
+    # Headers length and headers
+    headers_len = struct.unpack(">H", data[offset:offset+2])[0]
+    offset += 2
+    headers = data[offset:offset+headers_len].decode("utf-8") if headers_len > 0 else ""
+    offset += headers_len
+
+    # Payload length and payload
+    payload_len = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+    payload = data[offset:offset+payload_len].decode("utf-8") if payload_len > 0 else ""
+
+    return PubSubEvent(topic, msg_type, sequence, timestamp, headers, payload)
+
+
+def is_pubsub_event(data: bytes) -> bool:
+    """Check if data is a PubSub event (command 0xFF)."""
+    return len(data) > 0 and data[0] == Command.PUBSUB_EVENT

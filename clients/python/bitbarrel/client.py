@@ -1,7 +1,8 @@
 """BitBarrel WebSocket client implementation."""
 
 import threading
-from typing import List, Tuple, Optional, Union
+import time
+from typing import List, Tuple, Optional, Union, Callable
 from .protocol import (
     Command, Status,
     encode_request, decode_response, decode_response_raw,
@@ -9,6 +10,12 @@ from .protocol import (
     encode_prefix_request,
     encode_traverse_request, decode_traverse_response,
     status_to_error,
+    PubSubMessageType, PubSubEvent,
+    encode_subscribe_request, decode_subscribe_response,
+    encode_publish_request, decode_publish_response,
+    decode_pubsub_event, is_pubsub_event,
+    SubscriptionOptions, default_subscription_options,
+    PresenceMember, PresenceInfo, SubscriptionInfo, HistoryRequest,
 )
 from .websocket import WebSocket
 from .errors import (
@@ -72,6 +79,11 @@ class Client:
         self._current_barrel = ""
         self._lock = threading.Lock()
         self._connected = False
+        # Pub/Sub support
+        self._subscriptions: dict[str, SubscriptionInfo] = {}
+        self._on_message: Optional[Callable[[PubSubEvent], None]] = None
+        self._event_receiver_thread: Optional[threading.Thread] = None
+        self._event_receiver_stop = threading.Event()
 
     def connect(self) -> None:
         """Connect to the BitBarrel server.
@@ -640,6 +652,257 @@ class Client:
             ServerError: If server reports an error
         """
         return self.traverse(key, path_spec, include_full_data=True)
+
+    # ============================================================================
+    # Pub/Sub Methods
+    # ============================================================================
+
+    def subscribe(self, topic: str, options: Optional[SubscriptionOptions] = None) -> str:
+        """Subscribe to topic with options (supports pattern matching with *).
+
+        Args:
+            topic: Topic name (may contain * pattern for wildcard matching)
+            options: Subscription options (defaults if None)
+
+        Returns:
+            Subscription ID
+
+        Raises:
+            ConnectionError: If not connected
+            ServerError: If subscription fails
+        """
+        if options is None:
+            options = default_subscription_options()
+
+        # Determine if this is a pattern subscription
+        is_pattern = "*" in topic
+        actual_topic = ""
+        actual_pattern = ""
+        if is_pattern:
+            actual_pattern = topic
+        else:
+            actual_topic = topic
+
+        # Encode subscribe request
+        subscribe_data = encode_subscribe_request(actual_topic, actual_pattern, options)
+        value = self._send_request(Command.SUBSCRIBE, "", subscribe_data)
+
+        # Response value is the subscription ID
+        sub_id = decode_subscribe_response(value.encode("utf-8"))
+
+        # Track subscription
+        self._subscriptions[sub_id] = SubscriptionInfo(sub_id, actual_topic, actual_pattern)
+
+        return sub_id
+
+    def subscribe_simple(self, topic: str) -> str:
+        """Subscribe to exact topic with default options.
+
+        Args:
+            topic: Exact topic name (no patterns)
+
+        Returns:
+            Subscription ID
+
+        Raises:
+            ConnectionError: If not connected
+            ServerError: If subscription fails
+        """
+        return self.subscribe(topic, default_subscription_options())
+
+    def is_subscribed(self, sub_id: str) -> bool:
+        """Check if subscription is active.
+
+        Args:
+            sub_id: Subscription ID
+
+        Returns:
+            True if subscription is active
+        """
+        return sub_id in self._subscriptions
+
+    def unsubscribe(self, sub_id: str) -> bool:
+        """Unsubscribe from subscription.
+
+        Args:
+            sub_id: Subscription ID
+
+        Returns:
+            True if subscription existed and was removed
+
+        Raises:
+            ConnectionError: If not connected
+            ServerError: If unsubscribe fails
+        """
+        if sub_id not in self._subscriptions:
+            return False
+
+        self._send_request(Command.UNSUBSCRIBE, sub_id, "")
+        self._subscriptions.pop(sub_id, None)
+        return True
+
+    def unsubscribe_all(self) -> int:
+        """Unsubscribe from all active subscriptions.
+
+        Returns:
+            Number of subscriptions removed
+        """
+        count = 0
+        sub_ids = list(self._subscriptions.keys())
+        for sub_id in sub_ids:
+            if self.unsubscribe(sub_id):
+                count += 1
+        return count
+
+    def publish(self, topic: str, msg_type: int, payload: str, headers: str = "") -> int:
+        """Publish message with type and headers to topic.
+
+        Args:
+            topic: Topic name
+            msg_type: Message type (PubSubMessageType.DATA or PRESENCE)
+            payload: Message payload
+            headers: Optional headers as JSON string
+
+        Returns:
+            Sequence number
+
+        Raises:
+            ConnectionError: If not connected
+            ServerError: If publish fails
+        """
+        publish_data = encode_publish_request(topic, msg_type, payload, headers)
+        value = self._send_request(Command.PUBLISH, "", publish_data)
+        return decode_publish_response(value.encode("utf-8"))
+
+    def publish_simple(self, topic: str, msg_type: int, payload: str) -> int:
+        """Publish message with type to topic (no headers).
+
+        Args:
+            topic: Topic name
+            msg_type: Message type
+            payload: Message payload
+
+        Returns:
+            Sequence number
+        """
+        return self.publish(topic, msg_type, payload, "")
+
+    def publish_data(self, topic: str, payload: str) -> int:
+        """Publish data message to topic.
+
+        Args:
+            topic: Topic name
+            payload: Message payload
+
+        Returns:
+            Sequence number
+        """
+        return self.publish(topic, PubSubMessageType.DATA, payload, "")
+
+    def list_subscribers(self, topic: str) -> List[SubscriptionInfo]:
+        """List subscribers for a topic.
+
+        Not yet implemented.
+
+        Args:
+            topic: Topic name
+
+        Raises:
+            ServerError: Not implemented
+        """
+        raise ServerError("list_subscribers() not yet implemented")
+
+    def list_topics(self) -> List[str]:
+        """List all topics.
+
+        Not yet implemented.
+
+        Raises:
+            ServerError: Not implemented
+        """
+        raise ServerError("list_topics() not yet implemented")
+
+    def get_history(self, topic: str, request: HistoryRequest) -> List[PubSubEvent]:
+        """Get message history for topic.
+
+        Not yet implemented.
+
+        Args:
+            topic: Topic name
+            request: History request parameters
+
+        Raises:
+            ServerError: Not implemented
+        """
+        raise ServerError("get_history() not yet implemented")
+
+    def get_presence(self, topic: str) -> PresenceInfo:
+        """Get presence info for topic.
+
+        Not yet implemented.
+
+        Args:
+            topic: Topic name
+
+        Raises:
+            ServerError: Not implemented
+        """
+        raise ServerError("get_presence() not yet implemented")
+
+    def set_message_handler(self, handler: Callable[[PubSubEvent], None]) -> None:
+        """Set the callback function for PubSub events.
+
+        Args:
+            handler: Callback function that receives PubSubEvent
+        """
+        self._on_message = handler
+
+    def start_event_receiver(self) -> None:
+        """Start a background thread to receive PubSub events."""
+        if self._event_receiver_thread and self._event_receiver_thread.is_alive():
+            return  # Already running
+
+        self._event_receiver_stop.clear()
+        self._event_receiver_thread = threading.Thread(
+            target=self._receive_pubsub_events, daemon=True)
+        self._event_receiver_thread.start()
+
+    def stop_event_receiver(self) -> None:
+        """Stop the event receiver thread."""
+        if self._event_receiver_thread and self._event_receiver_thread.is_alive():
+            self._event_receiver_stop.set()
+            self._event_receiver_thread.join(timeout=2.0)
+
+    def _receive_pubsub_events(self) -> None:
+        """Background thread function to receive PubSub events."""
+        while not self._event_receiver_stop.is_set():
+            with self._lock:
+                if not self._ws:
+                    break
+
+                # Try to read a message without blocking
+                self._ws.set_timeout(0.1)  # 100ms timeout
+                try:
+                    data = self._ws.recv_binary()
+                except TimeoutError:
+                    continue
+                except ConnectionError:
+                    # Connection closed
+                    self._connected = False
+                    break
+
+            # Check if this is a PubSub event (command 0xFF)
+            if is_pubsub_event(data):
+                try:
+                    event = decode_pubsub_event(data)
+
+                    # Call message handler if set
+                    handler = self._on_message
+                    if handler:
+                        handler(event)
+                except Exception:
+                    # Skip malformed events
+                    pass
 
     # Connection lifecycle
 
