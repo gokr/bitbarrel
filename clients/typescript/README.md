@@ -8,6 +8,7 @@ A TypeScript client library for [BitBarrel](https://github.com/bitbarrel/bitbarr
 - 📝 **Type-Safe**: Full TypeScript support with comprehensive type definitions
 - 🔒 **Authentication**: JWT-based authentication support
 - 📦 **Multiple Operations**: Full CRUD operations, range queries, and barrel management
+- 📡 **Pub/Sub Messaging**: Real-time topic-based subscriptions with pattern matching (core subscribe/publish implemented)
 - 🎯 **Error Handling**: Comprehensive error hierarchy with detailed messages
 - ⚡ **Automatic Reconnection**: Auto-connect on first operation with configurable timeouts
 - 📊 **Event-Driven**: EventEmitter-based architecture for connection events
@@ -395,6 +396,123 @@ if (isAlive) {
   console.log('Server is responding');
 }
 ```
+
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions and pattern matching. The TypeScript client fully implements core Pub/Sub operations with event handling support. Advanced query methods (`listSubscribers`, `getHistory`, `getPresence`, `listTopics`) are pending implementation.
+
+### Subscription Management
+
+**Subscribe to topics:**
+```typescript
+// Subscribe with options
+const subId = await client.subscribe('user:notifications:*', {
+  enableKvEvents: false,
+  enablePresence: true,
+  replayHistory: 10, // Replay last 10 messages
+});
+
+// Simple subscription (default options)
+const subId = await client.subscribeSimple('user:alice');
+```
+
+**Manage subscriptions:**
+```typescript
+// Check if subscription is active
+if (client.isSubscribed(subId)) {
+  console.log('Subscription active');
+}
+
+// Unsubscribe
+await client.unsubscribe(subId);
+
+// Unsubscribe all
+const removed = await client.unsubscribeAll();
+```
+
+### Publishing Messages
+
+**Publish messages:**
+```typescript
+// Publish with type and headers
+const seq = await client.publish('user:notifications:123',
+  PubSubMessageType.Data,
+  'Welcome!',
+  'priority=high'
+);
+
+// Publish data message (convenience)
+const seq = await client.publishData('user:notifications:123', 'Welcome!');
+
+// Publish presence notification
+const seq = await client.publish('presence:room1',
+  PubSubMessageType.Presence,
+  '{"action": "join"}'
+);
+```
+
+### Event Handling
+
+**Set message handler:**
+```typescript
+// Set callback for incoming events
+client.setMessageHandler((event: PubSubEvent) => {
+  console.log(`Topic: ${event.topic}, Payload: ${event.payload}`);
+});
+
+// Or use EventEmitter
+client.on('pubsub', (event: PubSubEvent) => {
+  console.log(`Received event: ${event.topic}`);
+});
+```
+
+### Example
+
+```typescript
+import { BitBarrelClient, PubSubMessageType } from '@bitbarrel/client';
+
+async function pubSubExample() {
+  const client = new BitBarrelClient();
+
+  // Set up message handler
+  client.setMessageHandler((event) => {
+    console.log(`Received: ${event.topic} -> ${event.payload}`);
+  });
+
+  // Subscribe to pattern
+  const subId = await client.subscribe('user:notifications:*', {
+    replayHistory: 5,
+  });
+
+  // Publish message
+  const seq = await client.publishData('user:notifications:123', 'Welcome!');
+  console.log(`Published sequence: ${seq}`);
+
+  // Check subscription status
+  if (client.isSubscribed(subId)) {
+    console.log('Subscription active');
+  }
+
+  // Clean up
+  await client.unsubscribe(subId);
+  await client.close();
+}
+```
+
+### Pub/Sub Event Types
+
+- `PubSubMessageType.Data` (0) - Normal published messages
+- `PubSubMessageType.Presence` (1) - Member join/leave notifications
+
+### Pending Features
+
+The following advanced Pub/Sub methods are not yet implemented:
+- `listSubscribers(topic: string): Promise<SubscriptionInfo[]>`
+- `listTopics(): Promise<string[]>`
+- `getHistory(topic: string, request: HistoryRequest): Promise<PubSubEvent[]>`
+- `getPresence(topic: string): Promise<PresenceInfo>`
+
+See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details.
 
 ## Complete Example
 
