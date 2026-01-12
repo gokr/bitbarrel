@@ -140,5 +140,172 @@ suite "Subscribe and Publish":
     finally:
       client.close()
 
+suite "Query Methods":
+  test "list subscribers for topic":
+    var client1 = newClient()
+    var client2 = newClient()
+    try:
+      let topic = uniqueTopicName("test/list_subscribers")
+
+      # Both clients subscribe to the same topic
+      client1.connect()
+      client2.connect()
+
+      discard client1.subscribe(topic)
+      discard client2.subscribe(topic)
+
+      sleep(100)
+
+      # List subscribers
+      let subscribers = client1.listSubscribers(topic)
+
+      check subscribers.len >= 2
+
+      # Verify subscription IDs are unique by checking no duplicates
+      var uniqueIds: seq[string] = @[]
+      for s in subscribers:
+        if s.id notin uniqueIds:
+          uniqueIds.add(s.id)
+      check uniqueIds.len == subscribers.len
+
+    finally:
+      client1.close()
+      client2.close()
+
+  test "list topics":
+    var client = newClient()
+    try:
+      client.connect()
+
+      # Create some topics by publishing to them
+      let topic1 = uniqueTopicName("test/topics1")
+      let topic2 = uniqueTopicName("test/topics2")
+      let topic3 = uniqueTopicName("test/topics3")
+
+      discard client.publish(topic1, "data1")
+      discard client.publish(topic2, "data2")
+      discard client.publish(topic3, "data3")
+
+      sleep(100)
+
+      # List all topics
+      let topics = client.listTopics()
+
+      check topics.len >= 3
+
+      # Verify our topics are listed
+      var topicSet: array[3, bool] = [false, false, false]
+      for topic in topics:
+        if topic.name == topic1: topicSet[0] = true
+        if topic.name == topic2: topicSet[1] = true
+        if topic.name == topic3: topicSet[2] = true
+      check topicSet[0] and topicSet[1] and topicSet[2]
+
+      # Verify topic info
+      for topic in topics:
+        check topic.name.len > 0
+        check topic.sequence >= 0
+        check topic.subscriberCount >= 0
+        check topic.messageCount >= 0
+
+    finally:
+      client.close()
+
+  test "get history for topic":
+    var client = newClient()
+    try:
+      client.connect()
+
+      let topic = uniqueTopicName("test/history")
+
+      # Publish some messages
+      discard client.publish(topic, "message 1")
+      sleep(10)
+      discard client.publish(topic, "message 2")
+      sleep(10)
+      discard client.publish(topic, "message 3")
+      sleep(100)
+
+      # Get history
+      let history = client.getHistory(topic, limit = 10)
+
+      check history.len >= 3
+
+      # Verify history order (newest first)
+      check history[0].payload == "message 3"
+      check history[1].payload == "message 2"
+      check history[2].payload == "message 1"
+
+      # Verify event properties
+      for event in history:
+        check event.topic == topic
+        check event.messageType == mtData
+        check event.sequence > 0
+        check event.timestamp > 0
+
+    finally:
+      client.close()
+
+  test "get history with limit and sinceSeq":
+    var client = newClient()
+    try:
+      client.connect()
+
+      let topic = uniqueTopicName("test/history_limit")
+
+      # Publish messages
+      var seqNos: seq[uint64] = @[]
+      for i in 1..5:
+        let seq = client.publish(topic, &"message {i}")
+        seqNos.add(seq)
+        sleep(10)
+      sleep(100)
+
+      # Get only 2 messages
+      let historyLimited = client.getHistory(topic, limit = 2)
+      check historyLimited.len <= 2
+
+      # Get messages since specific sequence
+      let sinceSeq = seqNos[2]
+      let historySince = client.getHistory(topic, limit = 10, sinceSeq = sinceSeq)
+      check historySince.len >= 3
+      check historySince[0].sequence >= sinceSeq
+
+    finally:
+      client.close()
+
+  test "get presence for topic":
+    var client1 = newClient()
+    var client2 = newClient()
+    try:
+      let topic = uniqueTopicName("test/presence")
+
+      client1.connect()
+      client2.connect()
+
+      # Subscribe to topic with presence enabled
+      let opts = SubscriptionOptions(enablePresence: true)
+      discard client1.subscribe(topic, opts)
+      discard client2.subscribe(topic, opts)
+
+      sleep(100)
+
+      # Get presence
+      let presence = client1.getPresence(topic)
+
+      check presence.topic == topic
+      check presence.members.len >= 2
+
+      # Verify member properties
+      for member in presence.members:
+        check member.clientId > 0
+        check member.username.len >= 0
+        check member.joinedAt > 0
+        check member.lastPing > 0
+
+    finally:
+      client1.close()
+      client2.close()
+
 echo "\nNOTE: These tests require a running BitBarrel server on localhost:9876"
 echo "with pub/sub enabled. Some tests may fail if server is not available.\n"
