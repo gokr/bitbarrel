@@ -195,9 +195,16 @@ func (c *Client) sendRequest(req *Request) (*Response, error) {
 		}
 
 		// Check if this is a PubSub event (command 0xFF)
-		// If so, skip it and continue reading - it's for the event receiver
-		if len(data) > 0 && data[0] == 0xFF {
-			// This is a PubSub event, not a response. Skip it.
+		// If so, handle it and continue reading for our response
+		if IsPubSubEvent(data) {
+			event, err := DecodePubSubEvent(data)
+			if err == nil && c.onMessage != nil {
+				// Lock released briefly to call handler
+				c.mu.Unlock()
+				c.onMessage(event)
+				c.mu.Lock()
+				ws = c.ws // Reset ws pointer after potential close
+			}
 			continue
 		}
 
@@ -999,27 +1006,93 @@ func (c *Client) PublishData(topic string, payload string) (uint64, error) {
 }
 
 // ListSubscribers lists subscribers for a topic
-// Not yet implemented
 func (c *Client) ListSubscribers(topic string) ([]SubscriptionInfo, error) {
-	return nil, errors.New("listSubscribers() not yet implemented")
+	if err := c.ensureConnected(); err != nil {
+		return nil, err
+	}
+
+	req := NewRequest(CmdListSubscribers, topic, "")
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, StatusToError(resp.Status, resp.Value)
+	}
+
+	return DecodeListSubscribersResponse(resp.Value)
 }
 
 // ListTopics lists all topics
-// Not yet implemented
-func (c *Client) ListTopics() ([]string, error) {
-	return nil, errors.New("listTopics() not yet implemented")
+func (c *Client) ListTopics() ([]TopicInfo, error) {
+	if err := c.ensureConnected(); err != nil {
+		return nil, err
+	}
+
+	req := NewRequest(CmdListTopics, "", "")
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, StatusToError(resp.Status, resp.Value)
+	}
+
+	return DecodeListTopicsResponse(resp.Value)
 }
 
 // GetHistory gets message history for topic
-// Not yet implemented
+// If req is zero-valued, defaults to limit=100, sinceSeq=0
 func (c *Client) GetHistory(topic string, req HistoryRequest) ([]PubSubEvent, error) {
-	return nil, errors.New("getHistory() not yet implemented")
+	if err := c.ensureConnected(); err != nil {
+		return nil, err
+	}
+
+	// Use default request if not provided
+	if req.Limit == 0 && req.SinceSeq == 0 {
+		req = DefaultHistoryRequest()
+	}
+
+	historyData, err := EncodeHistoryRequest(topic, req.Limit, req.SinceSeq)
+	if err != nil {
+		return nil, NewError("history", err)
+	}
+
+	request := NewRequest(CmdHistory, "", string(historyData))
+	resp, err := c.sendRequest(request)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Status != StatusOk {
+		return nil, StatusToError(resp.Status, resp.Value)
+	}
+
+	return DecodeHistoryResponse(resp.Value)
 }
 
 // GetPresence gets presence info for topic
-// Not yet implemented
 func (c *Client) GetPresence(topic string) (PresenceInfo, error) {
-	return PresenceInfo{}, errors.New("getPresence() not yet implemented")
+	if err := c.ensureConnected(); err != nil {
+		return PresenceInfo{}, err
+	}
+
+	// Presence request: operation 0 = get_online
+	presenceData := EncodePresenceRequest(0)
+
+	req := NewRequest(CmdPresence, topic, string(presenceData))
+	resp, err := c.sendRequest(req)
+	if err != nil {
+		return PresenceInfo{}, err
+	}
+
+	if resp.Status != StatusOk {
+		return PresenceInfo{}, StatusToError(resp.Status, resp.Value)
+	}
+
+	return DecodePresenceResponse(topic, resp.Value)
 }
 
 // SetMessageHandler sets the callback function for PubSub events

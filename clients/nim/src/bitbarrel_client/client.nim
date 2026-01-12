@@ -942,8 +942,8 @@ proc unsubscribe*(client: var BitBarrelClient, subId: string): bool =
   if not exists:
     return false
 
-  # Send unsubscribe request (subId in value field)
-  let req = Request(command: cmdUnsubscribe, value: subId)
+  # Send unsubscribe request (subId in key field)
+  let req = Request(command: cmdUnsubscribe, key: subId)
   let resp = client.sendAndWait(req)
 
   if resp.status == statusOk:

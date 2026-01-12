@@ -18,7 +18,7 @@ suite "Subscribe and Publish":
     var client = newClient()
     try:
       client.connect()
-      let topic = uniqueTopicName("test/exact")
+      let topic = uniqueTopicName("test:exact")
       let subId = client.subscribe(topic)
 
       check subId.len > 0
@@ -33,7 +33,7 @@ suite "Subscribe and Publish":
     var client = newClient()
     try:
       client.connect()
-      let topic = uniqueTopicName("test/publish")
+      let topic = uniqueTopicName("test:publish")
       let seqNo = client.publish(topic, "test message")
 
       check seqNo > 0
@@ -55,7 +55,7 @@ suite "Subscribe and Publish":
     try:
       client.connect()
 
-      let topic = uniqueTopicName("test/receive")
+      let topic = uniqueTopicName("test:receive")
       let subId = client.subscribe(topic)
 
       # Give subscription time to activate
@@ -100,11 +100,11 @@ suite "Subscribe and Publish":
       sleep(100)
 
       # Publish matching messages
-      discard client.publish("user/login", "user logged in")
-      discard client.publish("user/logout", "user logged out")
+      discard client.publish("user:login", "user logged in")
+      discard client.publish("user:logout", "user logged out")
 
       # Publish non-matching message
-      discard client.publish("system/start", "should not receive")
+      discard client.publish("system:start", "should not receive")
 
       # Wait for messages
       let startTime = epochTime()
@@ -133,7 +133,7 @@ suite "Subscribe and Publish":
     try:
       client.connect()
 
-      let topic = uniqueTopicName("test/options")
+      let topic = uniqueTopicName("test:options")
 
       # Subscribe with presence enabled
       var opts = SubscriptionOptions(
@@ -207,7 +207,7 @@ suite "Subscribe and Publish":
     try:
       client.connect()
 
-      let topic = uniqueTopicName("test/msgtypes")
+      let topic = uniqueTopicName("test:msgtypes")
       let subId = client.subscribe(topic)
 
       sleep(100)
@@ -250,7 +250,7 @@ suite "Subscribe and Publish":
     try:
       client.connect()
 
-      let topic = uniqueTopicName("test/headers")
+      let topic = uniqueTopicName("test:headers")
       let subId = client.subscribe(topic)
 
       sleep(100)
@@ -281,7 +281,7 @@ suite "Query Methods":
     var client1 = newClient()
     var client2 = newClient()
     try:
-      let topic = uniqueTopicName("test/list_subscribers")
+      let topic = uniqueTopicName("test:list_subscribers")
 
       # Both clients subscribe to the same topic
       client1.connect()
@@ -327,9 +327,9 @@ suite "Query Methods":
       client.connect()
 
       # Create some topics by publishing to them
-      let topic1 = uniqueTopicName("test/topics1")
-      let topic2 = uniqueTopicName("test/topics2")
-      let topic3 = uniqueTopicName("test/topics3")
+      let topic1 = uniqueTopicName("test:topics1")
+      let topic2 = uniqueTopicName("test:topics2")
+      let topic3 = uniqueTopicName("test:topics3")
 
       discard client.publish(topic1, "data1")
       discard client.publish(topic2, "data2")
@@ -365,7 +365,7 @@ suite "Query Methods":
     try:
       client.connect()
 
-      let topic = uniqueTopicName("test/history")
+      let topic = uniqueTopicName("test:history")
 
       # Publish some messages
       discard client.publish(topic, "message 1")
@@ -400,7 +400,7 @@ suite "Query Methods":
     try:
       client.connect()
 
-      let topic = uniqueTopicName("test/history_limit")
+      let topic = uniqueTopicName("test:history_limit")
 
       # Publish messages
       var seqNos: seq[uint64] = @[]
@@ -427,7 +427,7 @@ suite "Query Methods":
     var client1 = newClient()
     var client2 = newClient()
     try:
-      let topic = uniqueTopicName("test/presence")
+      let topic = uniqueTopicName("test:presence")
 
       client1.connect()
       client2.connect()

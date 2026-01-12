@@ -16,12 +16,25 @@ const (
 
 // skipIfNoServer attempts to connect to test server and skips if unavailable
 func skipIfNoServer(t *testing.T) {
-	client := NewClient(testServerHost, testServerPort)
-	err := client.Connect()
-	if err != nil {
-		t.Skip("Skipping integration test - no server running on localhost:9876")
+	maxAttempts := 5
+	var err error
+	for i := 0; i < maxAttempts; i++ {
+		client := NewClient(testServerHost, testServerPort)
+		err = client.Connect()
+		if err == nil {
+			client.Close()
+			return
+		}
+		client.Close()
+		if i < maxAttempts-1 {
+			delay := time.Duration(100 * (1 << i)) * time.Millisecond // 100, 200, 400, 800ms
+			if delay > time.Second {
+				delay = time.Second
+			}
+			time.Sleep(delay)
+		}
 	}
-	client.Close()
+	t.Skipf("Skipping integration test - no server running on localhost:9876 (last error: %v)", err)
 }
 
 // TestNewClient tests client creation
@@ -1528,24 +1541,25 @@ func TestPatternSubscription(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Publish matching messages
-	_, _ = client.PublishData("user/login", "user logged in")
-	_, _ = client.PublishData("user/logout", "user logged out")
+	_, _ = client.PublishData("user:login", "user logged in")
+	_, _ = client.PublishData("user:logout", "user logged out")
 
 	// Publish non-matching message
-	_, _ = client.PublishData("system/start", "should not receive")
+	_, _ = client.PublishData("system:start", "should not receive")
 
 	// Wait for messages
 	timeout := time.After(3 * time.Second)
 
+waitLoop:
 	for {
 		select {
 		case <-timeout:
-			break
+			break waitLoop
 		case <-time.After(50 * time.Millisecond):
 			mu.Lock()
 			if len(received) >= 2 {
 				mu.Unlock()
-				break
+				break waitLoop
 			}
 			mu.Unlock()
 		}
@@ -1560,8 +1574,8 @@ func TestPatternSubscription(t *testing.T) {
 
 	// Verify we didn't receive the non-matching message
 	for _, event := range received {
-		if event.Topic == "system/start" {
-			t.Error("Received message for non-matching topic 'system/start'")
+		if event.Topic == "system:start" {
+			t.Error("Received message for non-matching topic 'system:start'")
 		}
 	}
 }

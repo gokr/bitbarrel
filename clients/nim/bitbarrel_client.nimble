@@ -27,9 +27,26 @@ task syncProtocol, "Sync protocol.nim from server source":
   cpFile(serverProtocol, clientProtocol)
   echo "Synced protocol.nim from server source"
 
-task test, "Run the test suite":
-  exec "nim c -r tests/test_protocol.nim"
-  exec "nim c -r tests/test_client.nim"
+task test, "Run all tests (automatic discovery)":
+  exec """
+    # Find and run all test_*.nim files in tests directory
+    echo "Running Nim client tests..."
+    set -e  # Exit on first failure
+    for test_file in tests/test_*.nim; do
+      if [ -f "$test_file" ]; then
+        echo ""
+        echo "=========================================="
+        echo "Running: $test_file"
+        echo "=========================================="
+        nim c -r "$test_file"
+      fi
+    done
+    echo ""
+    echo "✓ All tests passed!"
+  """
+
+task testPubSub, "Run pub/sub tests (requires running server)":
+  exec "nim c -r tests/test_pubsub.nim"
 
 task testIntegration, "Run integration tests (requires running server)":
   exec "nim c -r -d:integration tests/test_client.nim"

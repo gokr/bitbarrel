@@ -2,6 +2,7 @@ package bitbarrel
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -895,4 +896,224 @@ func IsPubSubEvent(data []byte) bool {
 		return false
 	}
 	return data[0] == CmdPubSubEvent
+}
+
+// ============================================================================
+// Phase 3-4: Query method encoders/decoders
+// ============================================================================
+
+// EncodeHistoryRequest encodes a history request
+// Format: [topicLen:2][topic:N][count:4][sinceSeq:8]
+func EncodeHistoryRequest(topic string, count int, sinceSeq uint64) ([]byte, error) {
+	if len(topic) > MaxKeySize {
+		return nil, fmt.Errorf("topic too large: %d bytes (max %d)", len(topic), MaxKeySize)
+	}
+
+	buf := make([]byte, 0,
+		2+len(topic)+
+			4+
+			8)
+
+	// Topic
+	buf = append(buf, byte(len(topic)>>8), byte(len(topic)))
+	buf = append(buf, []byte(topic)...)
+
+	// Count
+	buf = append(buf,
+		byte(count>>24),
+		byte(count>>16),
+		byte(count>>8),
+		byte(count))
+
+	// Since sequence (64-bit)
+	buf = append(buf,
+		byte(sinceSeq>>56),
+		byte(sinceSeq>>48),
+		byte(sinceSeq>>40),
+		byte(sinceSeq>>32),
+		byte(sinceSeq>>24),
+		byte(sinceSeq>>16),
+		byte(sinceSeq>>8),
+		byte(sinceSeq))
+
+	return buf, nil
+}
+
+// EncodePresenceRequest encodes a presence request
+// Format: [operation:1]
+//
+// Operations:
+//   0 = get_online
+//   1 = broadcast_update
+func EncodePresenceRequest(operation byte) []byte {
+	return []byte{operation}
+}
+
+// DecodeListSubscribersResponse decodes a list subscribers response
+// The response is JSON: [{"subscriptionId": "...", "clientId": 123, "topic": "...", "pattern": "..."}]
+func DecodeListSubscribersResponse(data string) ([]SubscriptionInfo, error) {
+	if len(data) == 0 {
+		return []SubscriptionInfo{}, nil
+	}
+
+	var items []struct {
+		SubscriptionID string `json:"subscriptionId"`
+		ClientID       uint64 `json:"clientId"`
+		Topic          string `json:"topic"`
+		Pattern        string `json:"pattern"`
+	}
+
+	if err := json.Unmarshal([]byte(data), &items); err != nil {
+		return nil, fmt.Errorf("failed to decode subscribers response: %w", err)
+	}
+
+	result := make([]SubscriptionInfo, len(items))
+	for i, item := range items {
+		result[i] = SubscriptionInfo{
+			ID:       item.SubscriptionID,
+			Topic:    item.Topic,
+			Pattern:  item.Pattern,
+			ClientID: item.ClientID,
+		}
+	}
+
+	return result, nil
+}
+
+// DecodeListTopicsResponse decodes a list topics response
+// The response is JSON: [{"name": "...", "sequence": 123, "subscriberCount": 5, "messageCount": 100}]
+func DecodeListTopicsResponse(data string) ([]TopicInfo, error) {
+	if len(data) == 0 {
+		return []TopicInfo{}, nil
+	}
+
+	var items []struct {
+		Name            string `json:"name"`
+		Sequence        uint64 `json:"sequence"`
+		SubscriberCount int    `json:"subscriberCount"`
+		MessageCount    int    `json:"messageCount"`
+	}
+
+	if err := json.Unmarshal([]byte(data), &items); err != nil {
+		return nil, fmt.Errorf("failed to decode topics response: %w", err)
+	}
+
+	result := make([]TopicInfo, len(items))
+	for i, item := range items {
+		result[i] = TopicInfo{
+			Name:            item.Name,
+			Sequence:        item.Sequence,
+			SubscriberCount: item.SubscriberCount,
+			MessageCount:    item.MessageCount,
+		}
+	}
+
+	return result, nil
+}
+
+// DecodeHistoryResponse decodes a history response
+// The response is JSON: [{"topic": "...", "messageType": 0, "sequence": 123, "timestamp": 1234567890, "headers": "...", "payload": "..."}]
+func DecodeHistoryResponse(data string) ([]PubSubEvent, error) {
+	if len(data) == 0 {
+		return []PubSubEvent{}, nil
+	}
+
+	var items []struct {
+		Topic       string          `json:"topic"`
+		MessageType PubSubMessageType `json:"messageType"`
+		Sequence    uint64          `json:"sequence"`
+		Timestamp   int64           `json:"timestamp"`
+		Headers     string          `json:"headers"`
+		Payload     interface{}     `json:"payload"`
+	}
+
+	if err := json.Unmarshal([]byte(data), &items); err != nil {
+		return nil, fmt.Errorf("failed to decode history response: %w", err)
+	}
+
+	result := make([]PubSubEvent, len(items))
+	for i, item := range items {
+		payloadStr := serializeHistoryPayload(item.Payload)
+		result[i] = PubSubEvent{
+			Topic:       item.Topic,
+			MessageType: item.MessageType,
+			Sequence:    item.Sequence,
+			Timestamp:   item.Timestamp,
+			Headers:     item.Headers,
+			Payload:     payloadStr,
+		}
+	}
+
+	return result, nil
+}
+
+// serializeHistoryPayload converts a history payload to string
+func serializeHistoryPayload(payload interface{}) string {
+	if s, ok := payload.(string); ok {
+		return s
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Sprintf("%v", payload)
+	}
+	return string(data)
+}
+
+// DecodePresenceResponse decodes a presence response
+// The response is JSON: [{"topic": "...", "members": [...], "lastUpdate": 1234567890}]
+func DecodePresenceResponse(topic string, data string) (PresenceInfo, error) {
+	result := PresenceInfo{
+		Topic: topic,
+	}
+
+	if len(data) == 0 {
+		return result, nil
+	}
+
+	var items []struct {
+		Topic      string            `json:"topic"`
+		Members    []json.RawMessage `json:"members"`
+		LastUpdate int64             `json:"lastUpdate"`
+	}
+
+	if err := json.Unmarshal([]byte(data), &items); err != nil {
+		return result, fmt.Errorf("failed to decode presence response: %w", err)
+	}
+
+	if len(items) == 0 {
+		return result, nil
+	}
+
+	item := items[0]
+	result.Topic = item.Topic
+	result.LastUpdate = item.LastUpdate
+
+	result.Members = make([]PresenceMember, len(item.Members))
+	for i, memberData := range item.Members {
+		var m struct {
+			ClientID uint64           `json:"clientId"`
+			Username string           `json:"username"`
+			JoinedAt int64            `json:"joinedAt"`
+			LastPing int64            `json:"lastPing"`
+			Metadata []byte           `json:"metadata"`
+		}
+		if err := json.Unmarshal(memberData, &m); err != nil {
+			return result, fmt.Errorf("failed to decode member: %w", err)
+		}
+
+		var metadataStr string
+		if len(m.Metadata) > 0 {
+			metadataStr = string(m.Metadata)
+		}
+
+		result.Members[i] = PresenceMember{
+			ClientID: m.ClientID,
+			Username: m.Username,
+			JoinedAt: m.JoinedAt,
+			LastPing: m.LastPing,
+			Metadata: metadataStr,
+		}
+	}
+
+	return result, nil
 }

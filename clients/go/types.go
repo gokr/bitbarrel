@@ -72,53 +72,72 @@ const (
 
 // PubSubEvent represents a PubSub event received from the server
 type PubSubEvent struct {
-	Topic        string
-	MessageType  PubSubMessageType
-	Sequence     uint64
-	Timestamp    int64
-	Headers      string
-	Payload      string
+	Topic       string
+	MessageType PubSubMessageType
+	Sequence    uint64
+	Timestamp   int64
+	Headers     string
+	Payload     string
 }
 
 // SubscriptionOptions represents options for subscribing to a topic
 type SubscriptionOptions struct {
-	EnableKvEvents  bool
-	EnablePresence  bool
-	ReplayHistory   bool
+	EnableKvEvents bool
+	EnablePresence bool
+	ReplayHistory  bool
 }
 
 // DefaultSubscriptionOptions returns default subscription options
 func DefaultSubscriptionOptions() SubscriptionOptions {
 	return SubscriptionOptions{
-		EnableKvEvents:  false,
-		EnablePresence:  false,
-		ReplayHistory:   false,
+		EnableKvEvents: false,
+		EnablePresence: false,
+		ReplayHistory:  false,
 	}
 }
 
 // PresenceMember represents a single member in presence data
 type PresenceMember struct {
 	ClientID uint64
+	Username string
 	JoinedAt int64
 	LastPing int64
+	Metadata string
 }
 
 // PresenceInfo represents presence information for a topic
 type PresenceInfo struct {
-	Topic     string
-	Members   []PresenceMember
+	Topic      string
+	Members    []PresenceMember
 	LastUpdate int64
 }
 
 // SubscriptionInfo represents information about a subscription
 type SubscriptionInfo struct {
-	ID      string
-	Topic   string
-	Pattern string
+	ID       string
+	Topic    string
+	Pattern  string
+	ClientID uint64
+}
+
+// TopicInfo represents information about a topic
+type TopicInfo struct {
+	Name            string
+	Sequence        uint64
+	SubscriberCount int
+	MessageCount    int
 }
 
 // HistoryRequest represents parameters for history queries
 type HistoryRequest struct {
 	Limit    int
 	SinceSeq uint64
+}
+
+// DefaultHistoryRequest returns default history request parameters
+func DefaultHistoryRequest() HistoryRequest {
+	return HistoryRequest{
+		Limit:    100,
+		SinceSeq: 0,
+	}
 }
