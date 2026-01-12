@@ -907,7 +907,7 @@ proc handleWebSocketMessage*(
         resp.status = statusOk
         # Encode sequence number as binary uint64 (big-endian)
         resp.value.setLen(0)
-        resp.value.protocol.writeUint64BE(seqNo)
+        resp.value.writeUint64BE(seqNo)
       except CatchableError as e:
         resp.status = statusError
         resp.value = "Publish error: " & e.msg
