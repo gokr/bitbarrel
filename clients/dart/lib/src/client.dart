@@ -351,6 +351,7 @@ class BitBarrelClient {
       key: '',
       value: '',
     );
+    // Empty string means no keys, split would return ['']
     if (result.isEmpty) return [];
     return result.split(',');
   }

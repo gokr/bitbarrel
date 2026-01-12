@@ -20,8 +20,8 @@ class Barrel extends Equatable {
     final modeMatch = RegExp(r'"mode"\s*:\s*"([^"]+)"').firstMatch(config!);
     final mode = modeMatch?.group(1);
     // Convert server format to display format
-    if (mode == 'hash') return 'Hash';
-    if (mode == 'critbit') return 'CritBit';
+    if (mode == 'hash' || mode == 'bmHash') return 'Hash';
+    if (mode == 'critbit' || mode == 'bmCritBit') return 'CritBit';
     return mode;
   }
 
