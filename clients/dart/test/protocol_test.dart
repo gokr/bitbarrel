@@ -242,7 +242,7 @@ void main() {
     });
 
     test('allValues contains all expected commands', () {
-      expect(Command.allValues.length, equals(20));
+      expect(Command.allValues.length, equals(22));
       expect(Command.allValues.contains(Command.get), isTrue);
       expect(Command.allValues.contains(Command.set), isTrue);
       expect(Command.allValues.contains(Command.delete), isTrue);
@@ -253,8 +253,18 @@ void main() {
       expect(Command.allValues.contains(Command.traverse), isTrue);
       expect(Command.allValues.contains(Command.rangeQuery), isTrue);
       expect(Command.allValues.contains(Command.prefixQuery), isTrue);
+      expect(Command.allValues.contains(Command.rangeCount), isTrue);
+      expect(Command.allValues.contains(Command.rangeKeys), isTrue);
+      expect(Command.allValues.contains(Command.prefixKeys), isTrue);
       expect(Command.allValues.contains(Command.createBarrel), isTrue);
+      expect(Command.allValues.contains(Command.openBarrel), isTrue);
       expect(Command.allValues.contains(Command.useBarrel), isTrue);
+      expect(Command.allValues.contains(Command.closeBarrel), isTrue);
+      expect(Command.allValues.contains(Command.listBarrels), isTrue);
+      expect(Command.allValues.contains(Command.dropBarrel), isTrue);
+      expect(Command.allValues.contains(Command.getBarrelConfig), isTrue);
+      expect(Command.allValues.contains(Command.setBarrelConfig), isTrue);
+      expect(Command.allValues.contains(Command.getBarrelStats), isTrue);
     });
   });
 
