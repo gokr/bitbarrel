@@ -42,6 +42,7 @@ BitBarrel provides client libraries for multiple languages:
 | Go | `clients/go/` | Full WebSocket protocol |
 | Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
 | Python | `clients/python/` | Feature-complete WebSocket client |
+| TypeScript | `clients/typescript/` | Full WebSocket protocol + types |
 
 ### Quick Start - Dart/Flutter
 
