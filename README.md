@@ -135,6 +135,7 @@ flutter run -d chrome --web-port 8080
 - Connection management with JWT authentication support
 - Barrel management (create, delete, switch)
 - Data explorer with full CRUD operations
+- **Import/Export** - Bulk data operations in JSONL and CSV formats
 - Query interface for prefix and range queries (CritBit mode)
 - **Graph Traversal UI** - Explore _ref relationships interactively
 - **Barrel Configuration Editor** - Edit sync mode, buffer sizes, compaction settings
@@ -293,6 +294,76 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection |
 
 **Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
+
+## Pub/Sub Messaging
+
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions, pattern matching, and presence tracking:
+
+- **Topic-based subscriptions**: Subscribe to exact topics or wildcard patterns (`user/*`)
+- **Message types**: Data messages, presence notifications, key-value change events
+- **History**: Configurable message retention with replay on subscribe
+- **Presence tracking**: See who's subscribed to topics with metadata
+- **Pattern matching**: Redis-style glob patterns (`*`) for flexible subscriptions
+- **Key-value integration**: Automatic publishing of key-value change events
+
+### Examples
+
+**Nim client** (full implementation):
+```nim
+import bitbarrel_client
+
+let client = newClient("localhost", 9876.Port)
+client.connect()
+
+# Subscribe to user notifications pattern
+let subId = client.subscribe("user:notifications:*")
+
+# Publish a message
+let seq = client.publish("user:notifications:123", "Welcome!")
+
+# Handle incoming messages
+client.onMessage = proc(event: PubSubEvent) =
+  echo "Received: ", event.topic, " -> ", event.payload
+
+# Clean up
+client.unsubscribe(subId)
+client.close()
+```
+
+**Go client** (basic subscribe/publish implemented, query methods pending):
+```go
+package main
+
+import (
+    "fmt"
+    "github.com/tankfeed/bitbarrel-go"
+)
+
+func main() {
+    client := bitbarrel.NewClient("localhost", 9876)
+    client.Connect()
+
+    // Subscribe to pattern
+    subId, _ := client.Subscribe("user:notifications:*", "")
+
+    // Publish message
+    seq, _ := client.Publish("user:notifications:123", "Welcome!")
+
+    // Handle events
+    client.SetMessageHandler(func(event bitbarrel.PubSubEvent) {
+        fmt.Printf("Received: %s -> %s\n", event.Topic, event.Payload)
+    })
+    client.StartEventReceiver()
+
+    // Clean up
+    client.Unsubscribe(subId)
+    client.Close()
+}
+```
+
+**Supported commands**: `SUBSCRIBE` (0x40), `UNSUBSCRIBE` (0x41), `PUBLISH` (0x42), `LIST_SUBSCRIBERS` (0x43), `HISTORY` (0x44), `LIST_TOPICS` (0x45), `PRESENCE` (0x46)
+
+See [Pub/Sub Protocol Specification](docs/PROTOCOL.md#pubsub-messaging) for complete details and [Pub/Sub Client Implementation Plan](docs/PUBSUB_CLIENT_PLAN.md) for client library status.
 
 ## Performance Highlights
 

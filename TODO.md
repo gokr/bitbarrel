@@ -71,6 +71,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ Range queries and cursor pagination support
 - ✅ Barrel configuration management (get/set)
 - ✅ getOrDefault method for safe retrieval
+- ✅ Pub/Sub messaging (basic subscribe/publish implemented, query methods pending)
 - ✅ Comprehensive test suite (73 tests, all passing)
 
 ### Nim Client ✅ COMPLETED
@@ -81,6 +82,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ JWT authentication support with token parameter
 - ✅ Barrel configuration management (get/set)
 - ✅ getOrDefault method for safe retrieval
+- ✅ Pub/Sub messaging (Phase 2 complete: subscribe/publish, Phases 3-4 pending)
 - ✅ Documentation and examples
 - ✅ Comprehensive test suite
 
@@ -91,6 +93,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ JWT authentication support
 - ✅ Barrel configuration management (get/set)
 - ✅ getOrDefault method for safe retrieval
+- ❌ Pub/Sub messaging (not yet implemented, protocol commands defined)
 - ✅ 54+ passing unit tests
 - ✅ Comprehensive README with examples
 - ✅ Uses web_socket_channel for platform compatibility
@@ -103,6 +106,7 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ Range and prefix queries with cursor pagination
 - ✅ Reference traversal support
 - ✅ get_or_default method for safe retrieval
+- ✅ Pub/Sub messaging (full implementation: subscribe, publish, event handling)
 - ✅ Context manager support (`with` statement)
 - ✅ Test suite (34 tests, all passing)
 
@@ -114,12 +118,13 @@ This document consolidates all planned and potential future enhancements for Bit
 - ✅ Barrel configuration management (get/set)
 - ✅ Range and prefix queries with cursor pagination
 - ✅ Reference traversal support
+- ✅ Pub/Sub messaging (full implementation: subscribe, publish, event handling)
 - ✅ JWT authentication support
 - ✅ Comprehensive test suite (protocol + integration tests)
 - ✅ Full documentation with examples
 
-### Client Feature Parity (All 5 Languages) ✅ ACHIEVED
-All clients now have complete feature parity:
+### Client Feature Parity (Most Clients) ✅ NEARLY COMPLETE
+Most clients have complete feature parity (Dart client missing Pub/Sub):
 - ✅ Basic CRUD operations (get, set, delete, exists, count)
 - ✅ Barrel management (create, open, use, close, list, drop)
 - ✅ Barrel configuration (getBarrelConfig, setBarrelConfig)
@@ -127,6 +132,7 @@ All clients now have complete feature parity:
 - ✅ Range queries and prefix searches (CritBit mode)
 - ✅ Cursor-based pagination
 - ✅ getOrDefault / get_or_default method
+- ✅ Pub/Sub messaging (Nim, Go, Python, TypeScript complete; Dart pending)
 - ✅ JWT authentication support
 - ✅ Thread-safe operations
 - ✅ Comprehensive test coverage
@@ -158,6 +164,7 @@ A modern Flutter-based web admin console for visual database management with int
 - ✅ **Docker support with pre-built webadmin bundle**
 - ✅ **Graph Traversal UI** - Explore _ref relationships with path specs like "friends->team"
 - ✅ **Barrel Configuration Editor** - Edit sync mode, buffer sizes, compaction settings from UI
+- ✅ **Import/Export Feature** - Bulk data import/export in JSONL and CSV formats with preview and batch processing
 
 ### Location
 - Located in `/webadmin/`
@@ -188,6 +195,13 @@ flutter run -d chrome --web-port 8080
 
 ### Overview
 A generic pub/sub messaging system implemented in BitBarrel, supporting topic-based subscriptions over WebSocket connections.
+
+### Client Support Status
+- **Nim client**: Phase 2 complete (subscribe/publish), Phases 3-4 pending
+- **Go client**: Basic subscribe/publish implemented, query methods pending
+- **Python client**: Full implementation (subscribe, publish, event handling)
+- **TypeScript client**: Full implementation (subscribe, publish, event handling)
+- **Dart client**: Not yet implemented (protocol commands defined only)
 
 ### Implemented Features
 
