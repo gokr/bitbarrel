@@ -11,6 +11,7 @@
 import std/[tables, locks, sets, times, sequtils, json, options, strutils]
 import ./pubsub
 import ./pattern
+import ./history_v2
 
 type
   ## Callback type for sending messages to WebSocket clients
@@ -67,6 +68,9 @@ type
     ## K/V change hook registration ID (for cleanup)
     kvHookId*: string
 
+    ## History store for message persistence
+    historyStore*: HistoryStoreV2
+
 proc newPubSubManager*(config: PubSubConfig = defaultPubSubConfig(),
                        messageCallback: MessageCallback = nil): PubSubManager =
   ## Create a new pub/sub manager
@@ -91,7 +95,8 @@ proc newPubSubManager*(config: PubSubConfig = defaultPubSubConfig(),
 
     messageCallback: messageCallback,
     kvChangeCallback: nil,
-    kvHookId: ""
+    kvHookId: "",
+    historyStore: nil
   )
 
   initLock(result.topicsLock)
@@ -357,6 +362,10 @@ proc publish*(manager: PubSubManager, msg: Message): uint64 =
 
       manager.messageCallback(sub.clientId, msg.topic, msg.messageType,
                              msg.payload, headers)
+
+  # Store in history if configured
+  if manager.historyStore != nil:
+    manager.historyStore.addToHistory(msg.topic, msg)
 
   return msg.sequence
 
