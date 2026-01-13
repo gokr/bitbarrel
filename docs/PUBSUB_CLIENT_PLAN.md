@@ -6,11 +6,11 @@ This document outlines the plan for implementing PubSub functionality across all
 
 > **Note**: This plan document has been updated to reflect actual implementation status as of January 2026. For comprehensive Pub/Sub usage documentation, see the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md).
 
-- **Nim client**: ✅ Phase 3-4 complete (subscribe/publish + query methods including listSubscribers, listTopics, getHistory, getPresence)
-- **Go client**: ✅ Basic PubSub implementation (subscribe/publish implemented, query methods pending)
-- **Python client**: ✅ Core PubSub implementation (subscribe/publish, query methods raise "not yet implemented")
-- **Dart/Flutter client**: ⚠️ Protocol definitions exist (subscribe/publish), event handling infrastructure pending
-- **TypeScript client**: ✅ Full core implementation (subscribe/publish, query methods pending)
+- **Nim client**: ✅ Full implementation (subscribe/publish + all query methods including listSubscribers, listTopics, getHistory, getPresence)
+- **Go client**: ✅ Full implementation (subscribe/publish + all query methods including listSubscribers, listTopics, getHistory, getPresence)
+- **Python client**: ✅ Full implementation (subscribe/publish + all query methods including listSubscribers, listTopics, getHistory, getPresence)
+- **Dart/Flutter client**: ✅ Full implementation (subscribe/publish + all query methods including listSubscribers, listTopics, getHistory, getPresence)
+- **TypeScript client**: ✅ Full implementation (subscribe/publish + all query methods including listSubscribers, listTopics, getHistory, getPresence)
 
 ### Documentation Status
 - ✅ All documentation updated with Pub/Sub sections and examples
@@ -160,7 +160,7 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 1. Go Client (`clients/go/`)
 
-> **Status**: Basic subscribe/publish implemented. Query methods (ListSubscribers, History, Presence, ListTopics) pending. See `clients/go/README.md` for current API documentation.
+> **Status**: ✅ Full implementation complete (subscribe/publish + all query methods including ListSubscribers, History, Presence, ListTopics). See `clients/go/README.md` for current API documentation.
 
 #### Files to Modify/Add
 
@@ -226,7 +226,7 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 2. Python Client (`clients/python/`)
 
-> **Status**: Core Pub/Sub implementation complete (subscribe/publish). Query methods (list_subscribers, history, presence, list_topics) currently raise "not yet implemented". See `clients/python/README.md` for current API documentation.
+> **Status**: ✅ Full implementation complete (subscribe/publish + all query methods including list_subscribers, history, presence, list_topics). See `clients/python/README.md` for current API documentation.
 
 #### Files to Modify/Add
 
@@ -290,7 +290,7 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 3. Dart/Flutter Client (`clients/dart/`)
 
-> **Status**: Protocol definitions exist for subscribe/publish. Event handling infrastructure and query methods pending. See `clients/dart/README.md` for current API documentation.
+> **Status**: ✅ Full implementation complete (subscribe/publish + all query methods including listSubscribers, history, presence, listTopics). See `clients/dart/README.md` for current API documentation.
 
 #### Files to Modify/Add
 
@@ -340,7 +340,7 @@ client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
 
 ### 4. TypeScript Client (`clients/typescript/`)
 
-> **Status**: Full core implementation (subscribe/publish). Query methods (listSubscribers, history, presence, listTopics) pending. See `clients/typescript/README.md` for current API documentation.
+> **Status**: ✅ Full implementation complete (subscribe/publish + all query methods including listSubscribers, history, presence, listTopics). See `clients/typescript/README.md` for current API documentation.
 
 #### Files to Modify/Add
 
@@ -503,24 +503,16 @@ Client                          Server
 
 ## Success Criteria
 
-### Current Implementation Status (January 2026)
+### Implementation Status (January 2026) - ✅ COMPLETED
 - [✅] **Documentation**: All client READMEs updated with Pub/Sub API documentation
 - [✅] **User Guide**: Comprehensive Pub/Sub user guide created at `docs/USER_GUIDE/pubsub.md`
 - [✅] **Examples**: Pub/Sub examples added to main README and client documentation
 - [✅] **Demo**: Pub/Sub demo program created at `demos/pubsub_demo.nim`
-- [✅] **Nim client**: Phase 3-4 complete (subscribe/publish + query methods with tests)
-- [⚠️] **Go client**: Basic subscribe/publish implemented, query methods pending
-- [⚠️] **Python client**: Core implementation complete, query methods raise "not yet implemented"
-- [❌] **Dart client**: Protocol definitions exist, event handling infrastructure pending
-- [⚠️] **TypeScript client**: Full core implementation, query methods pending
-
-### Remaining Tasks
-- [ ] Implement query methods in Go client (ListSubscribers, History, Presence, ListTopics)
-- [ ] Implement query methods in Python client (currently raise "not yet implemented")
-- [ ] Add event handling infrastructure to Dart client
-- [ ] Implement query methods in TypeScript client
-- [ ] Ensure all clients have comprehensive test coverage for Pub/Sub features
-- [ ] Verify `nimble testClients` runs Pub/Sub tests for all clients
+- [✅] **Nim client**: Full implementation (subscribe/publish + all query methods with tests)
+- [✅] **Go client**: Full implementation (subscribe/publish + all query methods with tests)
+- [✅] **Python client**: Full implementation (subscribe/publish + all query methods with tests)
+- [✅] **Dart client**: Full implementation (subscribe/publish + all query methods with tests)
+- [✅] **TypeScript client**: Full implementation (subscribe/publish + all query methods with tests)
 
 ### Documentation Complete
 - ✅ All documentation cross-references updated
