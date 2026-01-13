@@ -1674,7 +1674,13 @@ proc start*(server: BitBarrelServer) =
   echo "Data directory: ", server.config.dataDir
 
   # Ensure data directory exists
-  createDir(server.config.dataDir)
+  try:
+    createDir(server.config.dataDir)
+  except OSError as e:
+    echo ""
+    echo "Error: Failed to create data directory: ", server.config.dataDir
+    echo "OS Error: ", e.msg
+    quit(1)
 
   try:
     server.mummyServer.serve(server.config.port, server.config.address)
@@ -1687,9 +1693,16 @@ proc start*(server: BitBarrelServer) =
       echo "Solutions:"
       echo "  1. Stop the other process using: lsof -i :", server.config.port
       echo "  2. Use a different port: bitbarrel -p=9877 serve"
-      quit(1)
     else:
-      raise
+      echo ""
+      echo "Error: Failed to start server - ", e.msg
+      echo "Exception: ", e.repr
+    quit(1)
+  except CatchableError as e:
+    echo ""
+    echo "Error: Unexpected error while starting server - ", e.msg
+    echo "Exception: ", e.repr
+    quit(1)
 
 proc stop*(server: BitBarrelServer) =
   ## Gracefully stop the server
