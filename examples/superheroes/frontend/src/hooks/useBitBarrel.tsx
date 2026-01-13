@@ -1,5 +1,5 @@
 import { createSignal, onCleanup } from 'solid-js';
-import { BitBarrelClient } from '../../../clients/typescript';
+import { BitBarrelClient } from '@bitbarrel/client';
 
 export function useBitBarrel() {
   const [client, setClient] = createSignal<BitBarrelClient | null>(null);

@@ -1,6 +1,5 @@
 import { createSignal, onCleanup } from 'solid-js';
-import type { BitBarrelClient } from '../../../clients/typescript';
-import type { PubSubEvent } from '../../../clients/typescript';
+import type { BitBarrelClient, PubSubEvent } from '@bitbarrel/client';
 import type { HeroEvent, Hero } from '../types';
 
 export function usePubSub(

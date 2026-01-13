@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { BitBarrelClient } from '../../../clients/typescript';
+import type { BitBarrelClient } from '@bitbarrel/client';
 import type { Hero, QueryOptions } from '../types';
 
 export function useHeroes(client: () => BitBarrelClient | null) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-import { BitBarrelClient } from '../../../clients/typescript/src/index';
+import { BitBarrelClient } from '../../../../clients/typescript/dist/index.js';
 import superheroes from './superheroes.json' with { type: 'json' };
 import type { Hero, Publisher, Power } from '../../frontend/src/types';
 import * as fs from 'fs';
@@ -24,11 +24,11 @@ async function importData(): Promise<void> {
       await client.dropBarrel('superheroes');
     }
 
-    console.log('Creating superheroes barrel with bmCritBit mode...');
+    console.log('Creating superheroes barrel with critbit mode...');
     await client.createBarrel(
       'superheroes',
       JSON.stringify({
-        mode: 'bmCritBit',
+        mode: 'critbit',
         syncMode: 'sync'
       })
     );
