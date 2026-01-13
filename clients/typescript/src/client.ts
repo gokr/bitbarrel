@@ -5,7 +5,6 @@
  * API for interacting with BitBarrel servers via WebSocket connections.
  */
 
-import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import type {
   ClientConfig, Request, Response, RangeRequest, PrefixRequest,
@@ -37,9 +36,22 @@ export declare interface BitBarrelClient {
   ): boolean;
 }
 
+// Get WebSocket constructor (browser or Node.js)
+function getWebSocket(): any {
+  if (typeof globalThis !== 'undefined' && (globalThis as any).WebSocket) {
+    return (globalThis as any).WebSocket;
+  }
+  try {
+    const ws = require('ws');
+    return ws.WebSocket || ws.default || ws;
+  } catch {
+    throw new Error('WebSocket not available');
+  }
+}
+
 export class BitBarrelClient extends EventEmitter {
   private config: Required<ClientConfig>;
-  private ws: WebSocket | null = null;
+  private ws: any = null;
   private connected = false;
   private seqCounter = 0;
   private currentBarrel = '';
@@ -88,22 +100,24 @@ export class BitBarrelClient extends EventEmitter {
         reject(new ConnectionError(`Connection timeout after ${this.config.connectTimeout}ms`));
       }, this.config.connectTimeout);
 
-      this.ws = new WebSocket(wsUrl);
+      const WSConstructor = getWebSocket();
+      this.ws = new WSConstructor(wsUrl);
 
-      this.ws.on('open', () => {
+      const onOpen = () => {
         clearTimeout(timeout);
         this.connected = true;
         this.setupMessageHandler();
         this.emit('connected');
         resolve();
-      });
+      };
 
-      this.ws.on('error', (error) => {
+      const onError = (error: any) => {
         clearTimeout(timeout);
-        reject(new ConnectionError(`Failed to connect: ${error.message}`));
-      });
+        const message = error?.message || error?.toString() || 'Connection failed';
+        reject(new ConnectionError(`Failed to connect: ${message}`));
+      };
 
-      this.ws.on('close', () => {
+      const onClose = () => {
         this.connected = false;
         this.currentBarrel = '';
 
@@ -114,7 +128,18 @@ export class BitBarrelClient extends EventEmitter {
         this.pendingRequests.clear();
 
         this.emit('disconnected');
-      });
+      };
+
+      // Support both Node.js ws (on) and browser WebSocket (addEventListener/on properties)
+      if (this.ws.on) {
+        this.ws.on('open', onOpen);
+        this.ws.on('error', onError);
+        this.ws.on('close', onClose);
+      } else {
+        this.ws.onopen = onOpen;
+        this.ws.onerror = onError;
+        this.ws.onclose = onClose;
+      }
     });
   }
 
@@ -146,12 +171,36 @@ export class BitBarrelClient extends EventEmitter {
   private setupMessageHandler(): void {
     if (!this.ws) return;
 
-    this.ws.on('message', (data: Buffer) => {
-      this.messageBuffer.push(data);
+    const handleMessage = async (data: any) => {
+      // Convert browser MessageEvent to Buffer
+      let buffer: Buffer;
+      if (data instanceof MessageEvent) {
+        // Browser WebSocket
+        if (data.data instanceof ArrayBuffer) {
+          buffer = Buffer.from(data.data);
+        } else if (data.data instanceof Blob) {
+          const arrayBuffer = await data.data.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        } else {
+          buffer = Buffer.from(data.data);
+        }
+      } else {
+        // Node.js ws - already a Buffer
+        buffer = data;
+      }
+
+      this.messageBuffer.push(buffer);
       this.processMessages().catch((error) => {
         this.emit('error', error);
       });
-    });
+    };
+
+    // Support both Node.js ws and browser WebSocket
+    if (this.ws.on) {
+      this.ws.on('message', handleMessage);
+    } else {
+      this.ws.onmessage = handleMessage;
+    }
   }
 
   private async processMessages(): Promise<void> {
@@ -232,7 +281,18 @@ export class BitBarrelClient extends EventEmitter {
 
       try {
         const encoded = Protocol.encodeRequest(request);
-        this.ws!.send(encoded);
+        // Convert Buffer to ArrayBuffer for browser WebSocket
+        if (typeof (globalThis as any).WebSocket !== 'undefined' && this.ws!.send) {
+          // Browser: send ArrayBuffer
+          const arrayBuffer = encoded.buffer.slice(
+            encoded.byteOffset,
+            encoded.byteOffset + encoded.byteLength
+          );
+          this.ws!.send(arrayBuffer);
+        } else {
+          // Node.js: send Buffer directly
+          this.ws!.send(encoded);
+        }
       } catch (error) {
         clearTimeout(timer);
         this.pendingRequests.delete(seq);
@@ -447,8 +507,8 @@ export class BitBarrelClient extends EventEmitter {
       cursor: opts.cursor,
     };
 
-    const rangeData = Protocol.encodeRangeRequest(rangePayload).toString('base64');
-    const req = Protocol.newRequest(Cmd.RangeQuery, '', rangeData);
+    const rangeData = Protocol.encodeRangeRequest(rangePayload);
+    const req = Protocol.newRequest(Cmd.RangeQuery, '', rangeData.toString('binary'));
     const resp = await this.sendAndWait(req);
 
     if (resp.status !== Resp.Ok) {
@@ -456,7 +516,7 @@ export class BitBarrelClient extends EventEmitter {
     }
 
     // Decode the response
-    const responseData = Buffer.from(resp.value, 'base64');
+    const responseData = Buffer.from(resp.value, 'binary');
     return Protocol.decodeRangeResponse(responseData);
   }
 
@@ -474,16 +534,17 @@ export class BitBarrelClient extends EventEmitter {
       cursor: opts.cursor,
     };
 
-    const prefixData = Protocol.encodePrefixRequest(prefixPayload).toString('base64');
-    const req = Protocol.newRequest(Cmd.PrefixQuery, '', prefixData);
+    const prefixData = Protocol.encodePrefixRequest(prefixPayload);
+    const req = Protocol.newRequest(Cmd.PrefixQuery, '', prefixData.toString('binary'));
     const resp = await this.sendAndWait(req);
 
     if (resp.status !== Resp.Ok) {
-      throw new BitBarrelError(`Prefix query failed: ${resp.status}`);
+      const errorMsg = resp.value || `status ${resp.status}`;
+      throw new BitBarrelError(`Prefix query failed: ${errorMsg}`);
     }
 
     // Decode the response
-    const responseData = Buffer.from(resp.value, 'base64');
+    const responseData = Buffer.from(resp.value, 'binary');
     return Protocol.decodeRangeResponse(responseData);
   }
 
@@ -521,8 +582,8 @@ export class BitBarrelClient extends EventEmitter {
       cursor: opts.cursor,
     };
 
-    const rangeData = Protocol.encodeRangeRequest(rangePayload).toString('base64');
-    const req = Protocol.newRequest(Cmd.RangeKeys, '', rangeData);
+    const rangeData = Protocol.encodeRangeRequest(rangePayload);
+    const req = Protocol.newRequest(Cmd.RangeKeys, '', rangeData.toString('binary'));
     const resp = await this.sendAndWait(req);
 
     if (resp.status !== Resp.Ok) {
@@ -530,7 +591,7 @@ export class BitBarrelClient extends EventEmitter {
     }
 
     // Decode the response
-    const responseData = Buffer.from(resp.value, 'base64');
+    const responseData = Buffer.from(resp.value, 'binary');
     return Protocol.decodeKeysResponse(responseData);
   }
 
@@ -548,8 +609,8 @@ export class BitBarrelClient extends EventEmitter {
       cursor: opts.cursor,
     };
 
-    const prefixData = Protocol.encodePrefixRequest(prefixPayload).toString('base64');
-    const req = Protocol.newRequest(Cmd.PrefixKeys, '', prefixData);
+    const prefixData = Protocol.encodePrefixRequest(prefixPayload);
+    const req = Protocol.newRequest(Cmd.PrefixKeys, '', prefixData.toString('binary'));
     const resp = await this.sendAndWait(req);
 
     if (resp.status !== Resp.Ok) {
@@ -557,7 +618,7 @@ export class BitBarrelClient extends EventEmitter {
     }
 
     // Decode the response
-    const responseData = Buffer.from(resp.value, 'base64');
+    const responseData = Buffer.from(resp.value, 'binary');
     return Protocol.decodeKeysResponse(responseData);
   }
 
