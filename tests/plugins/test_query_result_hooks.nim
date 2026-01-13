@@ -1,7 +1,30 @@
 ## Unit tests for query result hooks plugin system
 
-import std/[unittest, strutils, json, options]
+import std/[unittest, options, locks, strutils]
 import ../../src/plugins/query_result_hooks
+
+# Global thread-safe call order for testing
+var
+  testCallOrder: seq[string] = @[]
+  testCallLock: Lock
+  testHookCalled: bool = false
+  testHookCalledLock: Lock
+
+initLock(testCallLock)
+initLock(testHookCalledLock)
+
+# Helper templates for var parameters (need to be defined before use)
+template toSeq(s: seq[(string, string)]): var seq[(string, string)] =
+  var result = s
+  result
+
+template toVar(s: string): var string =
+  var result = s
+  result
+
+template toVar(b: bool): var bool =
+  var result = b
+  result
 
 suite "Query Result Hooks - Plugin Registry":
 
@@ -18,7 +41,7 @@ suite "Query Result Hooks - Plugin Registry":
       name = "test_plugin",
       hook = proc(m: HookMetadata, items: var seq[(string, string)],
                   nextCursor: var string, hasMore: var bool) {.gcsafe.} = discard,
-      kind: hkAny,
+      kind = hkAny,
       description = "Test plugin"
     )
     check:
@@ -129,7 +152,7 @@ suite "Query Result Hooks - Plugin Registry":
       name: "test",
       hook: nil,
       kind: hkAny,
-      description = ""
+      description: ""
     )
     check:
       plugin.isPluginCompatible(hkRangeQuery)
@@ -142,7 +165,7 @@ suite "Query Result Hooks - Plugin Registry":
       name: "test",
       hook: nil,
       kind: hkRangeQuery,
-      description = ""
+      description: ""
     )
     check:
       not plugin.isPluginCompatible(hkPrefixQuery)
@@ -168,30 +191,34 @@ suite "Query Result Hooks - Plugin Application":
       items[0] == ("key1", "val1")
 
   test "applyQueryResultPlugins executes in client-specified order":
-    var callOrder: seq[string] = @[]
+    testCallOrder.setLen(0)
 
     discard registerPlugin(
       name = "plugin_a",
       hook = proc(m: HookMetadata, items: var seq[(string, string)],
                   nextCursor: var string, hasMore: var bool) {.gcsafe.} =
-        callOrder.add("a"),
+        {.gcsafe.}:
+          withLock testCallLock:
+            testCallOrder.add("a"),
       kind = hkAny
     )
     discard registerPlugin(
       name = "plugin_b",
       hook = proc(m: HookMetadata, items: var seq[(string, string)],
                   nextCursor: var string, hasMore: var bool) {.gcsafe.} =
-        callOrder.add("b"),
+        {.gcsafe.}:
+          withLock testCallLock:
+            testCallOrder.add("b"),
       kind = hkAny
     )
 
-    discard applyQueryResultPlugins(@["plugin_b", "plugin_a"], HookMetadata(), @[].toSeq, "".toVar, false.toVar)
+    discard applyQueryResultPlugins(@["plugin_b", "plugin_a"], HookMetadata(), (newSeq[(string, string)]()).toSeq, "".toVar, false.toVar)
 
     check:
-      callOrder == @["b", "a"]
+      testCallOrder == @["b", "a"]
 
   test "applyQueryResultPlugins returns false for non-existent plugin":
-    let result = applyQueryResultPlugins(@["nonexistent"], HookMetadata(), @[].toSeq, "".toVar, false.toVar)
+    let result = applyQueryResultPlugins(@["nonexistent"], HookMetadata(), (newSeq[(string, string)]()).toSeq, "".toVar, false.toVar)
     check:
       not result
 
@@ -204,7 +231,7 @@ suite "Query Result Hooks - Plugin Application":
     )
 
     let metadata = HookMetadata(hookKind: hkPrefixQuery)
-    let result = applyQueryResultPlugins(@["range_only"], metadata, @[].toSeq, "".toVar, false.toVar)
+    let result = applyQueryResultPlugins(@["range_only"], metadata, (newSeq[(string, string)]()).toSeq, "".toVar, false.toVar)
 
     check:
       not result
@@ -337,6 +364,7 @@ suite "Query Result Hooks - Plugin Application":
         testItems[0][0].startsWith("any_")
 
   test "hook error doesn't stop other hooks":
+    testHookCalled = false
     discard registerPlugin(
       name = "error_trigger",
       hook = proc(m: HookMetadata, items: var seq[(string, string)],
@@ -344,12 +372,13 @@ suite "Query Result Hooks - Plugin Application":
         raise newException(ValueError, "test error"),
       kind = hkAny
     )
-    var called = false
     discard registerPlugin(
       name = "after_error",
       hook = proc(m: HookMetadata, items: var seq[(string, string)],
                   nextCursor: var string, hasMore: var bool) {.gcsafe.} =
-        called = true,
+        {.gcsafe.}:
+          withLock testHookCalledLock:
+            testHookCalled = true,
       kind = hkAny
     )
 
@@ -362,18 +391,4 @@ suite "Query Result Hooks - Plugin Application":
 
     check:
       result  # All plugins existed
-      called  # Second hook was called despite error in first
-
-# Helper for var string/bool parameters
-template toVar(s: string): var string =
-  var result = s
-  result
-
-template toVar(b: bool): var bool =
-  var result = b
-  result
-
-# Helper for seq conversion
-template toSeq(s: seq[(string, string)]): var seq[(string, string)] =
-  var result = s
-  result
+      testHookCalled  # Second hook was called despite error in first
