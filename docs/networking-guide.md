@@ -1078,11 +1078,11 @@ func main() {
 
 | Client | Pub/Sub Support | Status |
 |--------|-----------------|--------|
-| Nim | Full | ✅ Phase 3-4 complete (subscribe/publish + query methods) |
-| Go | Partial | ✅ Basic subscribe/publish implemented, query methods pending |
-| Python | Partial | ⚠️ Core subscribe/publish implemented, query methods pending |
-| Dart | Protocol only | ⚠️ Protocol definitions exist, event handling pending |
-| TypeScript | Full core | ✅ Core implementation complete, query methods pending |
+| Nim | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
+| Go | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
+| Python | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
+| Dart | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
+| TypeScript | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
 
 ### Best Practices
 
