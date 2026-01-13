@@ -1039,7 +1039,7 @@ proc listSubscribers*(client: var BitBarrelClient, topic: string): seq[Subscript
     for item in js:
       var info: SubscriptionInfo
       info.id = item["subscriptionId"].getStr()
-      info.clientId = uint64(item["clientId"].getInt())
+      info.clientId = uint64(item["clientId"].getBiggestInt())
       if "pattern" in item:
         info.pattern = item["pattern"].getStr()
       else:
@@ -1075,9 +1075,9 @@ proc listTopics*(client: var BitBarrelClient): seq[TopicInfo] =
     for item in js:
       var info: TopicInfo
       info.name = item["name"].getStr()
-      info.sequence = uint64(item["sequence"].getInt())
-      info.subscriberCount = item["subscriberCount"].getInt()
-      info.messageCount = int64(item["messageCount"].getInt())
+      info.sequence = uint64(item["sequence"].getBiggestInt())
+      info.subscriberCount = item["subscriberCount"].getBiggestInt()
+      info.messageCount = int64(item["messageCount"].getBiggestInt())
       result.add(info)
   except CatchableError as e:
     raise newException(ClientError, fmt"Failed to parse topics response: {e.msg}")
@@ -1160,10 +1160,10 @@ proc getPresence*(client: var BitBarrelClient, topic: string): PresenceInfo =
 
         for m in membersArray:
           var member: PresenceMember
-          member.clientId = uint64(m["clientId"].getInt())
-          member.username = m["username"].getStr()
-          member.joinedAt = if m.hasKey("joinedAt"): m["joinedAt"].getInt() else: 0'i64
-          member.lastPing = if m.hasKey("lastPing"): m["lastPing"].getInt() else: 0'i64
+          member.clientId = if m.hasKey("clientId"): uint64(m["clientId"].getBiggestInt()) else: 0'u64
+          member.username = if m.hasKey("username"): m["username"].getStr() else: ""
+          member.joinedAt = if m.hasKey("joinedAt"): m["joinedAt"].getBiggestInt() else: 0'i64
+          member.lastPing = if m.hasKey("lastPing"): m["lastPing"].getBiggestInt() else: 0'i64
           member.metadata = if m.hasKey("metadata"): $m["metadata"] else: ""
           result.members.add(member)
         break
