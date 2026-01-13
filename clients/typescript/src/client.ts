@@ -621,7 +621,7 @@ export class BitBarrelClient extends EventEmitter {
     const actualTopic = isPattern ? '' : topic;
     const actualPattern = isPattern ? topic : '';
 
-    const subscribeData = Protocol.encodeSubscribeRequest(actualTopic, actualPattern, opts).toString('base64');
+    const subscribeData = Protocol.encodeSubscribeRequest(actualTopic, actualPattern, opts).toString('binary');
     const req = Protocol.newRequest(Cmd.Subscribe, '', subscribeData);
     const resp = await this.sendAndWait(req);
 
@@ -692,7 +692,7 @@ export class BitBarrelClient extends EventEmitter {
     payload: string,
     headers = ''
   ): Promise<number> {
-    const publishData = Protocol.encodePublishRequest(topic, messageType, payload, headers).toString('base64');
+    const publishData = Protocol.encodePublishRequest(topic, messageType, payload, headers).toString('binary');
     const req = Protocol.newRequest(Cmd.Publish, '', publishData);
     const resp = await this.sendAndWait(req);
 
