@@ -719,30 +719,11 @@ class Client:
         # Encode subscribe request
         subscribe_data = encode_subscribe_request(actual_topic, actual_pattern, options)
 
-        # Send request and get raw response
-        seq, ws_data = self._send_request_raw(Command.SUBSCRIBE, "", subscribe_data)
+        # Send request (value contains the encoded subscribe data)
+        value = self._send_request(Command.SUBSCRIBE, "", subscribe_data)
 
-        # Decode response to get subscription ID
-        from .protocol import decode_response_raw
-        status, resp_seq, value_bytes = decode_response_raw(ws_data)
-
-        # Verify sequence
-        if resp_seq != seq:
-            raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
-
-        # Handle status
-        if status != Status.OK:
-            err = status_to_error(status, value_bytes.decode("utf-8", errors="replace"))
-            if err:
-                raise err
-
-        # Extract subscription ID from value bytes
-        try:
-            sub_id = value_bytes.decode('utf-8')
-        except UnicodeDecodeError:
-            # Handle binary data gracefully
-            sub_id = value_bytes.decode('utf-8', errors='replace')
-
+        # The response value is the subscription ID
+        sub_id = value
         if not sub_id:
             raise ServerError("Empty subscription ID received from server")
 
