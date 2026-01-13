@@ -18,7 +18,7 @@ suite "Query Result Hooks - Plugin Registry":
       name = "test_plugin",
       hook = proc(m: HookMetadata, items: var seq[(string, string)],
                   nextCursor: var string, hasMore: var bool) {.gcsafe.} = discard,
-      kind = hkAny,
+      kind: hkAny,
       description = "Test plugin"
     )
     check:
@@ -127,8 +127,8 @@ suite "Query Result Hooks - Plugin Registry":
     let plugin = PluginRegistration(
       id: "test",
       name: "test",
-      hook = nil,
-      kind = hkAny,
+      hook: nil,
+      kind: hkAny,
       description = ""
     )
     check:
@@ -140,7 +140,7 @@ suite "Query Result Hooks - Plugin Registry":
     let plugin = PluginRegistration(
       id: "test",
       name: "test",
-      hook = nil,
+      hook: nil,
       kind: hkRangeQuery,
       description = ""
     )
