@@ -6,7 +6,7 @@
 ## Run all tests:
 ##   nim c -r tests/test_client.nim
 
-import std/[unittest, net, strformat, times, random, strutils, threadpool]
+import std/[unittest, net, strformat, times, random, strutils]
 import ../src/bitbarrel_client
 
 const 
@@ -393,7 +393,7 @@ suite "Integration: Connection":
       check client.set("product:001", "Widget")
 
       # Test range query
-      let (items, nextCursor, hasMore) = client.rangeQuery("user:001", "user:003")
+      let (items, _, hasMore) = client.rangeQuery("user:001", "user:003")
       check items.len == 2
       check ("user:001", "Alice") in items
       check ("user:002", "Bob") in items
@@ -417,7 +417,7 @@ suite "Integration: Connection":
       check client.set("product:001", "Widget")
 
       # Test prefix query
-      let (items, nextCursor, hasMore) = client.prefixQuery("user:")
+      let (items, _, _) = client.prefixQuery("user:")
       check items.len == 3
       for item in items:
         check item[0].startsWith("user:")

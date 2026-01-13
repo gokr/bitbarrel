@@ -1160,7 +1160,7 @@ proc getPresence*(client: var BitBarrelClient, topic: string): PresenceInfo =
 
         for m in membersArray:
           var member: PresenceMember
-          member.clientId = if m.hasKey("clientId"): uint64(m["clientId"].getBiggestInt()) else: 0'u64
+          member.clientId = if m.hasKey("clientId"): parseBiggestUInt($m["clientId"]) else: 0'u64
           member.username = if m.hasKey("username"): m["username"].getStr() else: ""
           member.joinedAt = if m.hasKey("joinedAt"): m["joinedAt"].getBiggestInt() else: 0'i64
           member.lastPing = if m.hasKey("lastPing"): m["lastPing"].getBiggestInt() else: 0'i64
