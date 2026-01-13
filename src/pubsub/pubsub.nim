@@ -12,7 +12,9 @@ import std/[tables, locks, times, sets, json, random]
 proc generateUuid*(): string =
   ## Generate a simple UUID v4-like identifier
   ## Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
-  template hex(b: byte): string = $(if b < 10: char('0'.ord + b) else: char('a'.ord + b - 10))
+  proc toHex(b: byte): string =
+    const hexChars = "0123456789abcdef"
+    result = $hexChars[b shr 4] & $hexChars[b and 0x0F]
 
   var u: array[16, byte]
   for i in 0..<16:
@@ -23,11 +25,11 @@ proc generateUuid*(): string =
   # Variant 1 - set bit 7 to 0
   u[8] = (u[8] and 0x3F) or 0x80
 
-  result = $hex(u[0]) & $hex(u[1]) & $hex(u[2]) & $hex(u[3]) & "-" &
-            $hex(u[4]) & $hex(u[5]) & "-" &
-            hex(u[6]) & $hex(u[7]) & "-" &
-            hex(u[8]) & $hex(u[9]) & "-" &
-            $hex(u[10]) & $hex(u[11]) & $hex(u[12]) & $hex(u[13]) & $hex(u[14]) & $hex(u[15])
+  result = toHex(u[0]) & toHex(u[1]) & toHex(u[2]) & toHex(u[3]) & "-" &
+            toHex(u[4]) & toHex(u[5]) & "-" &
+            toHex(u[6]) & toHex(u[7]) & "-" &
+            toHex(u[8]) & toHex(u[9]) & "-" &
+            toHex(u[10]) & toHex(u[11]) & toHex(u[12]) & toHex(u[13]) & toHex(u[14]) & toHex(u[15])
 
 type
   ## Represents a client's subscription to a topic or pattern
