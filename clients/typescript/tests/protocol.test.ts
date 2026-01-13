@@ -447,8 +447,8 @@ describe('Protocol', () => {
         { enableKvEvents: false, enablePresence: false, replayHistory: false }
       );
 
-      expect(encoded.length).toBe(2 + 7 + 2 + 0 + 1); // topicLen + topic(7) + patternLen + pattern + options
-      expect(encoded.readUInt8(2 + 7 + 2 + 0)).toBe(0); // options byte
+      expect(encoded.length).toBe(1 + 2 + 7 + 2 + 0); // options + topicLen + topic(7) + patternLen + pattern
+      expect(encoded.readUInt8(0)).toBe(0); // options byte at start
     });
 
     it('should encode subscription with all options', () => {
@@ -458,7 +458,7 @@ describe('Protocol', () => {
         { enableKvEvents: true, enablePresence: true, replayHistory: true }
       );
 
-      const optsByte = encoded.readUInt8(2 + 4 + 2 + 0);
+      const optsByte = encoded.readUInt8(0);
       expect(optsByte).toBe(0x01 | 0x02 | 0x04); // All flags set
     });
 
@@ -469,7 +469,7 @@ describe('Protocol', () => {
         { enableKvEvents: false, enablePresence: false, replayHistory: false }
       );
 
-      expect(encoded.length).toBe(2 + 0 + 2 + 6 + 1);
+      expect(encoded.length).toBe(1 + 2 + 0 + 2 + 6);
     });
 
     it('should decode subscribe response', () => {
@@ -498,8 +498,8 @@ describe('Protocol', () => {
       const msgType = encoded.readUInt8(offset++);
       expect(msgType).toBe(PubSubMessageType.Data);
 
-      const headersLen = encoded.readUInt16BE(offset);
-      offset += 2;
+      const headersLen = encoded.readUInt32BE(offset);
+      offset += 4;
       expect(headersLen).toBe(0);
 
       const payloadLen = encoded.readUInt32BE(offset);
@@ -522,8 +522,8 @@ describe('Protocol', () => {
       // Skip msgType
       offset++;
       // Check headersLen (should be 4 bytes and value 14)
-      const headersLen = encoded.readUInt16BE(offset);
-      offset += 2;
+      const headersLen = encoded.readUInt32BE(offset);
+      offset += 4;
       expect(headersLen).toBe(14); // length of '{"type":"msg"}'
     });
 
