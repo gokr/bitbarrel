@@ -866,12 +866,13 @@ class Client:
         value = self._send_request(Command.LIST_TOPICS, "", "")
         return decode_list_topics_response(value)
 
-    def get_history(self, topic: str, request: Optional[HistoryRequest] = None) -> List[PubSubEvent]:
+    def get_history(self, topic: str, limit: int = 100, since_seq: int = 0) -> List[PubSubEvent]:
         """Get message history for topic.
 
         Args:
             topic: Topic name
-            request: History request parameters (defaults to limit=100, since_seq=0)
+            limit: Maximum number of messages to retrieve (default: 100)
+            since_seq: Retrieve messages with sequence > since_seq (default: 0)
 
         Returns:
             List of historical PubSubEvents
@@ -880,11 +881,8 @@ class Client:
             ConnectionError: If not connected
             ServerError: If request fails
         """
-        if request is None:
-            request = HistoryRequest()
-
         # Encode history request
-        history_data = encode_history_request(topic, request.limit, request.since_seq)
+        history_data = encode_history_request(topic, limit, since_seq)
         value = self._send_request(Command.HISTORY, "", history_data)
         return decode_history_response(value)
 
@@ -988,7 +986,7 @@ class Client:
         self._seq_counter += 1
         return seq
 
-    def _send_request(self, cmd: int, key: str = "", value: str = "") -> Optional[str]:
+    def _send_request(self, cmd: int, key: str = "", value: Union[str, bytes] = "") -> Optional[str]:
         """Internal: send request and get response.
 
         Returns:
