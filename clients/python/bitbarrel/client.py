@@ -439,6 +439,36 @@ class Client:
             return []
         return value.split(",") if value else []
 
+    def _send_request_raw(self, cmd: int, key: str = "", value: Union[str, bytes] = "") -> Tuple[int, bytes]:
+        """Internal: send request and get raw WebSocket response bytes.
+
+        Returns the sequence number used and the raw WebSocket response data.
+        Used for cases where we need to handle potentially binary response data.
+
+        Returns:
+            Tuple of (sequence_number, raw_response_data)
+        """
+        self._ensure_connected()
+
+        with self._lock:
+            # Get next sequence number (inline to avoid deadlock)
+            seq = self._seq_counter
+            self._seq_counter += 1
+
+            # Encode request
+            data = encode_request(cmd, seq, key, value if isinstance(value, str) else "")
+
+            # Send request
+            self._ws.send_binary(data)
+
+            # Receive response
+            try:
+                response_data = self._ws.recv_binary()
+                return seq, response_data
+            except ConnectionError:
+                self._connected = False
+                raise
+
     def ping(self) -> bool:
         """Ping the server to verify connectivity.
 
@@ -688,10 +718,33 @@ class Client:
 
         # Encode subscribe request
         subscribe_data = encode_subscribe_request(actual_topic, actual_pattern, options)
-        value = self._send_request(Command.SUBSCRIBE, "", subscribe_data)
 
-        # Response value is the subscription ID
-        sub_id = decode_subscribe_response(value.encode("utf-8"))
+        # Send request and get raw response
+        seq, ws_data = self._send_request_raw(Command.SUBSCRIBE, "", subscribe_data)
+
+        # Decode response to get subscription ID
+        from .protocol import decode_response_raw
+        status, resp_seq, value_bytes = decode_response_raw(ws_data)
+
+        # Verify sequence
+        if resp_seq != seq:
+            raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
+
+        # Handle status
+        if status != Status.OK:
+            err = status_to_error(status, value_bytes.decode("utf-8", errors="replace"))
+            if err:
+                raise err
+
+        # Extract subscription ID from value bytes
+        try:
+            sub_id = value_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            # Handle binary data gracefully
+            sub_id = value_bytes.decode('utf-8', errors='replace')
+
+        if not sub_id:
+            raise ServerError("Empty subscription ID received from server")
 
         # Track subscription
         self._subscriptions[sub_id] = SubscriptionInfo(sub_id, actual_topic, actual_pattern)
