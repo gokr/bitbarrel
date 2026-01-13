@@ -17,7 +17,8 @@ import ../pubsub/manager
 import ../pubsub/eventbroker
 import ../pubsub/presence
 import ../pubsub/barrel_hooks
-import ../pubsub/history
+import ../pubsub/history_v2
+import ../plugins/query_result_hooks
 
 # Import protocol module
 import protocol
@@ -659,9 +660,24 @@ proc handleWebSocketMessage*(
               let (items, nextCursor, hasMore) = wrapperItemsInRange(
                 wrapper, params.startKey, params.endKey, params.limit, params.cursor)
 
+              # Apply query plugins (if requested)
+              var mutableItems = items
+              var mutableCursor = nextCursor
+              var mutableHasMore = hasMore
+              if params.plugins.len > 0:
+                let metadata = HookMetadata(
+                  barrelName: barrelName,
+                  clientId: ws.clientId,
+                  hookKind: hkRangeQuery
+                )
+                if not applyQueryResultPlugins(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
+                  resp.status = statusError
+                  resp.value = "Plugin not found or incompatible with query type"
+                  return
+
               # Encode and send response
               let respData = protocol.encodeRangeResponse(
-                protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
+                protocol.RangeResponse(items: mutableItems, nextCursor: mutableCursor, hasMore: mutableHasMore))
               let finalResp = protocol.okResponse(req.seq, respData)
               ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
               return  # Skip normal response sending
@@ -696,9 +712,24 @@ proc handleWebSocketMessage*(
               let (items, nextCursor, hasMore) = wrapperItemsWithPrefix(
                 wrapper, params.prefix, params.limit, params.cursor)
 
+              # Apply query plugins (if requested)
+              var mutableItems = items
+              var mutableCursor = nextCursor
+              var mutableHasMore = hasMore
+              if params.plugins.len > 0:
+                let metadata = HookMetadata(
+                  barrelName: barrelName,
+                  clientId: ws.clientId,
+                  hookKind: hkPrefixQuery
+                )
+                if not applyQueryResultPlugins(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
+                  resp.status = statusError
+                  resp.value = "Plugin not found or incompatible with query type"
+                  return
+
               # Encode and send response
               let respData = protocol.encodeRangeResponse(
-                protocol.RangeResponse(items: items, nextCursor: nextCursor, hasMore: hasMore))
+                protocol.RangeResponse(items: mutableItems, nextCursor: mutableCursor, hasMore: mutableHasMore))
               let finalResp = protocol.okResponse(req.seq, respData)
               ws.send(protocol.encodeResponse(finalResp), BinaryMessage)
               return  # Skip normal response sending
@@ -1582,11 +1613,14 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
       heartbeatTimeoutMs = psConfig.heartbeatTimeoutMs
     )
 
-    # Create history store
-    result.historyStore = newHistoryStore(
-      enablePersistence = false,  # TODO: add persistence option
-      barrelPath = config.dataDir / "pubsub_history.data"
+    # Create history store with shared barrel backend
+    result.historyStore = newSharedBarrelHistoryStore(
+      config.dataDir / "pubsub_history.data"
     )
+
+    # Configure bmCritBit mode for ordered queries
+    result.historyStore.storageManager.config.sharedBarrelConfig.mode = bmCritBit
+    result.historyStore.storageManager.initSharedBackend()
 
     # Register barrel hook for k/v change events
     managerRef.setKvChangeCallback(proc(barrelName: string, key: string,
