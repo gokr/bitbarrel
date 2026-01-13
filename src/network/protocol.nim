@@ -362,11 +362,13 @@ type
     endKey*: string
     limit*: int
     cursor*: string
+    plugins*: seq[string]  ## Names of plugins to apply (optional)
 
   PrefixRequest* = object
     prefix*: string
     limit*: int
     cursor*: string
+    plugins*: seq[string]  ## Names of plugins to apply (optional)
 
   RangeResponse* = object
     items*: seq[(string, string)]
@@ -380,7 +382,7 @@ type
 
 proc encodeRangeRequest*(req: RangeRequest): string =
   ## Encode a range query request
-  ## Format: ``[startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]``
+  ## Format: ``[startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M][pluginCount:1][p1Len:2][p1Name:X]...``
   result = newStringOfCap(2 + req.startKey.len + 2 + req.endKey.len + 4 + 2 + req.cursor.len)
   result.writeUint16BE(uint16(req.startKey.len))
   result.add(req.startKey)
@@ -389,6 +391,17 @@ proc encodeRangeRequest*(req: RangeRequest): string =
   result.writeUint32BE(uint32(req.limit))
   result.writeUint16BE(uint16(req.cursor.len))
   result.add(req.cursor)
+
+  # Encode plugins array
+  if req.plugins.len > 255:
+    raise newException(ProtocolError, "Too many plugins: " & $req.plugins.len)
+  result.writeByte(byte(req.plugins.len))
+
+  for plugin in req.plugins:
+    if plugin.len > 255:
+      raise newException(ProtocolError, "Plugin name too long: " & $plugin.len)
+    result.writeUint16BE(uint16(plugin.len))
+    result.add(plugin)
 
 proc decodeRangeRequest*(data: string): RangeRequest =
   ## Decode a range query request
@@ -410,15 +423,38 @@ proc decodeRangeRequest*(data: string): RangeRequest =
     raise newException(ProtocolError, "Cursor too large: " & $cursorLen)
   result.cursor = readString(data, pos, int(cursorLen))
 
+  # Decode plugins array (if present)
+  result.plugins = @[]
+  if pos < data.len:
+    let pluginCount = int(readByte(data, pos))
+    if pluginCount > 0:
+      result.plugins = newSeq[string](pluginCount)
+      for i in 0..<pluginCount:
+        let pluginLen = readUint16BE(data, pos)
+        if pluginLen > 255:
+          raise newException(ProtocolError, "Plugin name too long: " & $pluginLen)
+        result.plugins[i] = readString(data, pos, int(pluginLen))
+
 proc encodePrefixRequest*(req: PrefixRequest): string =
   ## Encode a prefix query request
-  ## Format: ``[prefixLen:2][prefix:N][limit:4][cursorLen:2][cursor:M]``
+  ## Format: ``[prefixLen:2][prefix:N][limit:4][cursorLen:2][cursor:M][pluginCount:1][p1Len:2][p1Name:X]...``
   result = newStringOfCap(2 + req.prefix.len + 4 + 2 + req.cursor.len)
   result.writeUint16BE(uint16(req.prefix.len))
   result.add(req.prefix)
   result.writeUint32BE(uint32(req.limit))
   result.writeUint16BE(uint16(req.cursor.len))
   result.add(req.cursor)
+
+  # Encode plugins array
+  if req.plugins.len > 255:
+    raise newException(ProtocolError, "Too many plugins: " & $req.plugins.len)
+  result.writeByte(byte(req.plugins.len))
+
+  for plugin in req.plugins:
+    if plugin.len > 255:
+      raise newException(ProtocolError, "Plugin name too long: " & $plugin.len)
+    result.writeUint16BE(uint16(plugin.len))
+    result.add(plugin)
 
 proc decodePrefixRequest*(data: string): PrefixRequest =
   ## Decode a prefix query request
@@ -434,6 +470,18 @@ proc decodePrefixRequest*(data: string): PrefixRequest =
   if cursorLen > MaxKeySize:
     raise newException(ProtocolError, "Cursor too large: " & $cursorLen)
   result.cursor = readString(data, pos, int(cursorLen))
+
+  # Decode plugins array (if present)
+  result.plugins = @[]
+  if pos < data.len:
+    let pluginCount = int(readByte(data, pos))
+    if pluginCount > 0:
+      result.plugins = newSeq[string](pluginCount)
+      for i in 0..<pluginCount:
+        let pluginLen = readUint16BE(data, pos)
+        if pluginLen > 255:
+          raise newException(ProtocolError, "Plugin name too long: " & $pluginLen)
+        result.plugins[i] = readString(data, pos, int(pluginLen))
 
 proc encodeRangeResponse*(resp: RangeResponse): string =
   ## Encode a range query response
