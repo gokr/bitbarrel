@@ -1112,10 +1112,10 @@ proc getHistory*(client: var BitBarrelClient, topic: string,
     for item in js:
       var event: PubSubEvent
       event.topic = item["topic"].getStr()
-      event.messageType = PubSubMessageType(item["messageType"].getInt())
+      event.messageType = PubSubMessageType(item["messageType"].getBiggestInt())
       event.payload = item["payload"].getStr()
-      event.timestamp = item["timestamp"].getInt()
-      event.sequence = uint64(item["sequence"].getInt())
+      event.timestamp = item["timestamp"].getBiggestInt()
+      event.sequence = uint64(item["sequence"].getBiggestInt())
       event.headers = $item["headers"]
       result.add(event)
   except CatchableError as e:
