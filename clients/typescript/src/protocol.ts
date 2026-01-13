@@ -669,7 +669,7 @@ export class Protocol {
   // ============================================================================
 
   /**
-   * Encode a subscribe request: [topicLen:2][topic][patternLen:2][pattern][options:1]
+   * Encode a subscribe request: [options:1][topicLen:2][topic][patternLen:2][pattern]
    */
   static encodeSubscribeRequest(
     topic: string,
@@ -680,9 +680,12 @@ export class Protocol {
     const patternLen = pattern.length;
     const optsByte = this.encodeSubscriptionOptions(options);
 
-    const buffer = Buffer.allocUnsafe(2 + topicLen + 2 + patternLen + 1);
+    const buffer = Buffer.allocUnsafe(1 + 2 + topicLen + 2 + patternLen);
 
     let offset = 0;
+    buffer.writeUInt8(optsByte, offset);
+    offset += 1;
+
     buffer.writeUInt16BE(topicLen, offset);
     offset += 2;
     buffer.write(topic, offset);
@@ -691,9 +694,6 @@ export class Protocol {
     buffer.writeUInt16BE(patternLen, offset);
     offset += 2;
     buffer.write(pattern, offset);
-    offset += patternLen;
-
-    buffer.writeUInt8(optsByte, offset);
 
     return buffer;
   }
@@ -706,7 +706,7 @@ export class Protocol {
   }
 
   /**
-   * Encode a publish request: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
+   * Encode a publish request: [topicLen:2][topic][msgType:1][headersLen:4][headers][payloadLen:4][payload]
    */
   static encodePublishRequest(
     topic: string,
@@ -718,7 +718,7 @@ export class Protocol {
     const headersLen = headers.length;
     const payloadLen = payload.length;
 
-    const buffer = Buffer.allocUnsafe(2 + topicLen + 1 + 2 + headersLen + 4 + payloadLen);
+    const buffer = Buffer.allocUnsafe(2 + topicLen + 1 + 4 + headersLen + 4 + payloadLen);
 
     let offset = 0;
     buffer.writeUInt16BE(topicLen, offset);
@@ -728,8 +728,8 @@ export class Protocol {
 
     buffer.writeUInt8(msgType, offset++);
 
-    buffer.writeUInt16BE(headersLen, offset);
-    offset += 2;
+    buffer.writeUInt32BE(headersLen, offset);
+    offset += 4;
     buffer.write(headers, offset);
     offset += headersLen;
 
