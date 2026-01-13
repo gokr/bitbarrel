@@ -45,31 +45,36 @@ Detailed documentation for specific BitBarrel features:
 ### Client Libraries and Tools
 BitBarrel provides client libraries for multiple programming languages and a web admin console:
 
-- **[Nim Client](../clients/nim/README.md)** - Full WebSocket protocol implementation
-- **[Go Client](../clients/go/README.md)** - Full WebSocket protocol implementation
+- **[Nim Client](../clients/nim/README.md)** - Full WebSocket protocol implementation with complete Pub/Sub support
+- **[Go Client](../clients/go/README.md)** - Full WebSocket protocol implementation with basic Pub/Sub
 - **[Dart/Flutter Client](../clients/dart/README.md)** - Mobile + Web compatible client
-- **[Python Client](../clients/python/README.md)** - Feature-complete WebSocket client
+- **[Python Client](../clients/python/README.md)** - Feature-complete WebSocket client with Pub/Sub support
+- **[TypeScript Client](../clients/typescript/README.md)** - Full WebSocket protocol with TypeScript types and Pub/Sub support
 - **[Web Admin Console](../webadmin/README.md)** - Flutter-based web UI for database management
 
-| Feature | Nim | Go | Dart/Flutter | Python | Web Admin |
-|---------|-----|----|--------------|--------|-----------|
-| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ |
-| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Reference traversal | ✅ | ✅ | ✅ | ✅ | - |
-| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ |
-| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | - |
-| Context manager | ✅ | - | - | ✅ | - |
-| Thread-safe operations | ✅ | ✅ | ✅ | ✅ | - |
-| Mobile support | - | - | ✅ | - | - |
-| Web support | - | - | ✅ | - | ✅ |
-| Visual UI | - | - | - | - | ✅ |
-| JSON visualization | - | - | - | - | ✅ |
-| Import/Export | - | - | - | - | ✅ |
+| Feature | Nim | Go | Dart/Flutter | Python | TypeScript | Web Admin |
+|---------|-----|----|--------------|--------|------------|-----------|
+| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Pub/Sub subscribe/publish | ✅ | ✅ | ⚠️ | ✅ | ✅ | - |
+| Pub/Sub pattern matching | ✅ | ✅ | ⚠️ | ✅ | ✅ | - |
+| Pub/Sub callbacks | ✅ | ✅ | ⚠️ | ✅ | ✅ | - |
+| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Context manager | ✅ | - | - | ✅ | - | - |
+| Thread-safe operations | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| TypeScript types | - | - | - | - | ✅ | - |
+| Mobile support | - | - | ✅ | - | - | - |
+| Web support | - | - | ✅ | - | ✅ | ✅ |
+| Visual UI | - | - | - | - | - | ✅ |
+| JSON visualization | - | - | - | - | - | ✅ |
+| Import/Export | - | - | - | - | - | ✅ |
 
 
 ### Historical and Research
