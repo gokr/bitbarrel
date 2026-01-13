@@ -63,9 +63,9 @@ BitBarrel provides client libraries for multiple programming languages and a web
 | Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Pub/Sub subscribe/publish | ✅ | ✅ | ⚠️ | ✅ | ✅ | - |
-| Pub/Sub pattern matching | ✅ | ✅ | ⚠️ | ✅ | ✅ | - |
-| Pub/Sub callbacks | ✅ | ✅ | ⚠️ | ✅ | ✅ | - |
+| Pub/Sub subscribe/publish | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Pub/Sub pattern matching | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Pub/Sub callbacks | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | Context manager | ✅ | - | - | ✅ | - | - |
 | Thread-safe operations | ✅ | ✅ | ✅ | ✅ | ✅ | - |
