@@ -60,11 +60,14 @@ BitBarrel provides client libraries for multiple programming languages and a web
 | Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Query plugins** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Pub/Sub subscribe/publish | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| Pub/Sub pattern matching | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub subscribe/publish** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub pattern matching** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub persistent history** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub presence tracking** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | Pub/Sub callbacks | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | - |
 | Context manager | ✅ | - | - | ✅ | - | - |
@@ -119,6 +122,10 @@ BitBarrel implements the **Bitcask** storage model with these key concepts:
 - **CRC32 checksums** - Data integrity validation
 - **Non-blocking compaction** - Writes continue during background compaction
 - **Multiple index modes** - Hash, CritBit, HugeCritBit
+- **Pub/Sub messaging** - Real-time topic-based messaging with pattern matching
+- **Pluggable storage backends** - Choose between memory, persistent, or hybrid storage
+- **Query result plugins** - Transform queries dynamically with custom plugins
+- **Network protocol** - Full network API with multiple client libraries
 
 ### Index Modes
 
