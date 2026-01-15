@@ -509,11 +509,346 @@ For complete protocol details, see [PROTOCOL.md](../PROTOCOL.md#pubsub-messaging
 
 See individual client READMEs for detailed implementation status.
 
+## Storage Backend Configuration
+
+BitBarrel provides pluggable storage backends for Pub/Sub message history, allowing you to choose between in-memory, persistent, or hybrid storage strategies based on your requirements.
+
+### Overview
+
+The storage backend system enables:
+
+- **Multiple storage strategies** - Choose from memory-only, persistent, or hybrid approaches
+- **Per-topic configuration** - Different storage strategies for different topics
+- **Pattern-based routing** - Wildcard patterns to route topics to backends
+- **Automatic lifecycle management** - Backends are created and cleaned up automatically
+
+### Storage Strategies
+
+#### ssMemoryOnly - In-Memory Storage
+
+**Characteristics:**
+- Fastest performance (no disk I/O)
+- Volatile - data lost on server restart
+- Per-topic ring buffer with configurable size
+- Best for: Cache, temporary data, high-throughput scenarios
+
+**Configuration:**
+```nim
+import pubsub/storage_config
+
+var storageConfig = initStorageConfig()
+storageConfig.defaultStrategy = ssMemoryOnly
+storageConfig.memoryConfig.maxMessagesPerTopic = 1000
+```
+
+#### ssSharedBarrel - Single Persistent Barrel
+
+**Characteristics:**
+- Persistent storage across server restarts
+- All topics stored in single BitBarrel file
+- Uses `bmCritBit` mode for efficient ordered queries
+- Good balance of performance and durability
+- Best for: Production deployments, message history, audit logs
+
+**Configuration:**
+```nim
+import pubsub/storage_config
+
+var storageConfig = initStorageConfig()
+storageConfig.defaultStrategy = ssSharedBarrel
+storageConfig.sharedBarrelConfig.barrelPath = "data/pubsub_history.data"
+storageConfig.sharedBarrelConfig.maxMessages = 10000  # Per topic
+```
+
+**Message Format:**
+Messages are stored with keys in format: `msg:{topic}:{padded_sequence}`
+This enables efficient range queries and prefix searches for history retrieval.
+
+#### ssPerTopicBarrel - Separate Barrel per Topic
+
+**Characteristics:**
+- Isolated storage per topic
+- Better scalability for many topics
+- Independent configuration per topic
+- Handles high write concurrency across topics
+- Best for: High-scale deployments, isolation requirements, multi-tenant scenarios
+
+**Configuration:**
+```nim
+import pubsub/storage_config
+
+var storageConfig = initStorageConfig()
+storageConfig.defaultStrategy = ssPerTopicBarrel
+storageConfig.perTopicConfig.basePath = "data/pubsub/"
+storageConfig.perTopicConfig.maxMessages = 5000
+storageConfig.perTopicConfig.compressionEnabled = true
+```
+
+#### ssHybrid - Mixed Strategy with Pattern Matching
+
+**Characteristics:**
+- Different strategies for different topic patterns
+- Pattern-based routing with wildcards (`*`)
+- Most flexible configuration
+- Optimizes storage costs and performance
+- Best for: Complex deployments with varied requirements
+
+**Configuration:**
+```nim
+import pubsub/storage_config
+
+var storageConfig = initStorageConfig()
+storageConfig.defaultStrategy = ssSharedBarrel  // Default for unmatched topics
+
+// High-frequency topics - memory only
+var chatConfig = TopicStorageConfig(
+  strategy: ssMemoryOnly,
+  maxMessages: 100
+)
+storageConfig.addTopicOverride("chat:*", chatConfig)
+
+// Critical system events - persistent with high retention
+var systemConfig = TopicStorageConfig(
+  strategy: ssSharedBarrel,
+  maxMessages: 50000
+)
+storageConfig.addTopicOverride("system:*", systemConfig)
+
+// User notifications - per-user barrels for isolation
+var userConfig = TopicStorageConfig(
+  strategy: ssPerTopicBarrel,
+  maxMessages: 1000,
+  compressionEnabled: true
+)
+storageConfig.addTopicOverride("user:*:notifications", userConfig)
+
+// Order history - persistent, long-term storage
+var orderConfig = TopicStorageConfig(
+  strategy: ssSharedBarrel,
+  maxMessages: 100000
+)
+storageConfig.addTopicOverride("order:*", orderConfig)
+```
+
+### Pattern Matching Rules
+
+Patterns support single wildcard `*` matching entire segments:
+
+- `chat:*` - Matches `chat:general`, `chat:random`, but not `chat:room:123`
+- `user:*:notifications` - Matches `user:alice:notifications`, `user:bob:notifications`
+- `system:*` - Matches `system:alerts`, `system:logs`, `system:metrics`
+
+**Pattern priority:** Most specific pattern wins. Patterns are evaluated in order of registration.
+
+### Server Configuration Example
+
+```nim
+import net
+import pubsub/pubsub
+import pubsub/storage_config
+import pubsub/storage_manager
+
+# Configure storage
+var storageConfig = initStorageConfig()
+storageConfig.defaultStrategy = ssSharedBarrel
+storageConfig.sharedBarrelConfig.barrelPath = "data/pubsub_history.data"
+storageConfig.sharedBarrelConfig.maxMessages = 10000
+
+// Memory-only for high-frequency chat
+var chatConfig = TopicStorageConfig(
+  strategy: ssMemoryOnly,
+  maxMessages: 100
+)
+storageConfig.addTopicOverride("chat:*", chatConfig)
+
+// Persistent for user notifications
+var userConfig = TopicStorageConfig(
+  strategy: ssSharedBarrel,
+  maxMessages: 1000
+)
+storageConfig.addTopicOverride("user:*:notifications", userConfig)
+
+// Create storage manager
+var storageManager = StorageManager.new(storageConfig)
+
+// Create PubSub manager with storage
+var pubsub = PubSubManager.new(storageManager)
+
+// Start server with PubSub
+var server = newBitBarrelServer(9876.Port, pubsub = some(pubsub))
+server.start()
+```
+
+### Storage Manager Statistics
+
+Monitor storage backend usage and performance:
+
+```nim
+import pubsub/storage_manager
+
+# Get statistics for all backends
+let stats = storageManager.getStats()
+
+for topic, stat in stats:
+  echo fmt"Topic: {topic}"
+  echo fmt"  Strategy: {stat.strategy}"
+  echo fmt"  Messages: {stat.totalMessages}"
+  echo fmt"  Storage: {stat.storageSize} bytes"
+  if stat.lastAccess > 0:
+    echo fmt"  Last access: {stat.lastAccess}"
+
+// Get aggregated statistics
+let totalStats = storageManager.getTotalStats()
+echo fmt"Total messages across all topics: {totalStats.totalMessages}"
+echo fmt"Total storage used: {totalStats.totalStorageSize} bytes"
+```
+
+### Lifecycle Management
+
+Storage backends are managed automatically:
+
+1. **Lazy initialization** - Backends created on first message to a topic
+2. **Idle cleanup** - Unused backends closed after inactivity period
+3. **Graceful shutdown** - All backends properly closed on server exit
+
+```nim
+// Manual backend cleanup (usually not needed)
+storageManager.cleanupIdleBackends(idleTimeout=300)  // 5 minutes
+
+// Force close all backends
+storageManager.closeAll()
+```
+
+### Migrating Between Storage Strategies
+
+To migrate topics from one strategy to another:
+
+1. **Dual-write approach** (zero downtime):
+   ```nim
+   // Configure both old and new backends in hybrid mode
+   var config = initStorageConfig()
+   config.defaultStrategy = ssSharedBarrel
+
+   // Existing topics use old backend
+   var oldConfig = TopicStorageConfig(strategy: ssMemoryOnly)
+   config.addTopicOverride("*", oldConfig)
+
+   // New topics use new backend
+   var newConfig = TopicStorageConfig(strategy: ssSharedBarrel)
+   config.addTopicOverride("v2:*", newConfig)
+   ```
+
+2. **Historical data migration**:
+   ```nim
+   // Read from old backend, write to new backend
+   proc migrateTopic(topic: string) =
+     let oldMessages = oldBackend.getHistory(topic, limit=1000)
+     for msg in oldMessages:
+       newBackend.addToHistory(topic, msg.data, msg.headers)
+   ```
+
+### Best Practices
+
+**Storage Strategy Selection:**
+
+1. **Start with ssSharedBarrel** - Good default for most use cases
+2. **Use ssMemoryOnly for high-frequency ephemeral data** - Chat, live feeds
+3. **Use ssPerTopicBarrel for isolation** - Multi-tenant, high scale
+4. **Use ssHybrid for complex requirements** - Optimize per topic type
+
+**Configuration Tips:**
+
+- Set appropriate `maxMessages` per topic based on retention needs
+- Enable compression for text-heavy messages (`compressionEnabled: true`)
+- Monitor storage statistics regularly
+- Test with expected load before production deployment
+
+**Performance Considerations:**
+
+- Memory-only is fastest but provides no durability
+- Shared barrel balances performance and features
+- Per-topic barrel adds overhead but provides better isolation
+- Startup time increases with number of persistent backends
+
+### Troubleshooting
+
+**Backend Not Created:**
+```nim
+// Check if backend creation failed
+if not storageManager.isBackendActive("mytopic"):
+  echo "Backend not initialized - check configuration"
+```
+
+**Storage Full:**
+```nim
+// Handle storage limit errors
+try:
+  discard pubsub.publish("topic", "message")
+except StorageError:
+  echo "Storage limit reached - cleanup needed"
+  storageManager.cleanupOldMessages("topic", keepLast=1000)
+```
+
+**Slow Queries:**
+```nim
+// Enable query logging to debug slow operations
+storageManager.enableQueryLogging = true
+// Check logs for: "Range query took Xms for Y items"
+```
+
+### Example: Complete Configuration
+
+```nim
+import pubsub/storage_config
+
+var config = initStorageConfig()
+
+// Default: Shared barrel for most topics
+config.defaultStrategy = ssSharedBarrel
+config.sharedBarrelConfig.barrelPath = "data/pubsub_history.data"
+config.sharedBarrelConfig.maxMessages = 5000
+
+// Memory-only chat messages (ephemeral)
+var chatConfig = TopicStorageConfig(
+  strategy: ssMemoryOnly,
+  maxMessages: 100
+)
+config.addTopicOverride("chat:*", chatConfig)
+config.addTopicOverride("presence:*", chatConfig)
+
+// Persistent notifications
+var notifyConfig = TopicStorageConfig(
+  strategy: ssSharedBarrel,
+  maxMessages: 1000,
+  compressionEnabled: true
+)
+config.addTopicOverride("user:*:notifications", notifyConfig)
+config.addTopicOverride("system:alerts", notifyConfig)
+
+// Critical system events - per-topic for isolation
+var systemConfig = TopicStorageConfig(
+  strategy: ssPerTopicBarrel,
+  maxMessages: 10000,
+  compressionEnabled: true
+)
+config.addTopicOverride("system:critical:*", systemConfig)
+
+// Order history - high retention
+var orderConfig = TopicStorageConfig(
+  strategy: ssSharedBarrel,
+  maxMessages = 50000
+)
+config.addTopicOverride("order:*", orderConfig)
+
+// Create storage manager with configuration
+var storageManager = StorageManager.new(config)
+```
+
 ## Next Steps
 
 - Explore [PROTOCOL.md](../PROTOCOL.md) for complete protocol specification
 - Check client-specific documentation for API details
 - Review [examples](../../demos/) for complete working examples
-- Experiment with the [web admin](../../webadmin/) for visual Pub/Sub testing
+- See [Storage Deep Dive](../FEATURES/pubsub-storage.md) for implementation details
 
 Need help? Check the main [README](../../README.md) for support resources.
