@@ -133,6 +133,9 @@ suite "BitBarrel CLI Integration Tests":
     check client.useBarrel(barrelName)
     check client.currentBarrel == barrelName
 
+    # Cleanup: delete the barrel
+    check client.deleteBarrel(barrelName)
+
   test "Key-value operations":
     var client = newClient("localhost", Port(SERVER_PORT))
     client.connect()
@@ -154,6 +157,9 @@ suite "BitBarrel CLI Integration Tests":
     check client.delete("test_key")
     check not client.exists("test_key")
 
+    # Cleanup: delete the barrel
+    check client.deleteBarrel(barrelName)
+
   test "Unicode and binary data":
     var client = newClient("localhost", Port(SERVER_PORT))
     client.connect()
@@ -173,6 +179,9 @@ suite "BitBarrel CLI Integration Tests":
     let binaryValue = "binary\0data\1with\2nulls"
     check client.set("binary_key", binaryValue)
     check client.get("binary_key") == binaryValue
+
+    # Cleanup: delete the barrel
+    check client.deleteBarrel(barrelName)
 
   test "Error handling":
     var client = newClient("localhost", Port(SERVER_PORT))
