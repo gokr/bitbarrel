@@ -621,6 +621,33 @@ if hasMore:
   let (nextPage, _, _) = client.rangeQuery("user:100", "user:200", limit=50, cursor=nextCursor)
 ```
 
+### Range Queries with Plugins
+
+Plugins can transform query results dynamically:
+
+```nim
+// Apply plugin to filter or transform results
+let (items, cursor, hasMore) = client.rangeQuery(
+  startKey = "user:1000",
+  endKey = "user:2000",
+  limit = 100,
+  cursor = "",
+  plugins = @["activeOnly"]  // Apply plugin
+)
+
+// Multiple plugins execute in order
+let plugins = @["filterPremium", "addMetadata", "limitResults"]
+let (items, cursor, hasMore) = client.rangeQuery(
+  "user:0000", "user:9999", 100, "", plugins
+)
+```
+
+**Available plugin types:**
+- Range query plugins (applied to `rangeQuery` and `itemsInRange`)
+- Prefix query plugins (applied to `prefixQuery` and `itemsWithPrefix`)
+
+**See:** [Query Plugins Feature Guide](../FEATURES/plugins.md)
+
 ### Prefix Queries
 
 ```nim
@@ -629,6 +656,26 @@ let (items, nextCursor, hasMore) = client.prefixQuery("order:2024-", limit=100)
 
 for (key, value) in items:
   echo "Order: " & key
+```
+
+### Prefix Queries with Plugins
+
+```nim
+// Use plugins with prefix queries
+let (items, cursor, hasMore) = client.prefixQuery(
+  prefix = "order:2024-",
+  limit = 100,
+  cursor = "",
+  plugins = @["filterByStatus"]  // Apply plugin
+)
+
+// Transform values before returning
+let (items, cursor, hasMore) = client.prefixQuery(
+  prefix = "product:",
+  limit = 50,
+  cursor = "",
+  plugins = @["addTimestamp", "enrichData"]
+)
 ```
 
 ### Keys-Only Queries
@@ -1095,6 +1142,41 @@ func main() {
 ### Complete Documentation
 
 For complete Pub/Sub documentation, see the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md).
+
+### Pub/Sub Storage Configuration
+
+The network server supports pluggable storage backends for message history persistence. Configure storage strategies based on your requirements:
+
+**Configuration in YAML:**
+```yaml
+pubsub:
+  default_strategy: shared_barrel
+  shared_barrel:
+    path: "data/pubsub_history.data"
+    max_messages_per_topic: 10000
+
+  topic_overrides:
+    - pattern: "chat:*"
+      strategy: memory_only
+      max_messages: 100
+
+    - pattern: "user:*:notifications"
+      strategy: per_topic_barrel
+      max_messages: 1000
+      compression: true
+
+    - pattern: "system:*"
+      strategy: shared_barrel
+      max_messages: 50000
+```
+
+**Storage strategies:**
+- `memory_only` - Fast, volatile (lost on restart)
+- `shared_barrel` - Persistent, all topics in one file
+- `per_topic_barrel` - Persistent, separate file per topic
+- `hybrid` - Pattern-based routing
+
+**See:** [Pub/Sub Storage Deep Dive](../FEATURES/pubsub-storage.md)
 
 ## Performance Tuning
 
