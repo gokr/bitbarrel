@@ -308,26 +308,316 @@ BitBarrel enhances the classic Bitcask model:
 - **No multi-key transactions**: Each operation is atomic
 - **Single-node**: No built-in clustering (future enhancement)
 
+## Pub/Sub System
+
+BitBarrel includes a comprehensive Pub/Sub (Publish/Subscribe) messaging system with multiple storage backends.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│           BitBarrel Server                              │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │          PubSubManager                           │  │
+│  │  - Subscriptions management                      │  │
+│  │  - Pattern matching (glob: *)                    │  │
+│  │  - Presence tracking                             │  │
+│  └────────────┬─────────────────────────────────────┘  │
+│               │                                         │
+│  ┌────────────▼─────────────────────────────────────┐  │
+│  │        HistoryStoreV2                            │  │
+│  │  - Message history API                           │  │
+│  │  - Sequence numbering                            │  │
+│  └────────────┬─────────────────────────────────────┘  │
+│               │                                         │
+│  ┌────────────▼─────────────────────────────────────┐  │
+│  │      StorageManager                              │  │
+│  │  - Topic → Backend routing                       │  │
+│  │  - Pattern-based configuration                   │  │
+│  │  - Lifecycle management                          │  │
+│  └────────┬──────────────────┬──────────────────┬───┘  │
+│           │                  │                  │      │
+│  ┌────────▼──┐        ┌─────▼────┐      ┌────▼───┐  │
+│  │  Memory   │        │  Shared  │      │ Per-   │  │
+│  │  Backend  │        │  Barrel  │      │ Topic  │  │
+│  │           │        │  Backend │      │ Barrel │  │
+│  └───────────┘        └──────────┘      └────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Components
+
+1. **PubSubManager** (`src/pubsub.nim`)
+   - Manages client subscriptions
+   - Handles pattern matching (`topic:*`)
+   - Publishes messages to subscribers
+   - Tracks presence information
+
+2. **HistoryStoreV2** (`src/pubsub/history_v2.nim`)
+   - High-level API for message history
+   - Automatic sequence numbering
+   - Integration with storage backends
+
+3. **StorageManager** (`src/pubsub/storage_manager.nim`)
+   - Routes topics to appropriate backends
+   - Lazy backend initialization
+   - Idle backend cleanup
+   - Pattern-based configuration
+
+4. **Storage Backends**
+   - **MemoryBackend** - Fast, volatile ring buffer
+   - **SharedBarrelBackend** - Persistent, all topics in one barrel
+   - **PerTopicBarrelBackend** - Isolated, one barrel per topic
+
+### Storage Configuration
+
+```nim
+var config = initStorageConfig()
+config.defaultStrategy = ssSharedBarrel  # Persistent by default
+
+// Memory-only for chat (ephemeral)
+var chatConfig = TopicStorageConfig(strategy: ssMemoryOnly)
+config.addTopicOverride("chat:*", chatConfig)
+
+// Per-topic for user notifications
+var userConfig = TopicStorageConfig(strategy: ssPerTopicBarrel)
+config.addTopicOverride("user:*:notifications", userConfig)
+```
+
+**See full documentation:**
+- [Pub/Sub User Guide](../USER_GUIDE/pubsub.md)
+- [Storage Backends Deep Dive](../FEATURES/pubsub-storage.md)
+
+## Query Result Plugin System
+
+BitBarrel provides an extensible plugin system for transforming query results dynamically.
+
+### Plugin Architecture
+
+```
+Client Query → Barrel API → Storage Layer → Query Results
+                                      ↓
+                               Apply Plugins
+                                      ↓
+                          ┌──────────▼──────────┐
+                          │  Plugin Registry    │
+                          │  - Range plugins    │
+                          │  - Prefix plugins   │
+                          └──────────┬──────────┘
+                                     │
+                 ┌───────────────────┼───────────────────┐
+                 │                   │                   │
+         ┌───────▼──────┐   ┌────────▼────────┐  ┌──────▼──────┐
+         │ Filter Items │   │ Transform Items │  │ Limit Count │
+         │              │   │                 │  │             │
+         └──────────────┘   └─────────────────┘  └─────────────┘
+                                     │
+                                     ▼
+                          Return Transformed Results
+```
+
+### Creating a Plugin
+
+```nim
+import plugins/query_result_hooks
+
+proc myFilter(metadata: HookMetadata,
+              items: var seq[(string, string)],
+              nextCursor: var string,
+              hasMore: var bool) =
+  items.keepItIf(it[1].contains("active"))
+
+let pluginId = registerPlugin(
+  "activeOnly",     # Plugin name
+  myFilter,         # Plugin procedure
+  hkRangeQuery,     # Hook type
+  "Filter to active items"  # Description
+)
+```
+
+### Using Plugins
+
+```nim
+// In queries
+let (items, cursor, hasMore) = barrel.itemsInRange(
+  startKey = "user:1000",
+  endKey = "user:2000",
+  limit = 100,
+  cursor = "",
+  plugins = @["activeOnly"]  // Apply plugin
+)
+
+// Multiple plugins
+let plugins = @["filter1", "transform", "limit"]
+```
+
+**See full documentation:**
+- [Query Plugins Feature Guide](../FEATURES/plugins.md)
+- [Plugin Tests](../../tests/plugins/test_query_result_hooks.nim)
+
+## Network Protocol & Server
+
+BitBarrel includes a complete network server with WebSocket-based Pub/Sub support.
+
+### Protocol Stack
+
+```
+┌─────────────────────────────────────────┐
+│          WebSocket Layer                │
+│  - Binary protocol                      │
+│  - Frame-based messaging                │
+├─────────────────────────────────────────┤
+│       BitBarrel Protocol                │
+│  - CRUD operations (GET, SET, etc.)     │
+│  - Barrel management (CREATE, DROP)     │
+│  - Queries (RANGE, PREFIX)              │
+│  - Pub/Sub (SUBSCRIBE, PUBLISH)         │
+├─────────────────────────────────────────┤
+│       Network Client Library            │
+│  - Nim, Go, Python, TypeScript, Dart    │
+└─────────────────────────────────────────┘
+```
+
+### Network Architecture
+
+**Server Components:**
+- **Protocol Handler** - Request/response handling
+- **Auth Middleware** - JWT-based authentication
+- **Pub/Sub Manager** - Real-time messaging
+- **Storage Backends** - Persistent message history
+
+**Client Features:**
+- Full CRUD operations with auth support
+- Range and prefix queries
+- Pub/Sub with pattern matching
+- Presence tracking
+- Cursor-based pagination
+
+### Client Language Support
+
+| Feature | Nim | Go | Python | TypeScript | Dart |
+|---------|-----|----|--------|------------|------|
+| CRUD ops | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Pub/Sub | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Auth (JWT) | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+**See documentation:**
+- [Network Client Guide](../networking-guide.md)
+- [Protocol Specification](../PROTOCOL.md)
+- [Network Architecture](../network-architecture.md)
+
+## Key Features (Updated)
+
+### Implemented Features ✅
+- ✅ Append-only storage with O(1) reads
+- ✅ Three barrel modes (bmHash, bmCritBit, bmHugeCritBit)
+- ✅ Range queries and prefix searches
+- ✅ CRC32 data integrity verification
+- ✅ Crash recovery with hint files (68K+ keys/sec)
+- ✅ Non-blocking background compaction
+- ✅ Configurable durability (None/Sync/Fsync)
+- ✅ Write buffering and read-ahead caching
+- ✅ Thread-safe concurrent operations
+- ✅ LZ4 and Snappy compression support
+- ✅ TTL support for automatic expiration
+- ✅ **Network server with binary protocol**
+- ✅ **Pub/Sub message system** with pattern matching
+- ✅ **Pluggable storage backends** for message history
+- ✅ **Query result plugins** for dynamic transformation
+- ✅ **JWT authentication** with RBAC
+- ✅ **Multi-language client libraries** (Nim, Go, Python, TypeScript, Dart)
+
+## Comparison: BitBarrel vs Original Bitcask
+
+```
++--------------------------------+---------------+-------------+
+| Feature                        | Bitcask       | BitBarrel   |
++--------------------------------+---------------+-------------+
+| Index Type                     | Single hash   | Three modes |
+| Query Types                    | GET/SET       | + Range/Prefix/PubSub |
+| Memory Limit                   | All keys RAM  | All keys RAM |
+| Durability                     | Basic sync    | Three modes + buffering |
+| Recovery                       | Slow scan     | 68K+/sec with hints |
+| Compression                    | None          | LZ4/Snappy |
+| Network Protocol               | None          | Full binary + Pub/Sub |
+| Storage Backends               | Simple file   | Pluggable (memory/persistent) |
+| Query Plugins                  | None          | Transform results |
+| Client Libraries               | None          | 5 languages |
++--------------------------------+---------------+-------------+
+```
+
+## File Organization
+
+```
+src/
+├── bitbarrel.nim              # Library entry point
+├── bitbarrel/
+│   ├── barrel.nim       # High-level Barrel API
+│   ├── lowlevelapi.nim  # Direct storage access
+│   ├── types.nim        # Common types
+│   └── config.nim       # Configuration
+├── storage/              # Storage engine
+│   ├── datafile.nim     # Data file I/O
+│   ├── keydir.nim       # In-memory index
+│   ├── record.nim       # Record encoding
+│   ├── compact.nim      # Compaction
+│   ├── recovery.nim     # Crash recovery
+│   ├── hintfile.nim     # Fast recovery metadata
+│   ├── writebuffer.nim  # Write buffering
+│   └── readbuffer.nim   # Read caching
+├── pubsub/               # Pub/Sub system
+│   ├── pubsub.nim       # Main Pub/Sub manager
+│   ├── history_v2.nim   # Message history API
+│   ├── storage_backend.nim # StorageBackend interface
+│   ├── memory_backend.nim  # In-memory backend
+│   ├── shared_barrel_backend.nim # Shared barrel backend
+│   ├── storage_config.nim  # Configuration system
+│   └── storage_manager.nim # Backend lifecycle
+├── plugins/              # Plugin system
+│   └── query_result_hooks.nim # Query transformation
+└── network/              # Network layer
+    ├── server.nim       # BitBarrel server
+    ├── protocol.nim     # Protocol handler
+    └── client/          # Client libraries
+        ├── nim/         # Nim client
+        ├── go/          # Go client
+        ├── python/      # Python client
+        ├── typescript/  # TypeScript client
+        └── dart/        # Dart client
+```
+
 ## Future Considerations
 
-Potential enhancements (see TODO.md):
-- Network server with binary protocol
+Potential enhancements:
 - Multi-key transaction support
 - Replication and clustering
 - Advanced monitoring and metrics
 - Additional compression algorithms
 - Secondary indexes
+- Tiered storage (hot/cold data)
+- Stream processing integration
+- Graph query extensions
+
+## References
+
+- Bitcask: A Log-Structured Hash Table for Fast Key/Value Storage
+- Original paper: http://basho.com/wp-content/uploads/2015/05/bitcask-intro.pdf
+- Nim language: https://nim-lang.org/
+- Pub/Sub protocols: MQTT, AMQP, Redis Pub/Sub
 
 ## Feature Documentation
 
 Detailed documentation for individual features:
 
-- [Hint Files](../FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
+- [Hint Files](../FEATURES/hint-files.md) - Metadata files for fast recovery (68K+ keys/sec)
 - [Read-Ahead LRU Buffering](../FEATURES/read-buffering.md) - Caching with LRU eviction
-- [Reference Model & Cycle Detection](../research/REFERENCES.md) - Graph traversal with cycle prevention
 - [Compression](../FEATURES/compression.md) - LZ4 and Snappy compression support
 - [Data Integrity](../FEATURES/data-integrity.md) - CRC32 validation
 - [Networking](../FEATURES/networking.md) - Network protocol and API
+- [Query Plugins](../FEATURES/plugins.md) - Transform query results
+- [Pub/Sub Storage](../FEATURES/pubsub-storage.md) - Pluggable storage backends
 
 ## References
 
