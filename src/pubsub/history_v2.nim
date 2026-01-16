@@ -3,11 +3,13 @@
 ## Public API for pub/sub message history using pluggable storage backends.
 ## Maintains backward compatibility while providing extensible architecture.
 
-import std/[tables, locks, times]
+import std/[tables, locks, times, sequtils]
 import ./pubsub
 import ./storage_backend
 import ./storage_manager
 import ./storage_config
+import ./memory_backend
+import ../bitbarrel/barrel
 
 ## Default history limits
 const defaultHistoryLimit* = 100
@@ -66,7 +68,7 @@ proc newHistoryStoreV2*(config: StorageConfig = initStorageConfig()): HistorySto
   result = newHistoryStoreV2(storageManager)
 
 proc setTopicConfig*(store: HistoryStoreV2, topic: string,
-                     config: TopicConfig) {.gcsafe.} =
+                     config: TopicConfig)  =
   ## Set configuration for a topic
   withLock store.metadataLock:
     store.topicMetadata[topic] = TopicMetadata(
@@ -82,7 +84,7 @@ proc setTopicConfig*(store: HistoryStoreV2, topic: string,
       topicStorageConfig.strategy = ssSharedBarrel  # Or based on settings
       store.storageManager.config.addTopicOverride(topic, topicStorageConfig)
 
-proc getTopicConfig*(store: HistoryStoreV2, topic: string): TopicConfig {.gcsafe.} =
+proc getTopicConfig*(store: HistoryStoreV2, topic: string): TopicConfig  =
   ## Get configuration for a topic
   withLock store.metadataLock:
     if topic in store.topicMetadata:
@@ -94,7 +96,7 @@ proc getTopicConfig*(store: HistoryStoreV2, topic: string): TopicConfig {.gcsafe
     return store.defaultTopicConfig
 
 proc addToHistory*(store: HistoryStoreV2, topic: string,
-                  message: Message) {.gcsafe.} =
+                  message: Message)  =
   ## Add message to history
   ##
   ## This is called after successful message publishing
@@ -132,7 +134,7 @@ proc addToHistory*(store: HistoryStoreV2, topic: string,
     if store.storageManager.config.defaultStrategy != ssMemoryOnly:
       # Create memory backend for this topic
       let memBackend = newMemoryStorageBackend(storageConfig.maxMessages)
-      memBackend.setTopicMode(topic, storageConfig.historyMode)
+      memBackend.setTopicMode(topic, hmMemoryOnly)
       discard memBackend.store(topic, message)
     else:
       discard store.storageManager.storeMessage(topic, message)
@@ -144,7 +146,7 @@ proc addToHistory*(store: HistoryStoreV2, topic: string,
     discard store.storageManager.storeMessage(topic, message)
 
 proc getHistory*(store: HistoryStoreV2, topic: string,
-                count: int = 0, sinceSeq: uint64 = 0): seq[Message] {.gcsafe.} =
+                count: int = 0, sinceSeq: uint64 = 0): seq[Message]  =
   ## Get historical messages for a topic
   ##
   ## Parameters:
@@ -159,7 +161,7 @@ proc getHistory*(store: HistoryStoreV2, topic: string,
   )
   return store.storageManager.retrieveMessages(topic, params)
 
-proc clearHistory*(store: HistoryStoreV2, topic: string): bool {.gcsafe.} =
+proc clearHistory*(store: HistoryStoreV2, topic: string): bool  =
   ## Clear all history for a topic
   ##
   ## Parameters:
@@ -176,7 +178,7 @@ proc clearHistory*(store: HistoryStoreV2, topic: string): bool {.gcsafe.} =
         metadata.messageCount = 0
         store.topicMetadata[topic] = metadata
 
-proc clearAllHistory*(store: HistoryStoreV2): int {.gcsafe.} =
+proc clearAllHistory*(store: HistoryStoreV2): int  =
   ## Clear history for all topics
   ##
   ## Returns: Number of topics cleared
@@ -190,13 +192,13 @@ proc clearAllHistory*(store: HistoryStoreV2): int {.gcsafe.} =
     if store.clearHistory(topic):
       result += 1
 
-proc getHistorySize*(store: HistoryStoreV2, topic: string): int {.gcsafe.} =
+proc getHistorySize*(store: HistoryStoreV2, topic: string): int  =
   ## Get the number of messages stored in history for a topic
   return store.storageManager.getTopicCount(topic)
 
 proc getAllTopicSequences*(store: HistoryStoreV2): seq[tuple[
   topic: string, sequence: uint64
-]] {.gcsafe.} =
+]]  =
   ## Get current sequence numbers for all topics
   result = @[]
   withLock store.metadataLock:
@@ -205,7 +207,7 @@ proc getAllTopicSequences*(store: HistoryStoreV2): seq[tuple[
 
 proc getAllHistorySizes*(store: HistoryStoreV2): seq[tuple[
   topic: string, count: int
-]] {.gcsafe.} =
+]]  =
   ## Get history sizes for all topics with history
   result = @[]
   var topics: seq[string]
@@ -221,7 +223,7 @@ proc getAllHistorySizes*(store: HistoryStoreV2): seq[tuple[
 proc getMemoryUsageEstimate*(store: HistoryStoreV2): tuple[
   messageCount: int,
   estimatedBytes: int
-] {.gcsafe.} =
+]  =
   ## Estimate total memory usage across all backends
   var memoryTopics: seq[MemoryStorageBackend]
 
@@ -238,14 +240,14 @@ proc getMemoryUsageEstimate*(store: HistoryStoreV2): tuple[
     result.messageCount += usage.messages
     result.estimatedBytes += usage.bytes
 
-proc getTopicSequence(store: HistoryStoreV2, topic: string): uint64 {.gcsafe.} =
+proc getTopicSequence(store: HistoryStoreV2, topic: string): uint64  =
   ## Get current sequence number for a topic
   withLock store.metadataLock:
     if topic in store.topicMetadata:
       return store.topicMetadata[topic].sequence
   return 0
 
-proc setTopicSequence(store: HistoryStoreV2, topic: string, sequence: uint64) {.gcsafe.} =
+proc setTopicSequence(store: HistoryStoreV2, topic: string, sequence: uint64)  =
   ## Set sequence number for a topic (used during recovery)
   withLock store.metadataLock:
     if topic notin store.topicMetadata:
@@ -260,7 +262,7 @@ proc setTopicSequence(store: HistoryStoreV2, topic: string, sequence: uint64) {.
       metadata.sequence = sequence
       store.topicMetadata[topic] = metadata
 
-proc cleanup*(store: HistoryStoreV2) {.gcsafe.} =
+proc cleanup*(store: HistoryStoreV2)  =
   ## Clean up resources (call during shutdown)
   withLock store.metadataLock:
     store.topicMetadata.clear()
@@ -270,12 +272,12 @@ proc cleanup*(store: HistoryStoreV2) {.gcsafe.} =
 ## Backward compatibility wrappers (match old HistoryStore API)
 
 proc setTopicHistoryMode*(store: HistoryStoreV2, topic: string,
-                         mode: HistoryMode) {.inline, gcsafe.} =
+                         mode: HistoryMode) {.inline.} =
   var config = store.getTopicConfig(topic)
   config.historyMode = mode
   store.setTopicConfig(topic, config)
 
-proc getTopicHistoryMode*(store: HistoryStoreV2, topic: string): HistoryMode {.inline, gcsafe.} =
+proc getTopicHistoryMode*(store: HistoryStoreV2, topic: string): HistoryMode {.inline.} =
   let config = store.getTopicConfig(topic)
   if config.historyEnabled:
     if config.persistenceEnabled:
