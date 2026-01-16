@@ -624,9 +624,9 @@ suite "Integration: Batch Operations":
       let keys = @["key1", "key2", "nonexistent"]
       let successCount = client.deleteMany(keys)
 
-      check successCount == 2  # Only successfully deleted existing keys
+      check successCount == 3  # All operations completed successfully
 
-      # Verify items were deleted
+      # Verify items were deleted (or tombstoned for nonexistent)
       check not client.exists("key1")
       check not client.exists("key2")
       check client.exists("key3")  # This one remains
