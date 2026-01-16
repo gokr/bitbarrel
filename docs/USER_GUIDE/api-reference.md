@@ -401,8 +401,8 @@ discard barrel.set("key1", "value1")
 discard barrel.set("key2", "value2")
 discard barrel.set("key3", "value3")
 
-# Prefer batch operations where possible
-discard barrel.setMulti(@[("key1", "value1"), ("key2", "value2"), ("key3", "value3")])
+# Note: For network client, use setMany for efficient batch operations
+# client.setMany(@[("key1", "value1"), ("key2", "value2"), ("key3", "value3")])
 ```
 
 ## Additional Resources

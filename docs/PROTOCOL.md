@@ -456,6 +456,120 @@ Get only keys with a prefix (values omitted). More efficient than PREFIX_QUERY w
 **Response:**
 - Same format as RANGE_KEYS response
 
+### Batch Operations
+
+Batch operations allow efficient processing of multiple operations in a single request, reducing network round trips.
+
+#### BATCH_GET (0x26)
+Retrieve multiple key-value pairs in a single request.
+
+**Request Format:**
+```
+0:  [type:1=0x26][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]
+```
+
+**Field Descriptions:**
+| Field | Size | Description |
+|-------|------|-------------|
+| Command Type | 1 byte | 0x26 (BATCH_GET) |
+| Sequence | 4 bytes | Request sequence number |
+| Count | 4 bytes | Number of keys to retrieve |
+| Key Length | 2 bytes | Length of each key |
+| Key | N bytes | Key data |
+
+**Response Format:**
+```
+0:  [status:1=0x00][seq:4][count:4][status1:1][valLen1:4][val1:N]...[statusN:1][valLenN:4][valN:M]
+```
+
+**Field Descriptions:**
+| Field | Size | Description |
+|-------|------|-------------|
+| Status Code | 1 byte | 0x00 (OK) |
+| Sequence | 4 bytes | Matches request sequence |
+| Count | 4 bytes | Number of keys in response |
+| Key Status | 1 byte | 0x00 (found) or 0x01 (not found) per key |
+| Value Length | 4 bytes | Length of value (if found) |
+| Value | N bytes | Value data (if found) |
+
+**Limits:**
+- Maximum keys per batch: 10,000
+- Maximum key size: 64 KB per key
+- Maximum value size: 1 MB per value
+
+#### BATCH_SET (0x27)
+Store multiple key-value pairs in a single request.
+
+**Request Format:**
+```
+0:  [type:1=0x27][seq:4][count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...
+```
+
+**Field Descriptions:**
+| Field | Size | Description |
+|-------|------|-------------|
+| Command Type | 1 byte | 0x27 (BATCH_SET) |
+| Sequence | 4 bytes | Request sequence number |
+| Count | 4 bytes | Number of key-value pairs |
+| Key Length | 2 bytes | Length of key |
+| Key | N bytes | Key data |
+| Value Length | 4 bytes | Length of value |
+| Value | M bytes | Value data |
+
+**Response Format:**
+```
+0:  [status:1=0x00][seq:4][count:4][status1:1]...[statusN:1]
+```
+
+**Field Descriptions:**
+| Field | Size | Description |
+|-------|------|-------------|
+| Status Code | 1 byte | 0x00 (OK) or error status |
+| Sequence | 4 bytes | Matches request sequence |
+| Count | 4 bytes | Number of status codes |
+| Status | 1 byte | 0x00 (success) or failure status per pair |
+
+**Limits:**
+- Maximum pairs per batch: 10,000
+- Maximum key size: 64 KB per key
+- Maximum value size: 1 MB per value
+
+#### BATCH_DELETE (0x28)
+Delete multiple keys in a single request.
+
+**Request Format:**
+```
+0:  [type:1=0x28][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]
+```
+
+**Field Descriptions:**
+| Field | Size | Description |
+|-------|------|-------------|
+| Command Type | 1 byte | 0x28 (BATCH_DELETE) |
+| Sequence | 4 bytes | Request sequence number |
+| Count | 4 bytes | Number of keys to delete |
+| Key Length | 2 bytes | Length of each key |
+| Key | N bytes | Key data |
+
+**Response Format:**
+```
+0:  [status:1=0x00][seq:4][count:4][status1:1]...[statusN:1]
+```
+
+**Field Descriptions:**
+| Field | Size | Description |
+|-------|------|-------------|
+| Status Code | 1 byte | 0x00 (OK) or error status |
+| Sequence | 4 bytes | Matches request sequence |
+| Count | 4 bytes | Number of status codes |
+| Status | 1 byte | 0x00 (success) or failure status per key |
+
+**Limits:**
+- Maximum keys per batch: 10,000
+- Maximum key size: 64 KB per key
+
+**Note:** All batch operations require a barrel to be selected via USE_BARREL (0x12) before execution.
+
 ### Pub/Sub Messaging
 
 Pub/Sub commands enable real-time messaging with topic-based subscriptions. WebSocket clients receive push notifications for published messages. For complete documentation including topic patterns, message types, and client examples, see the [Pub/Sub User Guide](./USER_GUIDE/pubsub.md).

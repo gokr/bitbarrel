@@ -578,30 +578,46 @@ for key in allKeys:
 
 ### Batch Operations
 
+Batch operations provide efficient multi-get, multi-set, and multi-delete capabilities through the binary protocol, significantly reducing network round trips.
+
 ```nim
-# Store multiple items
-let items = {
-  "product:1": "Laptop",
-  "product:2": "Mouse",
-  "product:3": "Keyboard"
-}
+# Store multiple items in one request
+let pairs = @[
+  ("product:1", "Laptop"),
+  ("product:2", "Mouse"),
+  ("product:3", "Keyboard")
+]
 
-for key, value in items:
-  try:
-    discard client.set(key, value)
-    echo "Stored: " & key
-  except ClientError as e:
-    echo "Failed to store " & key & ": " & e.msg
+let setCount = client.setMany(pairs)
+echo "Stored ", setCount, " items"
 
-# Retrieve multiple items
-var results: Table[string, string]
-for key, _ in items:
-  try:
-    let value = client.get(key)
-    results[key] = value
-  except ClientError:
-    echo "Key not found: " & key
+# Retrieve multiple items in one request
+let keys = @["product:1", "product:2", "product:3", "product:99"]
+let foundItems = client.getMany(keys)
+
+for (key, value) in foundItems:
+  echo key, " => ", value
+
+# Delete multiple items in one request
+let keysToDelete = @["product:1", "product:2"]
+let deleteCount = client.deleteMany(keysToDelete)
+echo "Deleted ", deleteCount, " items"
 ```
+
+**Client Methods:**
+- `setMany(pairs: openArray[(string, string)]): int` - Returns count of successful sets
+- `getMany(keys: openArray[string]): seq[(string, string)]` - Returns found key-value pairs
+- `deleteMany(keys: openArray[string]): int` - Returns count of successful deletions
+
+**Limits:**
+- Maximum 10,000 items per batch
+- Maximum 64 KB per key
+- Maximum 1 MB per value
+
+**Performance:**
+- Single network round trip per batch operation
+- 10x-100x faster than individual operations for large batches
+- Ideal for bulk imports, initial data loading, and batch cache updates
 
 ## Range Queries and Iterators (bmCritBit Mode)
 
