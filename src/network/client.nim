@@ -173,9 +173,7 @@ proc sendAndWait*(client: var BitBarrelClient, req: Request): protocol.Response 
         let resp = decodeResponse(msg.get().data)
         if resp.seq == mutableReq.seq:
           return resp
-
       inc attempts
-      sleep(100)
 
     raise newException(ClientError, "Response timeout")
 
@@ -895,3 +893,124 @@ proc newKeysPrefixIterator*(client: var BitBarrelClient, prefix: string,
     cursor: "",
     exhausted: false
   )
+
+# Pipelined batch operations for high-throughput scenarios
+
+proc setMany*(client: var BitBarrelClient, pairs: openArray[(string, string)]): int =
+  ## Set multiple key-value pairs using batch protocol
+  ## Returns number of successful sets
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  client.connect()
+
+  # Create and encode batch set request
+  let batchPairs = @pairs
+  let batchReq = BatchSetRequest(seq: client.seqCounter, pairs: batchPairs)
+  client.seqCounter += 1
+
+  let req = Request(command: cmdBatchSet, value: encodeBatchSetRequest(batchReq), seq: batchReq.seq)
+  let resp = client.sendAndWait(req)
+
+  if resp.status == statusOk and resp.value.len > 0:
+    # Decode batch response
+    try:
+      let batchResp = decodeBatchSetResponse(resp.value)
+      # Count successful operations
+      var successCount = 0
+      for status in batchResp.statuses:
+        if status == uint8(ord(statusOk)):
+          successCount += 1
+      return successCount
+    except CatchableError as e:
+      raise newException(ClientError, "Failed to decode batch set response: " & e.msg)
+  else:
+    # Handle error
+    if resp.status == statusNoBarrel:
+      raise newException(ClientError, "No barrel selected")
+    elif resp.status == statusUnauthorized:
+      raise newException(ClientError, "Unauthorized: write access required")
+    elif resp.status == statusBarrelNotFound:
+      raise newException(ClientError, "Barrel not found")
+    else:
+      raise newException(ClientError, "Batch set failed: " & resp.value)
+
+proc getMany*(client: var BitBarrelClient, keys: openArray[string]): seq[(string, string)] =
+  ## Get multiple key-value pairs using batch protocol
+  ## Returns seq of (key, value) for found keys
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  client.connect()
+
+  # Create and encode batch get request
+  let batchKeys = @keys
+  let batchReq = BatchGetRequest(seq: client.seqCounter, keys: batchKeys)
+  client.seqCounter += 1
+
+  let req = Request(command: cmdBatchGet, value: encodeBatchGetRequest(batchReq), seq: batchReq.seq)
+  let resp = client.sendAndWait(req)
+
+  if resp.status == statusOk and resp.value.len > 0:
+    # Decode batch response
+    try:
+      let batchResp = decodeBatchGetResponse(resp.value)
+      result = @[]
+
+      # Collect found items
+      for i, item in batchResp.results:
+        if item.status == uint8(ord(statusOk)):
+          result.add((batchReq.keys[i], item.value))
+
+      return result
+    except CatchableError as e:
+      raise newException(ClientError, "Failed to decode batch get response: " & e.msg)
+  else:
+    # Handle error
+    if resp.status == statusNoBarrel:
+      raise newException(ClientError, "No barrel selected")
+    elif resp.status == statusUnauthorized:
+      raise newException(ClientError, "Unauthorized: read access required")
+    elif resp.status == statusBarrelNotFound:
+      raise newException(ClientError, "Barrel not found")
+    else:
+      raise newException(ClientError, "Batch get failed: " & resp.value)
+
+proc deleteMany*(client: var BitBarrelClient, keys: openArray[string]): int =
+  ## Delete multiple keys using batch protocol
+  ## Returns number of successful deletions
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  client.connect()
+
+  # Create and encode batch delete request
+  let batchKeys = @keys
+  let batchReq = BatchDeleteRequest(seq: client.seqCounter, keys: batchKeys)
+  client.seqCounter += 1
+
+  let req = Request(command: cmdBatchDelete, value: encodeBatchDeleteRequest(batchReq), seq: batchReq.seq)
+  let resp = client.sendAndWait(req)
+
+  if resp.status == statusOk and resp.value.len > 0:
+    # Decode batch response
+    try:
+      let batchResp = decodeBatchDeleteResponse(resp.value)
+      # Count successful operations
+      var successCount = 0
+      for status in batchResp.statuses:
+        if status == uint8(ord(statusOk)):
+          successCount += 1
+      return successCount
+    except CatchableError as e:
+      raise newException(ClientError, "Failed to decode batch delete response: " & e.msg)
+  else:
+    # Handle error
+    if resp.status == statusNoBarrel:
+      raise newException(ClientError, "No barrel selected")
+    elif resp.status == statusUnauthorized:
+      raise newException(ClientError, "Unauthorized: write access required")
+    elif resp.status == statusBarrelNotFound:
+      raise newException(ClientError, "Barrel not found")
+    else:
+      raise newException(ClientError, "Batch delete failed: " & resp.value)
