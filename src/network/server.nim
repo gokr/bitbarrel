@@ -883,9 +883,9 @@ proc handleWebSocketMessage*(
                   server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
                   results[i] = (uint8(ord(statusNotFound)), "")
 
-              # Encode and send response
-              let batchResp = BatchGetResponse(seq: batchReq.seq, results: results)
-              let resp = okResponse(batchReq.seq, encodeBatchGetResponse(batchResp))
+              # Encode and send response (use req.seq for proper client matching)
+              let batchResp = BatchGetResponse(seq: req.seq, results: results)
+              let resp = okResponse(req.seq, encodeBatchGetResponse(batchResp))
               ws.send(encodeResponse(resp), BinaryMessage)
               return  # Skip normal response sending
 
@@ -928,9 +928,9 @@ proc handleWebSocketMessage*(
                   server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
                   statuses[i] = uint8(ord(statusError))
 
-              # Encode and send response
-              let batchResp = BatchSetResponse(seq: batchReq.seq, statuses: statuses)
-              let resp = okResponse(batchReq.seq, encodeBatchSetResponse(batchResp))
+              # Encode and send response (use req.seq for proper client matching)
+              let batchResp = BatchSetResponse(seq: req.seq, statuses: statuses)
+              let resp = okResponse(req.seq, encodeBatchSetResponse(batchResp))
               ws.send(encodeResponse(resp), BinaryMessage)
               return  # Skip normal response sending
 
@@ -973,9 +973,9 @@ proc handleWebSocketMessage*(
                   server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
                   statuses[i] = uint8(ord(statusError))
 
-              # Encode and send response
-              let batchResp = BatchDeleteResponse(seq: batchReq.seq, statuses: statuses)
-              let resp = okResponse(batchReq.seq, encodeBatchDeleteResponse(batchResp))
+              # Encode and send response (use req.seq for proper client matching)
+              let batchResp = BatchDeleteResponse(seq: req.seq, statuses: statuses)
+              let resp = okResponse(req.seq, encodeBatchDeleteResponse(batchResp))
               ws.send(encodeResponse(resp), BinaryMessage)
               return  # Skip normal response sending
 
@@ -983,6 +983,7 @@ proc handleWebSocketMessage*(
               resp.status = statusError
               resp.value = "Batch delete error: " & e.msg
 
+  of cmdGetBarrelStats:
     # Get barrel statistics requires a current barrel
     withLock server.sessionsLock:
       if not server.sessions[ws.clientId].hasCurrentBarrel():
