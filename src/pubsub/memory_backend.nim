@@ -3,12 +3,12 @@
 ## In-memory ring buffer implementation for pub/sub message history.
 ## Messages are stored in per-topic sequences with configurable size limits.
 
-import std/[tables, locks, sequtils, times]
-import ../pubsub
+import std/[tables, locks, sequtils]
+import ./pubsub
 import ./storage_backend
 
-## Maximum messages per topic if not specified
-defaultMaxMessages* = 100
+const
+  defaultMaxMessages* = 100
 
 type
   MemoryStorageBackend* = ref object of HistoryStorageBackend
