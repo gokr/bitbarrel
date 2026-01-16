@@ -210,6 +210,12 @@ A generic pub/sub messaging system implemented in BitBarrel, supporting topic-ba
 - ✅ **EventBroker** (`src/pubsub/eventbroker.nim`) - WebSocket event delivery to subscribers
 - ✅ **PubSubHooks** (`src/pubsub/hooks.nim`) - Key-value change notifications (optional)
 - ✅ **Pattern matching** (`src/pubsub/pattern.nim`) - Wildcard topic subscriptions
+- ✅ **Storage Backends** (`src/pubsub/storage_*.nim`) - Pluggable storage system
+  - Memory backend (volatile, fast)
+  - Shared barrel backend (persistent)
+  - Per-topic barrel backend (isolated)
+  - Hybrid configuration with pattern matching
+- ✅ **HistoryStoreV2** (`src/pubsub/history_v2.nim`) - Enhanced history API
 
 **Protocol Commands (0x40-0x46):**
 - ✅ SUBSCRIBE (0x40) - Subscribe to a topic
@@ -271,6 +277,15 @@ PubSubConfig(
   slowSubscriberThreshold: 5000      # Disconnect slow subscribers
 )
 ```
+
+**Examples:**
+- `examples/pubsub/basic_pubsub.nim` - Basic Pub/Sub usage
+- `examples/pubsub/storage_backends.nim` - Storage backend comparison
+- `examples/pubsub/presence_tracking.nim` - Presence features
+
+**Documentation:**
+- `docs/USER_GUIDE/pubsub.md` - User guide with examples
+- `docs/FEATURES/pubsub-storage.md` - Storage backend deep dive
 
 ## Priority 3: Advanced Operations & Features
 
