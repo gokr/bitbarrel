@@ -251,11 +251,11 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
     echo "  Server output:"
     echo "  ───────────────────────────────────"
     # Read all output from the process
-    var output = ""
-    for line in serverProcess.outputStream().lines():
-      output &= line & "\n"
-    if output.len > 0:
-      echo "  " & output
+    try:
+      for line in serverProcess.outputStream().lines():
+        echo "  " & line
+    except:
+      echo "  (No output captured)"
     echo "  ───────────────────────────────────"
     result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
