@@ -232,7 +232,7 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
   if fileExists(serverPath):
     serverProcess = startProcess(
       serverPath,
-      args = ["serve", "--port", $port, "--data-dir", serverDir],
+      args = ["serve", "--port=" & $port, "--data-dir=" & serverDir],
       options = {poUsePath, poStdErrToStdOut}
     )
   else:
@@ -247,16 +247,10 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
   # Verify server is running
   if not serverProcess.running():
     echo "  Error: Failed to start BitBarrel server"
-    echo ""
-    echo "  Server output:"
-    echo "  ───────────────────────────────────"
-    # Read all output from the process
-    try:
-      for line in serverProcess.outputStream().lines():
-        echo "  " & line
-    except:
-      echo "  (No output captured)"
-    echo "  ───────────────────────────────────"
+    # Get exit status for more info
+    let exitCode = serverProcess.peekExitCode()
+    if exitCode != 0:
+      echo "  Exit code: " & $exitCode
     result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     return
@@ -275,44 +269,49 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
     discard client.useBarrel("bench_test")
     echo "  ✓ Barrel created"
 
-    # Write benchmark
+    # Write benchmark (pipelined)
     echo ""
-    echo "  Running writes..."
-    let writeStart = cpuTime()
+    echo "  Running writes (pipelined)..."
 
+    # Build all pairs first
+    var pairs: seq[(string, string)] = @[]
     for i in 0..<numOps:
       let key = &"key_{i:08}"
       let value = &"value_{i:08}_" & repeat('x', 40)
-      discard client.set(key, value)
+      pairs.add((key, value))
 
-    let writeElapsed = cpuTime() - writeStart
+    let writeStart = epochTime()
+    let writeCount = client.setMany(pairs)
+    let writeElapsed = epochTime() - writeStart
+
     result.writes = BenchmarkResult(
       opsPerSec: numOps.float / writeElapsed,
       avgLatencyMs: writeElapsed * 1000.0 / numOps.float
     )
 
-    echo &"  ✓ Writes completed in {writeElapsed:.3f}s"
+    echo &"  ✓ Writes completed in {writeElapsed:.3f}s ({writeCount}/{numOps} successful)"
     echo &"  ✓ Throughput: {result.writes.opsPerSec:.0f} ops/sec"
 
     sleep(100)
 
-    # Read benchmark
+    # Read benchmark (pipelined)
     echo ""
-    echo "  Running reads..."
-    let readStart = cpuTime()
+    echo "  Running reads (pipelined)..."
 
+    var keys: seq[string] = @[]
     for i in 0..<numOps:
-      let key = &"key_{i:08}"
-      let value = client.get(key)
-      discard value.len
+      keys.add(&"key_{i:08}")
 
-    let readElapsed = cpuTime() - readStart
+    let readStart = epochTime()
+    let readResults = client.getMany(keys)
+    let readElapsed = epochTime() - readStart
+
     result.reads = BenchmarkResult(
       opsPerSec: numOps.float / readElapsed,
       avgLatencyMs: readElapsed * 1000.0 / numOps.float
     )
 
-    echo &"  ✓ Reads completed in {readElapsed:.3f}s"
+    echo &"  ✓ Reads completed in {readElapsed:.3f}s ({readResults.len}/{numOps} found)"
     echo &"  ✓ Throughput: {result.reads.opsPerSec:.0f} ops/sec"
 
     # Cleanup barrel
@@ -471,6 +470,7 @@ when not defined(useMySQL):
 
 proc main() =
   const numOps = 10_000
+  const serverOps = 10_000  # Same as embedded now that we use pipelining
   const bbServerPort = 9877
 
   printHeader("BitBarrel vs Database Performance Comparison")
@@ -512,9 +512,9 @@ proc main() =
   echo "  SERVER COMPARISON"
   echo "────────────────────────────────────────────────"
 
-  let bbServerResults = benchmarkBitBarrelServer(numOps, bbServerPort)
+  let bbServerResults = benchmarkBitBarrelServer(serverOps, bbServerPort)
   echo ""
-  let mysqlServerResults = benchmarkMySQLServer(numOps)
+  let mysqlServerResults = benchmarkMySQLServer(serverOps)
 
   # Check if server benchmarks ran
   let serverTestsSkipped = bbServerResults.writes.opsPerSec == 0 and mysqlServerResults.writes.opsPerSec == 0
