@@ -7,7 +7,7 @@
 ## - Presence tracking
 ## - Configuration options
 
-import std/[tables, locks, times, sets, json, random]
+import std/[tables, times, sets, json, random]
 
 proc generateUuid*(): string =
   ## Generate a simple UUID v4-like identifier
