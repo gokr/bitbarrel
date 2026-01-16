@@ -18,6 +18,7 @@ import ../pubsub/eventbroker
 import ../pubsub/presence
 import ../pubsub/barrel_hooks
 import ../pubsub/history_v2
+import ../pubsub/storage_manager
 import ../plugins/query_result_hooks
 
 # Import protocol module
@@ -158,7 +159,7 @@ type
     pubSubManager*: PubSubManager     ## Pub/sub topic and subscription manager
     eventBroker*: EventBroker         ## Event routing to WebSocket clients
     presenceManager*: PresenceManager ## Presence tracking (join/leave, heartbeat)
-    historyStore*: HistoryStore       ## Message history (in-memory or persistent)
+    historyStore*: HistoryStoreV2       ## Message history (in-memory or persistent)
     pubSubEnabled*: bool              ## Whether pub/sub is enabled
 
   BitBarrelServer* = ref BitBarrelServerObj  # Use ref to avoid ORC cleanup issues
@@ -667,7 +668,7 @@ proc handleWebSocketMessage*(
               if params.plugins.len > 0:
                 let metadata = HookMetadata(
                   barrelName: barrelName,
-                  clientId: ws.clientId,
+                  clientId: $ws.clientId,
                   hookKind: hkRangeQuery
                 )
                 if not applyQueryResultPlugins(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
@@ -719,7 +720,7 @@ proc handleWebSocketMessage*(
               if params.plugins.len > 0:
                 let metadata = HookMetadata(
                   barrelName: barrelName,
-                  clientId: ws.clientId,
+                  clientId: $ws.clientId,
                   hookKind: hkPrefixQuery
                 )
                 if not applyQueryResultPlugins(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
