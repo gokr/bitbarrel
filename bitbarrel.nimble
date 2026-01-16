@@ -23,14 +23,14 @@ requires "https://github.com/gokr/whisky"     # Websocket client library
 task checkDocExamples, "Verify all .compilable code blocks in docs compile":
   exec "nim c -r tools/check_doc_examples.nim"
 
-task checkDemos, "Compile all demos and benchmarks (verification check) - exits on first error":
+task checkExamples, "Compile all examples and benchmarks (verification check) - exits on first error":
   exec """
     # Exit on first error
     set -e
 
-    # Compile all demos (demo_utils.nim is excluded as it's a utility module)
-    # Note: pubsub_demo.nim requires --path:clients/nim/src to find bitbarrel_client
-    find demos -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
+    # Compile all examples (excluding utility modules)
+    # Note: pubsub examples require --path:clients/nim/src to find bitbarrel_client
+    find examples -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
       echo "Compiling $file..."
       nim c --verbosity:0 --path:src --path:clients/nim/src "$file"
     done
@@ -41,7 +41,7 @@ task checkDemos, "Compile all demos and benchmarks (verification check) - exits 
       nim c --verbosity:0 --path:src "$file"
     done
 
-    echo "✓ All demos and benchmarks compiled successfully!"
+    echo "✓ All examples and benchmarks compiled successfully!"
   """
 
 task test, "Run all tests (automatic discovery via testament)":
@@ -108,25 +108,47 @@ task testPubSubIntegration, "Run pub/sub integration tests":
 task testPluginSystem, "Run query result hooks plugin system tests":
   exec "testament pattern \"tests/plugins/*.nim\""
 
-# Tasks for running demos
+# Tasks for running examples
 
-task demoBasic, "Run basic CRUD demo":
-  exec "nim r demos/basic_demo.nim"
+task exampleBasic, "Run basic CRUD example":
+  exec "nim r examples/basic/basic.nim"
 
-task demoPerformance, "Run performance demo":
-  exec "nim r demos/performance_demo.nim"
+task examplePerformance, "Run performance example":
+  exec "nim r examples/basic/performance.nim"
 
-task demoGraph, "Run graph traversal demo":
-  exec "nim r demos/graph_demo.nim"
+task exampleGraph, "Run graph traversal example":
+  exec "nim r examples/advanced/graph_traversal.nim"
 
-task demoAdvanced, "Run advanced features demo":
-  exec "nim r demos/advanced_demo.nim"
+task exampleAdvanced, "Run advanced features example":
+  exec "nim r examples/advanced/advanced.nim"
 
-task demoNetworkBasic, "Run basic network demo":
-  exec "nim r demos/network/basic.nim"
+task exampleNetworkBasic, "Run basic network example":
+  exec "nim r examples/networking/basic_client.nim"
 
-task demoNetworkBarrels, "Run network barrels demo":
-  exec "nim r demos/network/barrels.nim"
+task exampleNetworkBarrels, "Run network barrels example":
+  exec "nim r examples/networking/barrels_example.nim"
+
+task examplePlugins, "Run plugin system examples":
+  exec "nim r examples/plugins/range_query_plugins.nim"
+
+# Backward compatibility aliases
+task demoBasic, "Run basic CRUD demo (deprecated: use exampleBasic)":
+  exec "nim r examples/basic/basic.nim"
+
+task demoPerformance, "Run performance demo (deprecated: use examplePerformance)":
+  exec "nim r examples/basic/performance.nim"
+
+task demoGraph, "Run graph traversal demo (deprecated: use exampleGraph)":
+  exec "nim r examples/advanced/graph_traversal.nim"
+
+task demoAdvanced, "Run advanced features demo (deprecated: use exampleAdvanced)":
+  exec "nim r examples/advanced/advanced.nim"
+
+task demoNetworkBasic, "Run basic network demo (deprecated: use exampleNetworkBasic)":
+  exec "nim r examples/networking/basic_client.nim"
+
+task demoNetworkBarrels, "Run network barrels demo (deprecated: use exampleNetworkBarrels)":
+  exec "nim r examples/networking/barrels_example.nim"
 
 # Task for benchmarking
 
@@ -141,6 +163,9 @@ task benchComprehensive, "Run comprehensive benchmark (100K ops)":
 
 task benchCrunchy, "Run performance benchmark with crunchy CRC32":
   exec "nim c -d:release -d:useCrunchy -r bench/simple_bench.nim"
+
+task benchMySQL, "Run BitBarrel vs SQLite performance comparison":
+  exec "nim c -d:release -r --path:src bench/mysql_comparison.nim"
 
 # Task for stress testing
 

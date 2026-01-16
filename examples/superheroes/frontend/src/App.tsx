@@ -1,5 +1,4 @@
 import { Component, createEffect, createSignal, Show, onMount } from 'solid-js';
-import { render } from 'solid-js/web';
 import { useBitBarrel, bitbarrelClient, setBitbarrelClient } from './hooks/useBitBarrel';
 import { useHeroes } from './hooks/useHeroes';
 import { usePubSub } from './hooks/usePubSub';
@@ -297,5 +296,3 @@ export const App: Component = () => {
     </div>
   );
 };
-
-render(() => <App />, document.getElementById('app')!);
