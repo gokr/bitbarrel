@@ -534,3 +534,179 @@ suite "Integration: Connection":
       check client.token == "test-jwt-token"
       check client.host == "localhost"
       check client.port == 9876.Port
+
+suite "Integration: Batch Operations":
+  test "batchSet stores multiple items":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Create barrel and use it
+      let name = uniqueBarrelName("test_batch_set")
+      defer: discard client.dropBarrel(name)
+
+      check client.createBarrel(name)
+      check client.useBarrel(name)
+
+      # Batch set multiple items
+      let pairs = @[("key1", "value1"), ("key2", "value2"), ("key3", "value3")]
+      let successCount = client.setMany(pairs)
+
+      check successCount == 3
+
+      # Verify all items were stored
+      check client.get("key1") == "value1"
+      check client.get("key2") == "value2"
+      check client.get("key3") == "value3"
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "batchGet retrieves multiple items":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Create barrel and use it
+      let name = uniqueBarrelName("test_batch_get")
+      defer: discard client.dropBarrel(name)
+
+      check client.createBarrel(name)
+      check client.useBarrel(name)
+
+      # Store some items first
+      discard client.set("key1", "value1")
+      discard client.set("key2", "value2")
+      discard client.set("key3", "value3")
+
+      # Batch get multiple items
+      let keys = @["key1", "key2", "key3", "nonexistent"]
+      let results = client.getMany(keys)
+
+      check results.len == 3  # Only found keys
+      check ("key1", "value1") in results
+      check ("key2", "value2") in results
+      check ("key3", "value3") in results
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "batchDelete removes multiple items":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Create barrel and use it
+      let name = uniqueBarrelName("test_batch_delete")
+      defer: discard client.dropBarrel(name)
+
+      check client.createBarrel(name)
+      check client.useBarrel(name)
+
+      # Store some items
+      discard client.set("key1", "value1")
+      discard client.set("key2", "value2")
+      discard client.set("key3", "value3")
+
+      # Batch delete multiple items
+      let keys = @["key1", "key2", "nonexistent"]
+      let successCount = client.deleteMany(keys)
+
+      check successCount == 2  # Only successfully deleted existing keys
+
+      # Verify items were deleted
+      check not client.exists("key1")
+      check not client.exists("key2")
+      check client.exists("key3")  # This one remains
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "batch operations with large batch (100 items)":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Create barrel and use it
+      let name = uniqueBarrelName("test_batch_large")
+      defer: discard client.dropBarrel(name)
+
+      check client.createBarrel(name)
+      check client.useBarrel(name)
+
+      # Create 100 key-value pairs
+      var pairs: seq[(string, string)]
+      for i in 0..<100:
+        pairs.add((fmt"key{i}", fmt"value{i}"))
+
+      # Batch set all items
+      let setCount = client.setMany(pairs)
+      check setCount == 100
+
+      # Batch get all items
+      var keys: seq[string]
+      for i in 0..<100:
+        keys.add(fmt"key{i}")
+
+      let results = client.getMany(keys)
+      check results.len == 100
+
+      # Verify all values
+      for (key, value) in results:
+        check client.get(key) == value
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "batchSet requires barrel selection":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Try batch set without selecting a barrel
+      let pairs = @[("key1", "value1")]
+      expect ClientError:
+        discard client.setMany(pairs)
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "batchGet requires barrel selection":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Try batch get without selecting a barrel
+      let keys = @["key1"]
+      expect ClientError:
+        discard client.getMany(keys)
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "batchDelete requires barrel selection":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Try batch delete without selecting a barrel
+      let keys = @["key1"]
+      expect ClientError:
+        discard client.deleteMany(keys)
+
+    except CatchableError as e:
+      skip()  # Server not available

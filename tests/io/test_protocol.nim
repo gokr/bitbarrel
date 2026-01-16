@@ -189,3 +189,134 @@ suite "Binary Protocol Tests":
       let encoded = encodeResponse(resp)
       let decoded = decodeResponse(encoded)
       check decoded.status == status
+  # Batch operation tests
+
+  test "BatchGet request encode/decode roundtrip":
+    let req = BatchGetRequest(
+      seq: 1234,
+      keys: @["key1", "key2", "key3"]
+    )
+    let encoded = encodeBatchGetRequest(req)
+    let decoded = decodeBatchGetRequest(encoded)
+
+    check decoded.seq == 1234
+    check decoded.keys.len == 3
+    check decoded.keys[0] == "key1"
+    check decoded.keys[1] == "key2"
+    check decoded.keys[2] == "key3"
+
+  test "BatchGet response encode/decode roundtrip":
+    let resp = BatchGetResponse(
+      seq: 5678,
+      results: @[(uint8(ord(statusOk)), "value1"),
+                 (uint8(ord(statusNotFound)), ""),
+                 (uint8(ord(statusOk)), "value3")]
+    )
+    let encoded = encodeBatchGetResponse(resp)
+    let decoded = decodeBatchGetResponse(encoded)
+
+    check decoded.seq == 5678
+    check decoded.results.len == 3
+    check decoded.results[0].status == uint8(ord(statusOk))
+    check decoded.results[0].value == "value1"
+    check decoded.results[1].status == uint8(ord(statusNotFound))
+    check decoded.results[1].value == ""
+    check decoded.results[2].status == uint8(ord(statusOk))
+    check decoded.results[2].value == "value3"
+
+  test "BatchSet request encode/decode roundtrip":
+    let req = BatchSetRequest(
+      seq: 9999,
+      pairs: @[("key1", "value1"), ("key2", "value2")]
+    )
+    let encoded = encodeBatchSetRequest(req)
+    let decoded = decodeBatchSetRequest(encoded)
+
+    check decoded.seq == 9999
+    check decoded.pairs.len == 2
+    check decoded.pairs[0].key == "key1"
+    check decoded.pairs[0].value == "value1"
+    check decoded.pairs[1].key == "key2"
+    check decoded.pairs[1].value == "value2"
+
+  test "BatchSet response encode/decode roundtrip":
+    let resp = BatchSetResponse(
+      seq: 1111,
+      statuses: @[uint8(ord(statusOk)), uint8(ord(statusError)), uint8(ord(statusOk))]
+    )
+    let encoded = encodeBatchSetResponse(resp)
+    let decoded = decodeBatchSetResponse(encoded)
+
+    check decoded.seq == 1111
+    check decoded.statuses.len == 3
+    check decoded.statuses[0] == uint8(ord(statusOk))
+    check decoded.statuses[1] == uint8(ord(statusError))
+    check decoded.statuses[2] == uint8(ord(statusOk))
+
+  test "BatchDelete request encode/decode roundtrip":
+    let req = BatchDeleteRequest(
+      seq: 2222,
+      keys: @["key1", "key2", "key3", "key4"]
+    )
+    let encoded = encodeBatchDeleteRequest(req)
+    let decoded = decodeBatchDeleteRequest(encoded)
+
+    check decoded.seq == 2222
+    check decoded.keys.len == 4
+    check decoded.keys[0] == "key1"
+    check decoded.keys[1] == "key2"
+    check decoded.keys[2] == "key3"
+    check decoded.keys[3] == "key4"
+
+  test "BatchDelete response encode/decode roundtrip":
+    let resp = BatchDeleteResponse(
+      seq: 3333,
+      statuses: @[uint8(ord(statusOk)), uint8(ord(statusOk)), uint8(ord(statusError))]
+    )
+    let encoded = encodeBatchDeleteResponse(resp)
+    let decoded = decodeBatchDeleteResponse(encoded)
+
+    check decoded.seq == 3333
+    check decoded.statuses.len == 3
+    check decoded.statuses[0] == uint8(ord(statusOk))
+    check decoded.statuses[1] == uint8(ord(statusOk))
+    check decoded.statuses[2] == uint8(ord(statusError))
+
+  test "BatchGet request with empty keys":
+    let req = BatchGetRequest(seq: 4444, keys: @[])
+    let encoded = encodeBatchGetRequest(req)
+    let decoded = decodeBatchGetRequest(encoded)
+
+    check decoded.seq == 4444
+    check decoded.keys.len == 0
+
+  test "Batch operations validate MaxBatchItems limit":
+    var manyKeys: seq[string]
+    for i in 0..<MaxBatchItems + 1:
+      manyKeys.add("key" & $i)
+
+    let req = BatchGetRequest(seq: 5555, keys: manyKeys)
+    expect ProtocolError:
+      discard encodeBatchGetRequest(req)
+
+  test "BatchSet request validates individual key/value sizes":
+    let longKey = "x".repeat(MaxKeySize + 1)
+    let req = BatchSetRequest(
+      seq: 6666,
+      pairs: @[(longKey, "value")]
+    )
+    expect ProtocolError:
+      discard encodeBatchSetRequest(req)
+
+  test "BatchGet response with all not-found results":
+    let resp = BatchGetResponse(
+      seq: 7777,
+      results: @[(uint8(ord(statusNotFound)), ""),
+                 (uint8(ord(statusNotFound)), "")]
+    )
+    let encoded = encodeBatchGetResponse(resp)
+    let decoded = decodeBatchGetResponse(encoded)
+
+    check decoded.results.len == 2
+    check decoded.results[0].status == uint8(ord(statusNotFound))
+    check decoded.results[1].status == uint8(ord(statusNotFound))
