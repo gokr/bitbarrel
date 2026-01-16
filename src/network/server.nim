@@ -331,6 +331,7 @@ proc handleWebSocketMessage*(
   var resp: Response
   resp.seq = req.seq
 
+
   case req.command:
   of cmdPing:
     resp.status = statusOk
@@ -555,6 +556,10 @@ proc handleWebSocketMessage*(
 
           of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount, cmdRangeKeys, cmdPrefixKeys:
             # These commands are handled at the outer level
+            discard
+
+          of cmdBatchGet, cmdBatchSet, cmdBatchDelete:
+            # Batch commands are handled at the outer level
             discard
 
           of cmdSubscribe, cmdUnsubscribe, cmdPublish, cmdListSubscribers, cmdHistory, cmdListTopics, cmdPresence:
@@ -842,7 +847,142 @@ proc handleWebSocketMessage*(
               resp.status = statusError
               resp.value = "Prefix keys error: " & e.msg
 
-  of cmdGetBarrelStats:
+  of cmdBatchGet:
+    # Batch get requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          var wrapper = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            try:
+              # Decode batch get request
+              let batchReq = decodeBatchGetRequest(req.value)
+
+              # Execute batch get operations
+              var results: seq[tuple[status: uint8, value: string]]
+              results = newSeq[tuple[status: uint8, value: string]](batchReq.keys.len)
+
+              for i, key in batchReq.keys:
+                let start = epochTime()
+                let value = wrapperGet(wrapper, key)
+                if value.len > 0:
+                  server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
+                  results[i] = (uint8(ord(statusOk)), value)
+                else:
+                  server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
+                  results[i] = (uint8(ord(statusNotFound)), "")
+
+              # Encode and send response
+              let batchResp = BatchGetResponse(seq: batchReq.seq, results: results)
+              let resp = okResponse(batchReq.seq, encodeBatchGetResponse(batchResp))
+              ws.send(encodeResponse(resp), BinaryMessage)
+              return  # Skip normal response sending
+
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Batch get error: " & e.msg
+
+  of cmdBatchSet:
+    # Batch set requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          var wrapper = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canWriteData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: write access required"
+          else:
+            try:
+              # Decode batch set request
+              let batchReq = decodeBatchSetRequest(req.value)
+
+              # Execute batch set operations
+              var statuses: seq[uint8]
+              statuses = newSeq[uint8](batchReq.pairs.len)
+
+              for i, pair in batchReq.pairs:
+                let start = epochTime()
+                if wrapperSet(wrapper, pair.key, pair.value):
+                  server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
+                  statuses[i] = uint8(ord(statusOk))
+                else:
+                  server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
+                  statuses[i] = uint8(ord(statusError))
+
+              # Encode and send response
+              let batchResp = BatchSetResponse(seq: batchReq.seq, statuses: statuses)
+              let resp = okResponse(batchReq.seq, encodeBatchSetResponse(batchResp))
+              ws.send(encodeResponse(resp), BinaryMessage)
+              return  # Skip normal response sending
+
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Batch set error: " & e.msg
+
+  of cmdBatchDelete:
+    # Batch delete requires a current barrel
+    withLock server.sessionsLock:
+      if not server.sessions[ws.clientId].hasCurrentBarrel():
+        resp.status = statusNoBarrel
+      else:
+        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        let barrel = server.registry.getBarrel(barrelName)
+
+        if barrel.isNone():
+          resp.status = statusBarrelNotFound
+        else:
+          var wrapper = barrel.get()
+          let authSess = server.sessions[ws.clientId].authSession
+          if not authSess.canWriteData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: write access required"
+          else:
+            try:
+              # Decode batch delete request
+              let batchReq = decodeBatchDeleteRequest(req.value)
+
+              # Execute batch delete operations
+              var statuses: seq[uint8]
+              statuses = newSeq[uint8](batchReq.keys.len)
+
+              for i, key in batchReq.keys:
+                let start = epochTime()
+                if wrapperDelete(wrapper, key):
+                  server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
+                  statuses[i] = uint8(ord(statusOk))
+                else:
+                  server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
+                  statuses[i] = uint8(ord(statusError))
+
+              # Encode and send response
+              let batchResp = BatchDeleteResponse(seq: batchReq.seq, statuses: statuses)
+              let resp = okResponse(batchReq.seq, encodeBatchDeleteResponse(batchResp))
+              ws.send(encodeResponse(resp), BinaryMessage)
+              return  # Skip normal response sending
+
+            except CatchableError as e:
+              resp.status = statusError
+              resp.value = "Batch delete error: " & e.msg
+
     # Get barrel statistics requires a current barrel
     withLock server.sessionsLock:
       if not server.sessions[ws.clientId].hasCurrentBarrel():
