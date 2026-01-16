@@ -3,9 +3,7 @@
 ## Defines abstract interface for pluggable history storage strategies
 ## Supports memory-only, shared barrel, per-topic barrel, and future backends
 
-import std/[tables, locks, times]
 import ./pubsub
-import ../bitbarrel/barrel
 
 type
   ## Query parameters for retrieving history
@@ -31,8 +29,8 @@ type
 
 ## Storage backend operations - must be implemented by all backends
 
-proc store*(backend: HistoryStorageBackend, topic: string,
-            message: Message): bool {.base, gcsafe.}
+method store*(backend: HistoryStorageBackend, topic: string,
+              message: Message): bool {.base, gcsafe.} =
   ## Store a message in history
   ##
   ## Parameters:
@@ -40,9 +38,10 @@ proc store*(backend: HistoryStorageBackend, topic: string,
   ##   - message: Message to store (will update sequence)
   ##
   ## Returns: true on success, false on failure
+  raise newException(CatchableError, "store not implemented")
 
-proc retrieve*(backend: HistoryStorageBackend, topic: string,
-               params: HistoryQueryParams): seq[Message] {.base, gcsafe.}
+method retrieve*(backend: HistoryStorageBackend, topic: string,
+                 params: HistoryQueryParams): seq[Message] {.base, gcsafe.} =
   ## Retrieve messages from history
   ##
   ## Parameters:
@@ -50,57 +49,68 @@ proc retrieve*(backend: HistoryStorageBackend, topic: string,
   ##   - params: Query parameters (limit, sinceSeq, etc.)
   ##
   ## Returns: Sequence of messages matching query
+  raise newException(CatchableError, "retrieve not implemented")
 
-proc clear*(backend: HistoryStorageBackend, topic: string): bool {.base, gcsafe.}
+method clear*(backend: HistoryStorageBackend, topic: string): bool {.base, gcsafe.} =
   ## Clear all history for a topic
   ##
   ## Parameters:
   ##   - topic: Topic name to clear
   ##
   ## Returns: true if history was cleared
+  raise newException(CatchableError, "clear not implemented")
 
-proc count*(backend: HistoryStorageBackend, topic: string): int {.base, gcsafe.}
+method count*(backend: HistoryStorageBackend, topic: string): int {.base, gcsafe.} =
   ## Get the number of messages stored for a topic
   ##
   ## Parameters:
   ##   - topic: Topic name
   ##
   ## Returns: Message count (0 if topic has no history)
+  raise newException(CatchableError, "count not implemented")
 
-proc close*(backend: HistoryStorageBackend) {.base, gcsafe.}
+method close*(backend: HistoryStorageBackend) {.base, gcsafe.} =
   ## Close backend and cleanup resources
   ## Should be called during shutdown
+  discard
 
 ## Optional operations (implemented where appropriate)
 
-proc supportsTtl*(backend: HistoryStorageBackend): bool {.base, gcsafe.}
+method supportsTtl*(backend: HistoryStorageBackend): bool {.base, gcsafe.} =
   ## Check if backend supports automatic TTL/expiration
   ##
   ## Returns: true if backend can auto-expire messages
+  false
 
-proc configureTtl*(backend: HistoryStorageBackend, topic: string,
-                   ttlSeconds: int) {.base, gcsafe.}
+method configureTtl*(backend: HistoryStorageBackend, topic: string,
+                     ttlSeconds: int) {.base, gcsafe.} =
   ## Configure TTL for a topic (if supported by backend)
   ##
   ## Parameters:
   ##   - topic: Topic name
   ##   - ttlSeconds: TTL in seconds (0 = no TTL)
+  discard
 
-proc getMemoryUsage*(backend: HistoryStorageBackend): tuple[
+method getMemoryUsage*(backend: HistoryStorageBackend): tuple[
   topics: int,
   messages: int,
   bytes: int
-] {.base, gcsafe.}
+] {.base, gcsafe.} =
   ## Get memory usage estimate
   ##
   ## Returns: (topic count, message count, estimated bytes)
+  (0, 0, 0)
 
 ## Helper operations that can be overridden for optimization
 
-proc storeBatch*(backend: HistoryStorageBackend, topic: string,
-                messages: seq[Message]): bool {.base, gcsafe.}
+method storeBatch*(backend: HistoryStorageBackend, topic: string,
+                   messages: seq[Message]): bool {.base, gcsafe.} =
   ## Store multiple messages in batch (default: call store() for each)
   ##
   ## Parameters:
   ##   - topic: Topic name
   ##   - messages: Messages to store
+  for msg in messages:
+    if not backend.store(topic, msg):
+      return false
+  true
