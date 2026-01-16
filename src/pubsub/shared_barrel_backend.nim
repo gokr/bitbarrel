@@ -3,10 +3,10 @@
 ## Stores all topic messages in a single BitBarrel barrel with efficient
 ## prefix-based queries. Uses bmCritBit mode for ordered retrieval.
 
-import std/[tables, locks, sequtils, strformat, strutils, json, times]
-import ../pubsub
+import std/[tables, locks, sequtils, strutils, json]
+import ./pubsub
 import ./storage_backend
-import ../../bitbarrel/barrel
+import ../bitbarrel/barrel
 
 ## Key format for messages in barrel
 ## msg:{topic}:{padded_sequence}
@@ -69,10 +69,14 @@ proc newSharedBarrelBackend*(barrelPath: string, config: BarrelConfig,
   if result.barrel.isNil:
     raise newException(ValueError, "Failed to open barrel: " & barrelPath)
 
+# Forward declarations
+proc flushPending*(backend: SharedBarrelBackend, topic: string) {.gcsafe.}
+proc flushAllPending*(backend: SharedBarrelBackend) {.gcsafe.}
+
 proc formatMessageKey(topic: string, sequence: uint64): string =
   ## Format message key: msg:{topic}:{padded_sequence}
   ## Uses zero-padding for lexicographic ordering
-  result = MessageKeyPrefix & topic & MessageKeySeparator & $sequence.align(SequencePadding, '0')
+  result = MessageKeyPrefix & topic & MessageKeySeparator & ($sequence).align(SequencePadding, '0')
 
 proc extractSequence(key: string): uint64 =
   ## Extract sequence number from message key
@@ -111,10 +115,10 @@ proc decodeMessage(data: string): Message =
   result = Message()
   result.id = jsonNode["id"].getStr()
   result.topic = jsonNode["topic"].getStr()
-  result.messageType = PubSubMessageType(jsonNode["messageType"].getInt())
+  result.messageType = pubsub.PubSubMessageType(jsonNode["messageType"].getInt())
   result.payload = jsonNode["payload"].getStr()
   result.timestamp = jsonNode["timestamp"].getInt()
-  result.sequence = jsonNode["sequence"].getUint()
+  result.sequence = uint64(jsonNode["sequence"].getBiggestInt())
 
   if "headers" in jsonNode:
     result.headers = jsonNode["headers"]
@@ -231,11 +235,11 @@ method clear(backend: SharedBarrelBackend, topic: string): bool {.gcsafe.} =
 
     # Delete each message
     for (key, _) in items:
-      backend.barrel.delete(key)
+      discard backend.barrel.delete(key)
 
     # Delete metadata
     let metaKey = formatMetadataKey(topic)
-    backend.barrel.delete(metaKey)
+    discard backend.barrel.delete(metaKey)
 
     # Clear sequence counter
     withLock backend.sequenceLock:
@@ -261,7 +265,7 @@ method close(backend: SharedBarrelBackend) {.gcsafe.} =
       backend.barrel.close()
       backend.barrel = nil
 
-proc flushPending(backend: SharedBarrelBackend, topic: string) {.gcsafe.} =
+proc flushPending*(backend: SharedBarrelBackend, topic: string) {.gcsafe.} =
   ## Flush pending messages for a topic
   withLock backend.batchLock:
     if topic in backend.pendingMessages:
@@ -272,7 +276,7 @@ proc flushPending(backend: SharedBarrelBackend, topic: string) {.gcsafe.} =
       if messages.len > 0:
         discard backend.storeBatch(topic, messages)
 
-proc flushAllPending(backend: SharedBarrelBackend) {.gcsafe.} =
+proc flushAllPending*(backend: SharedBarrelBackend) {.gcsafe.} =
   ## Flush all pending messages (shutdown)
   var topics: seq[string]
 
@@ -303,7 +307,7 @@ proc loadTopicSequence(backend: SharedBarrelBackend, topic: string) {.gcsafe.} =
   if metadata.len > 0:
     try:
       let jsonNode = parseJson(metadata)
-      let lastSeq = jsonNode["lastSequence"].getUint()
+      let lastSeq = uint64(jsonNode["lastSequence"].getBiggestInt())
       backend.setTopicSequence(topic, lastSeq)
     except:
       discard
