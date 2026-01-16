@@ -3,7 +3,7 @@
 ## The EventBroker receives published messages and routes them to
 ## connected PubSubWebSocket clients based on their subscriptions.
 
-import std/[tables, strformat, json, locks, times, sets]
+import std/[tables, json, locks, times, sets]
 import ./pubsub
 import ./manager
 
