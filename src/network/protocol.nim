@@ -37,6 +37,10 @@ type
     cmdRangeCount = 0x23
     cmdRangeKeys = 0x24  ## Keys-only range query (bmCritBit only)
     cmdPrefixKeys = 0x25 ## Keys-only prefix query (bmCritBit only)
+    ## Batch operations (0x26-0x28)
+    cmdBatchGet = 0x26
+    cmdBatchSet = 0x27
+    cmdBatchDelete = 0x28
     ## Pub/Sub commands (0x40-0x4F)
     cmdSubscribe = 0x40
     cmdUnsubscribe = 0x41
@@ -110,9 +114,35 @@ type
 
   ProtocolError* = object of CatchableError
 
+  ## Batch operation request/response types
+  BatchGetRequest* = object
+    seq*: uint32
+    keys*: seq[string]
+
+  BatchGetResponse* = object
+    seq*: uint32
+    results*: seq[tuple[status: uint8, value: string]]
+
+  BatchSetRequest* = object
+    seq*: uint32
+    pairs*: seq[tuple[key: string, value: string]]
+
+  BatchSetResponse* = object
+    seq*: uint32
+    statuses*: seq[uint8]
+
+  BatchDeleteRequest* = object
+    seq*: uint32
+    keys*: seq[string]
+
+  BatchDeleteResponse* = object
+    seq*: uint32
+    statuses*: seq[uint8]
+
 const
   MaxKeySize* = 65535       ## 64KB max key size (2 bytes for length)
   MaxValueSize* = 32 * 1024 * 1024  ## 32MB max value size
+  MaxBatchItems* = 10000    ## Maximum number of items in a batch operation
 
 
 proc writeByte(s: var string, b: byte) =
@@ -205,6 +235,7 @@ proc decodeRequest*(data: string): Request =
                      0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,  # Barrel ops + config + stats
                      0x20,                                       # Traverse
                      0x21, 0x22, 0x23, 0x24, 0x25,              # Range queries
+                     0x26, 0x27, 0x28,                          # Batch operations
                      0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46}:     # Pub/Sub commands
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
@@ -248,6 +279,218 @@ proc decodeResponse*(data: string): Response =
   if valLen > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $valLen)
   result.value = readString(data, pos, int(valLen))
+
+
+## Batch operation encoding/decoding
+
+proc encodeBatchGetRequest*(req: BatchGetRequest): string =
+  ## Encode a batch get request
+  ## Format: ``[type:1=0x26][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  if req.keys.len > MaxBatchItems:
+    raise newException(ProtocolError, "Too many keys in batch get: " & $req.keys.len)
+
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(cmdBatchGet)))
+  result.writeUint32BE(req.seq)
+  result.writeUint32BE(uint32(req.keys.len))
+
+  for key in req.keys:
+    if key.len > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $key.len)
+    result.writeUint16BE(uint16(key.len))
+    result.add(key)
+
+proc decodeBatchGetRequest*(data: string): BatchGetRequest =
+  ## Decode a batch get request
+  var pos = 0
+
+  let cmdByte = readByte(data, pos)
+  if cmdByte != byte(ord(cmdBatchGet)):
+    raise newException(ProtocolError, "Invalid command for batch get: 0x" & cmdByte.toHex)
+
+  result.seq = readUint32BE(data, pos)
+  let count = readUint32BE(data, pos)
+
+  if count > MaxBatchItems:
+    raise newException(ProtocolError, "Batch get count too large: " & $count)
+
+  result.keys = newSeq[string](int(count))
+  for i in 0..<count:
+    let keyLen = readUint16BE(data, pos)
+    if keyLen > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $keyLen)
+    result.keys[i] = readString(data, pos, int(keyLen))
+
+proc encodeBatchGetResponse*(resp: BatchGetResponse): string =
+  ## Encode a batch get response
+  ## Format: ``[status:1=0x00][seq:4][count:4][status1:1][valLen1:4][val1:N]...[statusN:1][valLenN:4][valN:M]``
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(statusOk)))
+  result.writeUint32BE(resp.seq)
+  result.writeUint32BE(uint32(resp.results.len))
+
+  for item in resp.results:
+    result.writeByte(byte(item.status))
+    result.writeUint32BE(uint32(item.value.len))
+    if item.value.len > 0:
+      result.add(item.value)
+
+proc decodeBatchGetResponse*(data: string): BatchGetResponse =
+  ## Decode a batch get response
+  var pos = 0
+
+  let statusByte = readByte(data, pos)
+  if statusByte != byte(ord(statusOk)):
+    raise newException(ProtocolError, "Invalid status for batch get response")
+
+  result.seq = readUint32BE(data, pos)
+  let count = readUint32BE(data, pos)
+
+  result.results = newSeq[tuple[status: uint8, value: string]](int(count))
+  for i in 0..<count:
+    let itemStatus = readByte(data, pos)
+    let valLen = readUint32BE(data, pos)
+    if valLen > MaxValueSize:
+      raise newException(ProtocolError, "Value too large: " & $valLen)
+    result.results[i].status = itemStatus
+    result.results[i].value = readString(data, pos, int(valLen))
+
+proc encodeBatchSetRequest*(req: BatchSetRequest): string =
+  ## Encode a batch set request
+  ## Format: ``[type:1=0x27][seq:4][count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...``
+  if req.pairs.len > MaxBatchItems:
+    raise newException(ProtocolError, "Too many pairs in batch set: " & $req.pairs.len)
+
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(cmdBatchSet)))
+  result.writeUint32BE(req.seq)
+  result.writeUint32BE(uint32(req.pairs.len))
+
+  for (key, value) in req.pairs:
+    if key.len > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $key.len)
+    if value.len > MaxValueSize:
+      raise newException(ProtocolError, "Value too large: " & $value.len)
+    result.writeUint16BE(uint16(key.len))
+    result.add(key)
+    result.writeUint32BE(uint32(value.len))
+    result.add(value)
+
+proc decodeBatchSetRequest*(data: string): BatchSetRequest =
+  ## Decode a batch set request
+  var pos = 0
+
+  let cmdByte = readByte(data, pos)
+  if cmdByte != byte(ord(cmdBatchSet)):
+    raise newException(ProtocolError, "Invalid command for batch set: 0x" & cmdByte.toHex)
+
+  result.seq = readUint32BE(data, pos)
+  let count = readUint32BE(data, pos)
+
+  if count > MaxBatchItems:
+    raise newException(ProtocolError, "Batch set count too large: " & $count)
+
+  result.pairs = newSeq[tuple[key: string, value: string]](int(count))
+  for i in 0..<count:
+    let keyLen = readUint16BE(data, pos)
+    if keyLen > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $keyLen)
+    result.pairs[i].key = readString(data, pos, int(keyLen))
+
+    let valLen = readUint32BE(data, pos)
+    if valLen > MaxValueSize:
+      raise newException(ProtocolError, "Value too large: " & $valLen)
+    result.pairs[i].value = readString(data, pos, int(valLen))
+
+proc encodeBatchSetResponse*(resp: BatchSetResponse): string =
+  ## Encode a batch set response
+  ## Format: ``[status:1=0x00][seq:4][count:4][status1:1]...[statusN:1]``
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(statusOk)))
+  result.writeUint32BE(resp.seq)
+  result.writeUint32BE(uint32(resp.statuses.len))
+
+  for status in resp.statuses:
+    result.writeByte(byte(status))
+
+proc decodeBatchSetResponse*(data: string): BatchSetResponse =
+  ## Decode a batch set response
+  var pos = 0
+
+  let statusByte = readByte(data, pos)
+  if statusByte != byte(ord(statusOk)):
+    raise newException(ProtocolError, "Invalid status for batch set response")
+
+  result.seq = readUint32BE(data, pos)
+  let count = readUint32BE(data, pos)
+
+  result.statuses = newSeq[uint8](int(count))
+  for i in 0..<count:
+    result.statuses[i] = readByte(data, pos)
+
+proc encodeBatchDeleteRequest*(req: BatchDeleteRequest): string =
+  ## Encode a batch delete request
+  ## Format: ``[type:1=0x28][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  if req.keys.len > MaxBatchItems:
+    raise newException(ProtocolError, "Too many keys in batch delete: " & $req.keys.len)
+
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(cmdBatchDelete)))
+  result.writeUint32BE(req.seq)
+  result.writeUint32BE(uint32(req.keys.len))
+
+  for key in req.keys:
+    if key.len > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $key.len)
+    result.writeUint16BE(uint16(key.len))
+    result.add(key)
+
+proc decodeBatchDeleteRequest*(data: string): BatchDeleteRequest =
+  ## Decode a batch delete request
+  var pos = 0
+
+  let cmdByte = readByte(data, pos)
+  if cmdByte != byte(ord(cmdBatchDelete)):
+    raise newException(ProtocolError, "Invalid command for batch delete: 0x" & cmdByte.toHex)
+
+  result.seq = readUint32BE(data, pos)
+  let count = readUint32BE(data, pos)
+
+  if count > MaxBatchItems:
+    raise newException(ProtocolError, "Batch delete count too large: " & $count)
+
+  result.keys = newSeq[string](int(count))
+  for i in 0..<count:
+    let keyLen = readUint16BE(data, pos)
+    if keyLen > MaxKeySize:
+      raise newException(ProtocolError, "Key too large: " & $keyLen)
+    result.keys[i] = readString(data, pos, int(keyLen))
+
+proc encodeBatchDeleteResponse*(resp: BatchDeleteResponse): string =
+  ## Encode a batch delete response
+  ## Format: ``[status:1=0x00][seq:4][count:4][status1:1]...[statusN:1]``
+  result = newStringOfCap(1 + 4 + 4)
+  result.writeByte(byte(ord(statusOk)))
+  result.writeUint32BE(resp.seq)
+  result.writeUint32BE(uint32(resp.statuses.len))
+
+  for status in resp.statuses:
+    result.writeByte(byte(status))
+
+proc decodeBatchDeleteResponse*(data: string): BatchDeleteResponse =
+  ## Decode a batch delete response
+  var pos = 0
+
+  let statusByte = readByte(data, pos)
+  if statusByte != byte(ord(statusOk)):
+    raise newException(ProtocolError, "Invalid status for batch delete response")
+
+  result.seq = readUint32BE(data, pos)
+  let count = readUint32BE(data, pos)
+
+  result.statuses = newSeq[uint8](int(count))
+  for i in 0..<count:
+    result.statuses[i] = readByte(data, pos)
 
 
 ## Traversal request/response extensions
@@ -617,6 +860,9 @@ proc `$`*(cmd: Command): string =
   of cmdRangeCount: "RANGE_COUNT"
   of cmdRangeKeys: "RANGE_KEYS"
   of cmdPrefixKeys: "PREFIX_KEYS"
+  of cmdBatchGet: "BATCH_GET"
+  of cmdBatchSet: "BATCH_SET"
+  of cmdBatchDelete: "BATCH_DELETE"
   of cmdCreateBarrel: "CREATE_BARREL"
   of cmdOpenBarrel: "OPEN_BARREL"
   of cmdUseBarrel: "USE_BARREL"
