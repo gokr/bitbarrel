@@ -269,9 +269,9 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
     discard client.useBarrel("bench_test")
     echo "  ✓ Barrel created"
 
-    # Write benchmark (pipelined)
+    # Write benchmark (batch)
     echo ""
-    echo "  Running writes (pipelined)..."
+    echo "  Running writes (batch)..."
 
     # Build all pairs first
     var pairs: seq[(string, string)] = @[]
@@ -294,9 +294,9 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
 
     sleep(100)
 
-    # Read benchmark (pipelined)
+    # Read benchmark (batch)
     echo ""
-    echo "  Running reads (pipelined)..."
+    echo "  Running reads (batch)..."
 
     var keys: seq[string] = @[]
     for i in 0..<numOps:
@@ -381,17 +381,35 @@ when defined(useMySQL):
 
       # Write benchmark
       echo ""
-      echo "  Running writes (with transaction)..."
+      echo "  Running writes (batch multi-row INSERT)..."
       let writeStart = cpuTime()
 
       conn.exec(sql"START TRANSACTION")
-      for i in 0..<numOps:
-        let key = &"key_{i:08}"
-        let value = &"value_{i:08}_" & repeat('x', 40)
+
+      # Use multi-row INSERT for better performance (batch similar to BitBarrel setMany)
+      let batchSize = 1000
+      for batchStart in countup(0, numOps - 1, batchSize):
+        let batchEnd = min(batchStart + batchSize, numOps)
+        var values: seq[string] = @[]
+
+        for i in batchStart..<batchEnd:
+          let key = &"key_{i:08}"
+          let value = &"value_{i:08}_" & repeat('x', 40)
+          # Use placeholders to prevent SQL injection
+          values.add("(?, ?)")
+
+        let insertSql = "INSERT INTO kv_store (kv_key, kv_value) VALUES " & values.join(", ")
         try:
-          conn.exec(sql"INSERT INTO kv_store (kv_key, kv_value) VALUES (?, ?)", key, value)
+          var allParams: seq[string] = @[]
+          for i in batchStart..<batchEnd:
+            let key = &"key_{i:08}"
+            let value = &"value_{i:08}_" & repeat('x', 40)
+            allParams.add(key)
+            allParams.add(value)
+          conn.exec(sql(insertSql), allParams)
         except DbError:
           discard
+
       conn.exec(sql"COMMIT")
 
       let writeElapsed = cpuTime() - writeStart
@@ -407,14 +425,24 @@ when defined(useMySQL):
 
       # Read benchmark
       echo ""
-      echo "  Running reads..."
+      echo "  Running reads (batch WHERE IN)..."
 
       let readStart = cpuTime()
 
-      for i in 0..<numOps:
-        let key = &"key_{i:08}"
-        let row = conn.getRow(sql"SELECT kv_value FROM kv_store WHERE kv_key = ?", key)
-        discard row.len
+      # Use batch WHERE IN for better performance (similar to BitBarrel getMany)
+      let readBatchSize = 1000
+      for batchStart in countup(0, numOps - 1, readBatchSize):
+        let batchEnd = min(batchStart + readBatchSize, numOps)
+        var keys: seq[string] = @[]
+
+        for i in batchStart..<batchEnd:
+          keys.add(&"key_{i:08}")
+
+        # Build WHERE IN clause with placeholders
+        let placeholders = ",".join(mapIt(keys, "?"))
+        let query = sql(&"SELECT kv_key, kv_value FROM kv_store WHERE kv_key IN ({placeholders})")
+        let rows = conn.getAllRows(query, keys)
+        discard rows.len
 
       let readElapsed = cpuTime() - readStart
       result.reads = BenchmarkResult(
@@ -556,11 +584,12 @@ proc main() =
   echo ""
   echo "  Notes:"
   echo "  ───────────────────────────────────"
-  echo "  • SQLite uses transactions (batching) for better write throughput"
-  echo "  • MySQL uses transactions (batching) for better write throughput"
+  echo "  • BitBarrel server uses binary batch protocol (setMany/getMany)"
+  echo "  • MySQL uses multi-row INSERT and WHERE IN for batch operations"
   echo "  • BitBarrel's advantage is greatest for write-heavy workloads"
   echo "  • For read workloads, the in-memory index provides significant speedup"
   echo "  • Server performance includes network overhead"
+  echo "  • Batch size: 1000 operations per request for both systems"
   echo ""
 
 when isMainModule:
