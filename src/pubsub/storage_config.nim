@@ -3,9 +3,8 @@
 ## Defines configuration types for history storage strategies.
 ## Supports memory-only, shared barrel, per-topic barrel, and hybrid modes.
 
-import std/[tables, strutils, sets]
-import ../../bitbarrel/config
-import ./pubsub
+import std/[tables, strutils, os]
+import ../bitbarrel/barrel
 
 type
   ## Storage strategy for topic history
@@ -30,8 +29,7 @@ type
     compressionEnabled*: bool
     compressionThreshold*: int  ## Min size to compress (bytes)
 
-    ## TTL settings (if backend supports it)
-    ttlSeconds*: int   ## 0 = no TTL
+    ttlSeconds*: int
 
     ## Retention settings
     maxMessages*: int        ## 0 = unlimited, applies to memory backends
@@ -60,6 +58,9 @@ type
     backendCacheSize*: int     ## Max cached backends (for per-topic)
     backendIdleTimeout*: int   ## Seconds before closing idle backends
     batchSize*: int            ## Batch write size
+
+# Forward declaration
+proc matchesTopicPattern(pattern, topic: string): bool
 
 proc initStorageConfig*(): StorageConfig =
   ## Initialize default storage configuration
