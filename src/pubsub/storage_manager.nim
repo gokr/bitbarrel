@@ -3,12 +3,13 @@
 ## Manages storage backend instances, handles strategy resolution per topic,
 ## and provides caching for performance. Supports dynamic backend creation.
 
-import std/[tables, locks, times, sequtils, os]
-import ../pubsub
+import std/[tables, locks, times, sequtils]
+import ./pubsub
 import ./storage_backend
 import ./storage_config
 import ./memory_backend
 import ./shared_barrel_backend
+import ../bitbarrel/barrel
 
 type
   StorageManager* = ref object
@@ -48,11 +49,10 @@ proc newStorageManager*(config: StorageConfig): StorageManager =
     topicBackendLock: Lock(),
     lastAccess: initTable[string, int64](),
     accessLock: Lock(),
-    cleanupTimer: nil,
     cleanupRunning: false
   )
 
-proc initSharedBackend(manager: StorageManager) {.gcsafe.} =
+proc initSharedBackend*(manager: StorageManager) =
   ## Initialize shared barrel backend if needed
   if manager.config.defaultStrategy == ssSharedBarrel or
      manager.config.defaultStrategy == ssHybrid:
@@ -67,7 +67,7 @@ proc initSharedBackend(manager: StorageManager) {.gcsafe.} =
       )
 
 proc getOrCreateBackend(manager: StorageManager,
-                       topic: string): HistoryStorageBackend {.gcsafe.} =
+                       topic: string): HistoryStorageBackend  =
   ## Get cached backend for topic or create new one
   var backend: HistoryStorageBackend
 
@@ -109,15 +109,16 @@ proc getOrCreateBackend(manager: StorageManager,
     var barrelConfig = defaultBarrelConfig()
     barrelConfig.mode = bmCritBit  # Required for ordered queries
     barrelConfig.writeBufferSize = 64 * 1024  # 64KB default
-    barrelConfig.syncMode = smNone  # Can be overridden from topicConfig
+    barrelConfig.syncMode = None  # Can be overridden from topicConfig
 
     # Enable compression if configured
     if topicConfig.compressionEnabled:
-      barrelConfig.compressionConfig = addr(CompressionConfig(
+      var compressionCfg = CompressionConfig(
         enabled: true,
-        algorithm: caLZ4,
-        threshold: topicConfig.compressionThreshold
-      ))
+        threshold: topicConfig.compressionThreshold,
+        level: clDefault
+      )
+      barrelConfig.compressionConfig = addr compressionCfg
 
     backend = newSharedBarrelBackend(barrelPath, barrelConfig,
                                       manager.config.batchSize)
@@ -158,18 +159,18 @@ proc getOrCreateBackend(manager: StorageManager,
 
   return backend
 
-proc resolveStrategy(manager: StorageManager, topic: string): StorageStrategy {.gcsafe.} =
+proc resolveStrategy(manager: StorageManager, topic: string): StorageStrategy  =
   ## Resolve storage strategy for a topic
   result = manager.config.resolveStrategy(topic)
 
 proc setTopicStrategy(manager: StorageManager, topic: string,
-                      strategy: StorageStrategy) {.gcsafe.} =
+                      strategy: StorageStrategy)  =
   ## Override storage strategy for a specific topic
   ## For hybrid mode - specifies which backend to use
   withLock manager.topicBackendLock:
     manager.topicBackendTypes[topic] = strategy
 
-proc flushPending(manager: StorageManager, topic: string) {.gcsafe.} =
+proc flushPending(manager: StorageManager, topic: string)  =
   ## Flush pending messages for a topic
   let backend = manager.getOrCreateBackend(topic)
 
@@ -177,7 +178,7 @@ proc flushPending(manager: StorageManager, topic: string) {.gcsafe.} =
     let sharedBackend = SharedBarrelBackend(backend)
     sharedBackend.flushPending(topic)
 
-proc flushAllPending(manager: StorageManager) {.gcsafe.} =
+proc flushAllPending(manager: StorageManager)  =
   ## Flush all pending messages across all backends
   var topics: seq[string]
 
@@ -187,7 +188,7 @@ proc flushAllPending(manager: StorageManager) {.gcsafe.} =
   for topic in topics:
     manager.flushPending(topic)
 
-proc cleanupIdleBackends(manager: StorageManager) {.gcsafe.} =
+proc cleanupIdleBackends(manager: StorageManager)  =
   ## Remove backends that haven't been accessed recently
   let now = getTime().toUnix() * 1000
   let timeoutMs = manager.config.backendIdleTimeout * 1000
@@ -220,7 +221,7 @@ proc cleanupIdleBackends(manager: StorageManager) {.gcsafe.} =
     else:
       backend.close()
 
-proc getMemoryBackend(manager: StorageManager, topic: string): MemoryStorageBackend {.gcsafe.} =
+proc getMemoryBackend*(manager: StorageManager, topic: string): MemoryStorageBackend =
   ## Get memory backend for a topic (for testing/debugging)
   let backend = manager.getOrCreateBackend(topic)
 
@@ -229,14 +230,14 @@ proc getMemoryBackend(manager: StorageManager, topic: string): MemoryStorageBack
 
   return nil
 
-proc getSharedBackend(manager: StorageManager): SharedBarrelBackend {.gcsafe.} =
+proc getSharedBackend(manager: StorageManager): SharedBarrelBackend  =
   ## Get shared barrel backend
   if manager.sharedBackend.isNil:
     manager.initSharedBackend()
 
   return manager.sharedBackend
 
-proc shutdown(manager: StorageManager) {.gcsafe.} =
+proc shutdown*(manager: StorageManager) =
   ## Shutdown storage manager and cleanup all backends
   manager.cleanupRunning = false
 
@@ -268,7 +269,7 @@ proc getStats(manager: StorageManager): tuple[
   cachedBackends: int,
   pendingBatches: int,
   memoryUsage: tuple[topics: int, messages: int, bytes: int]
-] {.gcsafe.} =
+]  =
   ## Get storage manager statistics
   result.cachedTopics = 0
   result.cachedBackends = 0
@@ -294,30 +295,28 @@ proc getStats(manager: StorageManager): tuple[
               manager.config.resolveStrategy(topic) == ssSharedBarrel):
         result.cachedTopics += 1
 
-  withLock manager.batchLock:
-    for _, batch in manager.pendingMessages:
-      result.pendingBatches += batch.len
+  # Note: Batch tracking is done at the backend level, not in StorageManager
 
 ## High-level operations that delegate to backends
 
-proc storeMessage(manager: StorageManager, topic: string,
-                  message: Message): bool {.gcsafe.} =
+proc storeMessage*(manager: StorageManager, topic: string,
+                   message: Message): bool =
   ## Store a message using appropriate backend
   let backend = manager.getOrCreateBackend(topic)
   return backend.store(topic, message)
 
-proc retrieveMessages(manager: StorageManager, topic: string,
-                     params: HistoryQueryParams): seq[Message] {.gcsafe.} =
+proc retrieveMessages*(manager: StorageManager, topic: string,
+                       params: HistoryQueryParams): seq[Message] =
   ## Retrieve messages using appropriate backend
   let backend = manager.getOrCreateBackend(topic)
   return backend.retrieve(topic, params)
 
-proc clearTopicHistory(manager: StorageManager, topic: string): bool {.gcsafe.} =
+proc clearTopicHistory*(manager: StorageManager, topic: string): bool =
   ## Clear history for a topic
   let backend = manager.getOrCreateBackend(topic)
   return backend.clear(topic)
 
-proc getTopicCount(manager: StorageManager, topic: string): int {.gcsafe.} =
+proc getTopicCount*(manager: StorageManager, topic: string): int =
   ## Get message count for a topic
   let backend = manager.getOrCreateBackend(topic)
   return backend.count(topic)
