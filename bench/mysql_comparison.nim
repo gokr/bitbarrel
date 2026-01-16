@@ -16,7 +16,7 @@
 ## Note: MySQL benchmark requires libmysqlclient.so to be installed.
 ## If MySQL is not available, the benchmark will skip MySQL tests gracefully.
 
-import std/[times, strformat, os, strutils, osproc, net]
+import std/[times, strformat, os, strutils, osproc, net, sequtils]
 import db_connector/db_sqlite
 import ../src/bitbarrel/barrel
 import ../src/network/client
@@ -439,8 +439,10 @@ when defined(useMySQL):
           keys.add(&"key_{i:08}")
 
         # Build WHERE IN clause with placeholders
-        let placeholders = ",".join(mapIt(keys, "?"))
-        let query = sql(&"SELECT kv_key, kv_value FROM kv_store WHERE kv_key IN ({placeholders})")
+        var placeholders: seq[string] = @[]
+        for i in 0..<keys.len:
+          placeholders.add("?")
+        let query = sql(&"SELECT kv_key, kv_value FROM kv_store WHERE kv_key IN ({placeholders.join(\",\")})")
         let rows = conn.getAllRows(query, keys)
         discard rows.len
 
