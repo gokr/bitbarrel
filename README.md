@@ -32,20 +32,23 @@ echo "User name: ", db.get("user:42:name")
 db.close()
 ```
 
-### Run the demos
+### Run the examples
 
 ```bash
 # Install dependencies first
 nimble install
 
-# Run basic CRUD demo
-nim c -r demos/basic_demo.nim
+# Run basic CRUD example
+nimble exampleBasic
 
-# Run performance demo
-nim c -r demos/performance_demo.nim
+# Run performance example
+nimble examplePerformance
 
-# Run advanced features demo
-nim c -r demos/advanced_demo.nim
+# Run advanced features example
+nimble exampleAdvanced
+
+# Run Pub/Sub examples
+nimble examplePlugins
 
 # Run all tests
 nimble test
@@ -550,7 +553,7 @@ server.start()
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples
 - **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**: Quick setup guide
 - **[docs/GETTING_STARTED.md#automatic-barrel-discovery](docs/GETTING_STARTED.md#automatic-barrel-discovery)**: Automatic barrel discovery on startup
-- **[demos/README.md](demos/README.md)**: Demo documentation
+- **[examples/README.md](examples/README.md)**: Example documentation
 
 ### Test Suite
 - **[tests/README.md](tests/README.md)**: Complete test suite guide

@@ -540,7 +540,7 @@ BitBarrel proves that sometimes the simplest designs—properly evolved—are th
 
 ```bash
 nimble install bitbarrel
-nim c -r demos/basic_demo.nim
+nim c -r examples/basic_demo.nim
 ```
 
 Baseline performance benchmarks on Linux x86_64 with SSD show ~553 writes/sec and ~98,020 reads/sec for representative workloads. See `bench/results_baseline.txt` for complete benchmark results including sync mode variations.

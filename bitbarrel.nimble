@@ -164,8 +164,8 @@ task benchComprehensive, "Run comprehensive benchmark (100K ops)":
 task benchCrunchy, "Run performance benchmark with crunchy CRC32":
   exec "nim c -d:release -d:useCrunchy -r bench/simple_bench.nim"
 
-task benchMySQL, "Run BitBarrel vs SQLite performance comparison":
-  exec "nim c -d:release -r --path:src bench/mysql_comparison.nim"
+task benchMySQL, "Run BitBarrel vs MySQL performance comparison":
+  exec "nim c -d:release -d:useMySQL -r --path:src bench/mysql_comparison.nim"
 
 # Task for stress testing
 

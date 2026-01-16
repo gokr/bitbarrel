@@ -1433,7 +1433,7 @@ when isMainModule:
 - Check out the [Architecture Guide](./network-architecture.md) for design details
 - See the [Pub/Sub User Guide](../USER_GUIDE/pubsub.md) for real-time messaging documentation
 - Explore the Go client implementation (coming soon)
-- Run the examples in the `demos/network/` directory
+- Run the examples in the `examples/networking/` directory
 
 ## Support
 

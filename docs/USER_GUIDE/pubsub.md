@@ -848,7 +848,7 @@ var storageManager = StorageManager.new(config)
 
 - Explore [PROTOCOL.md](../PROTOCOL.md) for complete protocol specification
 - Check client-specific documentation for API details
-- Review [examples](../../demos/) for complete working examples
+- Review [examples](../../examples/) for complete working examples
 - See [Storage Deep Dive](../FEATURES/pubsub-storage.md) for implementation details
 
 Need help? Check the main [README](../../README.md) for support resources.

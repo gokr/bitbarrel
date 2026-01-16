@@ -141,7 +141,8 @@ export class Protocol {
     if (offset + valLen > data.length) {
       throw new ProtocolError('Truncated response: value extends beyond buffer');
     }
-    const value = valLen > 0 ? data.toString('utf8', offset, offset + valLen) : '';
+    // Use latin1 encoding to preserve binary data (range queries return binary payloads)
+    const value = valLen > 0 ? data.toString('latin1', offset, offset + valLen) : '';
 
     return { status, seq, value };
   }

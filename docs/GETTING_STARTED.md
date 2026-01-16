@@ -185,4 +185,4 @@ nimble bench
 
 - Run tests: `nimble test`
 - Check architecture: [DEVELOPER_GUIDE/architecture.md](DEVELOPER_GUIDE/architecture.md)
-- View demos: `demos/` directory
+- View demos: `examples/` directory

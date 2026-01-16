@@ -103,12 +103,12 @@ This BitBarrel uses the Bitcask storage model:
 
 ## Running Demos
 
-### Basic Demo (demos/basic_demo.nim)
+### Basic Demo (examples/basic_demo.nim)
 
 Demonstrates CRUD operations using the high-level Barrel API:
 
 ```bash
-nim c -r demos/basic_demo.nim
+nim c -r examples/basic_demo.nim
 ```
 
 **What it does:**
@@ -143,20 +143,20 @@ nim c -r demos/basic_demo.nim
 ...
 ```
 
-### Performance Demo (demos/performance_demo.nim)
+### Performance Demo (examples/performance_demo.nim)
 
 Demonstrates performance tuning options:
 
 ```bash
-nim c -r demos/performance_demo.nim
+nim c -r examples/performance_demo.nim
 ```
 
-### Advanced Demo (demos/advanced_demo.nim)
+### Advanced Demo (examples/advanced_demo.nim)
 
 Demonstrates advanced features like barrel modes and compression:
 
 ```bash
-nim c -r demos/advanced_demo.nim
+nim c -r examples/advanced_demo.nim
 ```
 
 ## Benchmarking
@@ -784,7 +784,7 @@ ulimit -n 65536
 Compile with debug symbols and runtime checks:
 
 ```bash
-nim c -d:debug -r demos/basic_demo.nim
+nim c -d:debug -r examples/basic_demo.nim
 ```
 
 This enables:

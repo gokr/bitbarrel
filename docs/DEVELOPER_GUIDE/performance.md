@@ -103,7 +103,7 @@ nim c -d:release -r bench/stress_test.nim
 
 ## Performance Tuning
 
-The `demos/performance_demo.nim` demonstrates how to:
+The `examples/performance_demo.nim` demonstrates how to:
 - Switch between sync modes (fastest vs safest)
 - Adjust buffer sizes
 - Calculate performance improvements
@@ -117,7 +117,7 @@ The `demos/performance_demo.nim` demonstrates how to:
 
 ## See Also
 - `nimble bench --help` - Shows all available commands
-- `demos/performance_demo.nim` - Performance tuning examples
+- `examples/performance_demo.nim` - Performance tuning examples
 - `bench/results_baseline.txt` - Baseline performance results
 - **Current benchmarks**: See "Current Benchmark Results" section above for latest numbers
 
@@ -127,7 +127,7 @@ For current project structure, see the repository root. Key directories:
 - `src/` - Source code
 - `tests/` - Test suite (25 test files)
 - `bench/` - Benchmark suite
-- `demos/` - Demo programs
+- `examples/` - Demo programs
 - `docs/` - Documentation (see `docs/TUTORIAL.md` for usage guide)
 
 **Note:** This file section is outdated. See repository for current structure.

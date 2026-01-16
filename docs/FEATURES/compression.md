@@ -156,7 +156,7 @@ To enable compression on an existing BitBarrel deployment:
 - Verify threshold is appropriate for your data (values smaller than threshold won't be compressed)
 - For debugging, check compile-time algorithm selection:
   ```bash
-  nim c -r -d:lz4Compression --path:src demos/advanced_demo.nim
+  nim c -r -d:lz4Compression --path:src examples/advanced/advanced.nim
   ```
 
 ### Build Errors with LZ4
