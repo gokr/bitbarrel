@@ -276,7 +276,7 @@ class TestPubSub:
             assert len(subscribers) >= 2
 
             # Verify all subscription IDs are unique
-            ids = {s.id for s in subscribers}
+            ids = {s.sub_id for s in subscribers}
             assert len(ids) == len(subscribers)
         finally:
             client2.close()

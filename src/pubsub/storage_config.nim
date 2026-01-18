@@ -92,6 +92,8 @@ proc setSharedBarrelConfig*(config: var StorageConfig,
   config.defaultStrategy = ssSharedBarrel
   config.sharedBarrelPath = path
   config.sharedBarrelConfig = barrelConfig
+  config.defaultTopicConfig.strategy = ssSharedBarrel
+  config.defaultTopicConfig.indexMode = barrelConfig.mode
 
 proc setPerTopicBarrelConfig*(config: var StorageConfig,
                                baseDir: string,
