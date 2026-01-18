@@ -3,7 +3,7 @@
 ## Stores all topic messages in a single BitBarrel barrel with efficient
 ## prefix-based queries. Uses bmCritBit mode for ordered retrieval.
 
-import std/[tables, locks, sequtils, strutils, json]
+import std/[tables, locks, sequtils, strutils, json, algorithm]
 import ./pubsub
 import ./storage_backend
 import ../bitbarrel/barrel
@@ -220,7 +220,8 @@ method retrieve(backend: SharedBarrelBackend, topic: string,
   if params.limit > 0 and allMessages.len > params.limit:
     allMessages = allMessages[^params.limit..^1]
 
-  return allMessages
+  # Return newest-first order for history display
+  return reversed(allMessages)
 
 method clear(backend: SharedBarrelBackend, topic: string): bool {.gcsafe.} =
   ## Clear all messages for a topic

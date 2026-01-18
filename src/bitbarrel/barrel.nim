@@ -266,9 +266,18 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
 
   # Load persisted config if it exists, otherwise use provided config
   let persistedConfig = loadBarrelConfigYaml(path)
-  let effectiveConfig = if persistedConfig.isSome(): persistedConfig.get() else: config
+  let isNewBarrel = persistedConfig.isNone()
+  let effectiveConfig = if isNewBarrel: config else: persistedConfig.get()
 
   result.config = effectiveConfig
+
+  # Save config to yaml if this is a new barrel (no existing yaml)
+  # This ensures discoverBarrels won't later infer a wrong mode
+  if isNewBarrel:
+    try:
+      saveBarrelConfigYaml(path, effectiveConfig)
+    except CatchableError:
+      discard  # Non-fatal - barrel still usable
   result.mode = effectiveConfig.mode
   result.closed = false
   result.dataFiles = initTable[uint32, DataFile]()
