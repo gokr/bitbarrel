@@ -104,6 +104,10 @@ class BitBarrelClient {
   ///
   /// Thread-safe: holds lock for entire send-receive cycle to prevent
   /// interleaving from concurrent calls and sequence number collisions.
+  ///
+  /// Note: This method filters out PubSub events (command 0xFF) that may
+  /// be interleaved with the expected response. PubSub events are passed
+  /// to the message handler callback if set.
   Future<String> _sendRequest({
     required int command,
     required String key,
@@ -139,16 +143,49 @@ class BitBarrelClient {
         },
       );
 
-      // Receive response with timeout
-      final responseData = await ws.receive().timeout(
-        _config.requestTimeout,
-        onTimeout: () {
+      // PubSub command is 0xFF - used to filter out PubSub events
+      const int pubsubCommand = 0xFF;
+
+      // Loop to receive response, filtering out any interleaved PubSub events
+      ({int status, int seq, String value}) response =
+          (status: 0, seq: 0, value: '');
+      bool receivedExpectedResponse = false;
+      final startTime = DateTime.now();
+
+      while (!receivedExpectedResponse) {
+        // Check for overall timeout
+        if (DateTime.now().difference(startTime) > _config.requestTimeout) {
           _ws = null;
           throw TimeoutException(_config.requestTimeout, operation: 'receive');
-        },
-      );
+        }
 
-      final response = ProtocolDecoder.decodeResponse(responseData);
+        // Receive next message
+        final data = await ws.receive().timeout(
+          _config.requestTimeout,
+          onTimeout: () {
+            _ws = null;
+            throw TimeoutException(_config.requestTimeout, operation: 'receive');
+          },
+        );
+
+        // Check if this is a PubSub event (command 0xFF)
+        if (data.isNotEmpty && data[0] == pubsubCommand) {
+          // This is a PubSub event, pass to message handler and continue waiting
+          final handler = _onMessage;
+          if (handler != null) {
+            try {
+              final event = ProtocolDecoder.decodePubSubEvent(data);
+              handler(event);
+            } catch (e) {
+              // Skip malformed events
+            }
+          }
+        } else {
+          // This is a response
+          response = ProtocolDecoder.decodeResponse(data);
+          receivedExpectedResponse = true;
+        }
+      }
 
       // Verify sequence
       if (response.seq != seq) {
@@ -637,17 +674,18 @@ class BitBarrelClient {
   Future<bool> unsubscribe(String subId) async {
     final existed = _subscriptions.contains(subId);
 
+    if (!existed) {
+      return false;
+    }
+
     await _sendRequest(
       command: Command.unsubscribe,
       key: subId,
       value: '',
     );
 
-    if (existed) {
-      _subscriptions.remove(subId);
-      return true;
-    }
-    return false;
+    _subscriptions.remove(subId);
+    return true;
   }
 
   /// Unsubscribe from all active subscriptions

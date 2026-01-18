@@ -367,9 +367,17 @@ class SubscriptionInfo {
 
   /// Create SubscriptionInfo from JSON
   factory SubscriptionInfo.fromJson(Map<String, dynamic> json) {
+    /// Helper to safely extract int from JSON (handles both int and double)
+    int toInt(dynamic value, int fallback) {
+      if (value == null) return fallback;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return fallback;
+    }
+
     return SubscriptionInfo(
       id: json['subscriptionId'] as String? ?? '',
-      clientId: json['clientId'] as int? ?? 0,
+      clientId: toInt(json['clientId'], 0),
       topic: json['topic'] as String? ?? '',
       pattern: json['pattern'] as String? ?? '',
     );
@@ -406,11 +414,19 @@ class PresenceMember {
 
   /// Create PresenceMember from JSON
   factory PresenceMember.fromJson(Map<String, dynamic> json) {
+    /// Helper to safely extract int from JSON (handles both int and double)
+    int toInt(dynamic value, int fallback) {
+      if (value == null) return fallback;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return fallback;
+    }
+
     return PresenceMember(
-      clientId: json['clientId'] as int? ?? 0,
+      clientId: toInt(json['clientId'], 0),
       username: json['username'] as String? ?? '',
-      joinedAt: json['joinedAt'] as int? ?? 0,
-      lastPing: json['lastPing'] as int? ?? 0,
+      joinedAt: toInt(json['joinedAt'], 0),
+      lastPing: toInt(json['lastPing'], 0),
       metadata: json['metadata'] != null
           ? jsonEncode(json['metadata'])
           : '',
@@ -466,11 +482,19 @@ class TopicInfo {
 
   /// Create TopicInfo from JSON
   factory TopicInfo.fromJson(Map<String, dynamic> json) {
+    /// Helper to safely extract int from JSON (handles both int and double)
+    int toInt(dynamic value, int fallback) {
+      if (value == null) return fallback;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return fallback;
+    }
+
     return TopicInfo(
       name: json['name'] as String? ?? '',
-      sequence: json['sequence'] as int? ?? 0,
-      subscriberCount: json['subscriberCount'] as int? ?? 0,
-      messageCount: json['messageCount'] as int? ?? 0,
+      sequence: toInt(json['sequence'], 0),
+      subscriberCount: toInt(json['subscriberCount'], 0),
+      messageCount: toInt(json['messageCount'], 0),
     );
   }
 }

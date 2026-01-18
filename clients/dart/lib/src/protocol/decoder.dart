@@ -317,10 +317,11 @@ class ProtocolDecoder {
   // ============================================================================
 
   /// Decode a PubSub event from server
-  /// Format: [cmd:1][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
+  /// Format: [cmd:1][seq:4][topicLen:2][topic:N][msgType:1][seq:8][ts:8][headersLen:4][headers:M][payloadLen:4][payload:P]
+  /// Note: The first 4-byte seq is a placeholder (always 0), the actual sequence is 8 bytes later
   static PubSubEvent decodePubSubEvent(Uint8List data) {
-    if (data.length < 32) {
-      throw ProtocolException('PubSub event too short: ${data.length} bytes (minimum 32)');
+    if (data.length < 36) {
+      throw ProtocolException('PubSub event too short: ${data.length} bytes (minimum 36)');
     }
 
     // Check command (should be 0xFF)
@@ -330,6 +331,9 @@ class ProtocolDecoder {
 
     final buffer = ByteData.sublistView(data);
     var offset = 1; // Skip command byte
+
+    // Skip 4-byte sequence placeholder
+    offset += 4;
 
     // Topic
     if (offset + 2 > data.length) {
@@ -350,7 +354,7 @@ class ProtocolDecoder {
     }
     final messageType = data[offset++];
 
-    // Sequence (8 bytes)
+    // Sequence (8 bytes) - actual message sequence
     if (offset + 8 > data.length) {
       throw ProtocolException('Truncated PubSub event: missing sequence');
     }
@@ -369,14 +373,14 @@ class ProtocolDecoder {
     offset += 4;
     final tsLow = buffer.getUint32(offset, Endian.big);
     offset += 4;
-    final timestamp = (tsHigh << 32).toDouble() + tsLow;
+    final timestamp = (tsHigh << 32) + tsLow;
 
     // Headers
-    if (offset + 2 > data.length) {
+    if (offset + 4 > data.length) {
       throw ProtocolException('Truncated PubSub event: missing headers length');
     }
-    final headersLen = buffer.getUint16(offset, Endian.big);
-    offset += 2;
+    final headersLen = buffer.getUint32(offset, Endian.big);
+    offset += 4;
 
     String headers;
     if (headersLen == 0) {
@@ -410,7 +414,7 @@ class ProtocolDecoder {
       topic: topic,
       messageType: messageType,
       sequence: sequence,
-      timestamp: timestamp.toInt(),
+      timestamp: timestamp,
       headers: headers,
       payload: payload,
     );
@@ -467,15 +471,23 @@ class ProtocolDecoder {
   /// Decode getHistory response
   /// Returns a list of PubSubEvent from JSON array
   static List<PubSubEvent> decodeHistoryResponse(String data) {
+    /// Helper to safely extract int from JSON (handles both int and double)
+    int toInt(dynamic value, int fallback) {
+      if (value == null) return fallback;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return fallback;
+    }
+
     try {
       final json = jsonDecode(data) as List<dynamic>;
       return json.map((item) {
         final obj = item as Map<String, dynamic>;
         return PubSubEvent(
           topic: obj['topic'] as String? ?? '',
-          messageType: obj['messageType'] as int? ?? 0,
-          sequence: obj['sequence'] as int? ?? 0,
-          timestamp: obj['timestamp'] as int? ?? 0,
+          messageType: toInt(obj['messageType'], 0),
+          sequence: toInt(obj['sequence'], 0),
+          timestamp: toInt(obj['timestamp'], 0),
           headers: obj['headers'] != null ? jsonEncode(obj['headers']) : '',
           payload: obj['payload'] as String? ?? '',
         );
@@ -488,6 +500,14 @@ class ProtocolDecoder {
   /// Decode getPresence response
   /// Returns a PresenceInfo object from JSON
   static PresenceInfo decodePresenceResponse(String topic, String data) {
+    /// Helper to safely extract int from JSON (handles both int and double)
+    int toInt(dynamic value, int? fallback) {
+      if (value == null) return fallback ?? 0;
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      return fallback ?? 0;
+    }
+
     try {
       // Response can be either:
       // 1. Single topic response: [{"topic": "...", "members": [...], "lastUpdate": ...}]
@@ -501,7 +521,7 @@ class ProtocolDecoder {
         final obj = item as Map<String, dynamic>;
         if (obj['topic'] == topic) {
           // Found our topic
-          lastUpdate = obj['lastUpdate'] as int? ?? lastUpdate;
+          lastUpdate = toInt(obj['lastUpdate'], lastUpdate);
 
           final membersArray = obj['members'] as List<dynamic>?;
           if (membersArray != null) {

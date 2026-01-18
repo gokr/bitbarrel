@@ -204,7 +204,7 @@ class ProtocolEncoder {
   // ============================================================================
 
   /// Encode subscribe request
-  /// Format: [topicLen:2][topic][patternLen:2][pattern][options:1]
+  /// Format: [options:1][topicLen:2][topic][patternLen:2][pattern]
   static Uint8List encodeSubscribeRequest({
     required String topic,
     required String pattern,
@@ -213,10 +213,13 @@ class ProtocolEncoder {
     final topicBytes = utf8.encode(topic);
     final patternBytes = utf8.encode(pattern);
 
-    final totalSize = 2 + topicBytes.length + 2 + patternBytes.length + 1;
+    final totalSize = 1 + 2 + topicBytes.length + 2 + patternBytes.length;
     final buffer = ByteData(totalSize);
 
     var offset = 0;
+
+    // Options (first!)
+    buffer.setUint8(offset++, options);
 
     // Topic
     buffer.setUint16(offset, topicBytes.length, Endian.big);
@@ -232,14 +235,11 @@ class ProtocolEncoder {
       buffer.setUint8(offset++, patternBytes[i]);
     }
 
-    // Options
-    buffer.setUint8(offset, options);
-
     return buffer.buffer.asUint8List();
   }
 
   /// Encode publish request
-  /// Format: [topicLen:2][topic][msgType:1][headersLen:2][headers][payloadLen:4][payload]
+  /// Format: [topicLen:2][topic][msgType:1][headersLen:4][headers][payloadLen:4][payload]
   static Uint8List encodePublishRequest({
     required String topic,
     required int msgType,
@@ -251,7 +251,7 @@ class ProtocolEncoder {
     final payloadBytes = utf8.encode(payload);
 
     final totalSize =
-        2 + topicBytes.length + 1 + 2 + headersBytes.length + 4 + payloadBytes.length;
+        2 + topicBytes.length + 1 + 4 + headersBytes.length + 4 + payloadBytes.length;
     final buffer = ByteData(totalSize);
 
     var offset = 0;
@@ -267,8 +267,8 @@ class ProtocolEncoder {
     buffer.setUint8(offset++, msgType);
 
     // Headers
-    buffer.setUint16(offset, headersBytes.length, Endian.big);
-    offset += 2;
+    buffer.setUint32(offset, headersBytes.length, Endian.big);
+    offset += 4;
     for (int i = 0; i < headersBytes.length; i++) {
       buffer.setUint8(offset++, headersBytes[i]);
     }
