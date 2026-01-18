@@ -161,16 +161,16 @@ class WebSocket:
         # Try to skip welcome messages first (non-blocking)
         self._skip_welcome_messages()
 
-        try:
-            # Use select to implement timeout
-            if select_available:
-                sock = self._ws.sock
-                if sock:
-                    # Wait for data to be available or timeout
-                    readable, _, _ = select.select([sock], [], [], self.request_timeout)
-                    if not readable:
-                        raise TimeoutError(f"Operation timeout after {self.request_timeout}s")
+        # Use select to implement timeout (outside try block so TimeoutError isn't caught)
+        if select_available:
+            sock = self._ws.sock
+            if sock:
+                # Wait for data to be available or timeout
+                readable, _, _ = select.select([sock], [], [], self.request_timeout)
+                if not readable:
+                    raise TimeoutError(f"Operation timeout after {self.request_timeout}s")
 
+        try:
             result = self._ws.recv()
 
             # Handle welcome message and other text messages

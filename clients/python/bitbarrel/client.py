@@ -22,7 +22,7 @@ from .protocol import (
 )
 from .websocket import WebSocket
 from .errors import (
-    ConnectionError, NotFoundError, NoBarrelError, ServerError,
+    ConnectionError, NotFoundError, NoBarrelError, ServerError, TimeoutError,
 )
 
 
@@ -1015,32 +1015,48 @@ class Client:
             # Send request
             self._ws.send_binary(data)
 
-            # Receive response
-            try:
-                response_data = self._ws.recv_binary()
-            except ConnectionError:
-                self._connected = False
-                raise
+            # Receive response, handling any interleaved pubsub events
+            max_attempts = 10  # Prevent infinite loop
+            for _ in range(max_attempts):
+                try:
+                    response_data = self._ws.recv_binary()
+                except ConnectionError:
+                    self._connected = False
+                    raise
 
-            # Decode response
-            status, resp_seq, resp_value = decode_response(response_data)
+                # Check if this is a pubsub event instead of a response
+                if is_pubsub_event(response_data):
+                    # Queue the event for the handler and continue waiting for response
+                    try:
+                        event = decode_pubsub_event(response_data)
+                        handler = self._on_message
+                        if handler:
+                            handler(event)
+                    except Exception:
+                        pass  # Skip malformed events
+                    continue
 
-            # Verify sequence
-            if resp_seq != seq:
-                raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
+                # This is a response, decode it
+                status, resp_seq, resp_value = decode_response(response_data)
 
-            # Handle status
-            if status != Status.OK:
-                err = status_to_error(status, resp_value)
-                if err:
-                    raise err
-                # Special case for EXISTS with NOT_FOUND
-                if cmd == Command.EXISTS and status == Status.NOT_FOUND:
-                    return "false"
-                elif status == Status.NOT_FOUND:
-                    raise NotFoundError(f"Key not found: {key}")
+                # Verify sequence
+                if resp_seq != seq:
+                    raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
 
-            return resp_value
+                # Handle status
+                if status != Status.OK:
+                    err = status_to_error(status, resp_value)
+                    if err:
+                        raise err
+                    # Special case for EXISTS with NOT_FOUND
+                    if cmd == Command.EXISTS and status == Status.NOT_FOUND:
+                        return "false"
+                    elif status == Status.NOT_FOUND:
+                        raise NotFoundError(f"Key not found: {key}")
+
+                return resp_value
+
+            raise ServerError("Too many interleaved events while waiting for response")
 
     def _send_request_binary(self, cmd: int, key: str = "", value: Union[str, bytes] = "") -> bytes:
         """Internal: send request and get raw bytes response.
@@ -1070,24 +1086,40 @@ class Client:
             # Send request
             self._ws.send_binary(data)
 
-            # Receive response
-            try:
-                response_data = self._ws.recv_binary()
-            except ConnectionError:
-                self._connected = False
-                raise
+            # Receive response, handling any interleaved pubsub events
+            max_attempts = 10  # Prevent infinite loop
+            for _ in range(max_attempts):
+                try:
+                    response_data = self._ws.recv_binary()
+                except ConnectionError:
+                    self._connected = False
+                    raise
 
-            # Decode response (raw bytes)
-            status, resp_seq, resp_value = decode_response_raw(response_data)
+                # Check if this is a pubsub event instead of a response
+                if is_pubsub_event(response_data):
+                    # Queue the event for the handler and continue waiting for response
+                    try:
+                        event = decode_pubsub_event(response_data)
+                        handler = self._on_message
+                        if handler:
+                            handler(event)
+                    except Exception:
+                        pass  # Skip malformed events
+                    continue
 
-            # Verify sequence
-            if resp_seq != seq:
-                raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
+                # Decode response (raw bytes)
+                status, resp_seq, resp_value = decode_response_raw(response_data)
 
-            # Handle status
-            if status != Status.OK:
-                err = status_to_error(status, resp_value.decode("utf-8", errors="replace"))
-                if err:
-                    raise err
+                # Verify sequence
+                if resp_seq != seq:
+                    raise ServerError(f"Sequence mismatch: expected {seq}, got {resp_seq}")
 
-            return resp_value
+                # Handle status
+                if status != Status.OK:
+                    err = status_to_error(status, resp_value.decode("utf-8", errors="replace"))
+                    if err:
+                        raise err
+
+                return resp_value
+
+            raise ServerError("Too many interleaved events while waiting for response")
