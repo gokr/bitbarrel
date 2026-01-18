@@ -52,6 +52,7 @@ nimble examplePlugins
 
 # Run all tests
 nimble test
+# See CLAUDE.md for detailed test commands including testStorage, testKeydir, testIntegration, etc.
 
 # Run benchmark (default implementation)
 nimble bench
@@ -406,7 +407,7 @@ BitBarrel supports three index modes optimized for different use cases:
 |------|----------|--------|--------|------------------|
 | `bmHash` | General KV, caching, sessions | O(1) | ~40 bytes/key | Fastest lookups |
 | `bmCritBit` | Time‑series, leaderboards, prefix searches | O(k) | ~60 bytes/key | Range queries, ordered iteration |
-| `bmHugeCritBit` | Billions of keys, limited RAM | O(1) per range | Lazy‑loaded partitions | Massive datasets, range‑based caching |
+| `bmHugeCritBit` | Billions of keys, limited RAM (separate API) | O(1) per range | Lazy‑loaded partitions | Massive datasets, range‑based caching, requires `openHugeBarrel()` |
 
 ### bmHash Mode – Session Store
 ```nim.compilable
@@ -451,7 +452,7 @@ metricsDb.close()
 
 ### bmHugeCritBit Mode – Large Analytics Dataset
 
-**Note:** HugeBarrel (`bmHugeCritBit` mode) uses a different API than regular barrels:
+**Note:** HugeBarrel (`bmHugeCritBit` mode) is partially implemented and uses a separate API (`openHugeBarrel()`) from regular barrels:
 
 ```nim.compilable
 import bitbarrel

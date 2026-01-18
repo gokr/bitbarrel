@@ -1,518 +1,154 @@
-# BitBarrel - Future Enhancements & Roadmap
-
-This document consolidates all planned and potential future enhancements for BitBarrel.
-
-## Current Implementation Status ✅
-
-### Core Features (Completed)
-- ✅ Append-only Bitcask storage model
-- ✅ Three barrel modes: Normal (hash), CritBit (sorted), HugeCritBit (two-tier massive scale)
-- ✅ Range queries and prefix searches (via bmCritBit)
-- ✅ In-memory KeyDir index with O(1) lookups
-- ✅ CRC32 data integrity verification
-- ✅ Crash recovery with hint files (40K keys/sec)
-- ✅ Non-blocking background compaction (writes continue during compaction)
-- ✅ Write buffering with configurable sync modes (None/Sync/Fsync)
-- ✅ Read-ahead LRU buffering
-- ✅ Thread-safe concurrent operations
-- ✅ Compression support (LZ4 & Snappy, LZ4 as default)
-- ✅ TTL support with passive expiration
-- ✅ Comprehensive test suite (33 test files in hierarchical structure)
-- ✅ JSON configuration parsing
-
-### Reference Model & Graph Traversal ✅ COMPLETED
-- ✅ Path specification with `->*` syntax for traversing references
-- ✅ Array slicing support (e.g., `matches[0:10]`)
-- ✅ Cycle detection in reference graphs
-- ✅ Server-side TRAVERSE command
-- ✅ Client support (Nim + Go)
-- ✅ Examples demonstrating graph traversal patterns
-
-### Network Layer ✅ COMPLETED
-- ✅ WebSocket server using MummyX
-- ✅ REST API endpoints for all operations
-- ✅ Binary protocol (28 command types)
-- ✅ Session management with BarrelRegistry
-- ✅ Automatic barrel discovery on server startup
-- ✅ WebSocket client using whisky library
-- ✅ Range query support over network (RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT)
-- ✅ Keys-only range queries (RANGE_KEYS, PREFIX_KEYS) for efficiency
-- ✅ Barrel configuration (get/set with YAML persistence)
-- ✅ Cursor-based pagination for range queries
-- ✅ Pub/Sub messaging (SUBSCRIBE, UNSUBSCRIBE, PUBLISH, LIST_SUBSCRIBERS, HISTORY, LIST_TOPICS, PRESENCE)
-- ✅ Barrel statistics (GET_BARREL_STATS)
-
-### HugeBarrel Mode (Network-Supported)
-- ✅ Basic two-tier storage for massive datasets
-- ✅ Range partitioning with Barrel1 (CritBit)
-- ✅ Barrel2 with multiple data files
-- ✅ LRU caching of RangeKeyDirs
-- ✅ Full network server support via BarrelWrapper
-- ⚠️ Documented as experimental in `/docs/research/HUGECRITBIT.md`
-- ⚠️ Direct API use requires `openHugeBarrel()` (not `openBarrel()`)
-- ⚠️ Lacks coordinated compaction for production use
-
-### Performance Achieved
-- **Writes**: ~250K ops/sec (None sync), ~245K ops/sec (Sync), ~11.5K ops/sec (Fsync)
-- **Reads**: ~180K ops/sec
-- **Recovery**: 40,000+ keys/sec with hint files
-- **Memory**: ~40 bytes per key overhead
-- **Stability**: Stress-tested with 25K+ keys
-- **HugeBarrel**: Scales to 100K+ entries per range partition
-
-## Client Libraries
-
-### Go Client ✅ COMPLETED
-- ✅ Located in `/clients/go/`
-- ✅ Full feature parity with other clients
-- ✅ Examples with fixes (fmt import, unused variable removal)
-- ✅ ~1,600+ lines of Go code
-- ✅ Examples: basic, barrels, concurrent access
-- ✅ Range queries and cursor pagination support
-- ✅ Barrel configuration management (get/set)
-- ✅ getOrDefault method for safe retrieval
-- ✅ Pub/Sub messaging (full implementation: subscribe/publish + all query methods)
-- ✅ Comprehensive test suite (73 tests, all passing)
-
-### Nim Client ✅ COMPLETED
-- ✅ Located in `/clients/nim/`
-- ✅ Full feature parity with all other clients
-- ✅ Standalone nimble package
-- ✅ Complete WebSocket protocol implementation
-- ✅ JWT authentication support with token parameter
-- ✅ Barrel configuration management (get/set)
-- ✅ getOrDefault method for safe retrieval
-- ✅ Pub/Sub messaging (full implementation: subscribe/publish + query methods)
-- ✅ Documentation and examples
-- ✅ Comprehensive test suite
-
-### Dart/Flutter Client ✅ COMPLETED
-- ✅ Located in `/clients/dart/`
-- ✅ Cross-platform: Android, iOS, Flutter Web
-- ✅ Full WebSocket protocol (19 commands)
-- ✅ JWT authentication support
-- ✅ Barrel configuration management (get/set)
-- ✅ getOrDefault method for safe retrieval
-- ✅ Pub/Sub messaging (full implementation: subscribe/publish + all query methods)
-- ✅ 54+ passing unit tests
-- ✅ Comprehensive README with examples
-- ✅ Uses web_socket_channel for platform compatibility
-
-### Python Client ✅ COMPLETED
-- ✅ Located in `/clients/python/`
-- ✅ Feature-complete WebSocket client implementation
-- ✅ Full CRUD and barrel operations
-- ✅ Barrel config operations (get/set)
-- ✅ Range and prefix queries with cursor pagination
-- ✅ Reference traversal support
-- ✅ get_or_default method for safe retrieval
-- ✅ Pub/Sub messaging (full implementation: subscribe/publish + all query methods)
-- ✅ Context manager support (`with` statement)
-- ✅ Test suite (34 tests, all passing)
-
-### TypeScript Client ✅ COMPLETED
-- ✅ Located in `/clients/typescript/`
-- ✅ Full WebSocket protocol implementation
-- ✅ TypeScript type definitions for all API methods
-- ✅ Full CRUD and barrel operations
-- ✅ Barrel configuration management (get/set)
-- ✅ Range and prefix queries with cursor pagination
-- ✅ Reference traversal support
-- ✅ Pub/Sub messaging (full implementation: subscribe/publish + all query methods)
-- ✅ JWT authentication support
-- ✅ Comprehensive test suite (protocol + integration tests)
-- ✅ Full documentation with examples
-
-### Client Feature Parity (All Clients) ✅ COMPLETED
-All clients have complete feature parity across all clients:
-- ✅ Basic CRUD operations (get, set, delete, exists, count)
-- ✅ Barrel management (create, open, use, close, list, drop)
-- ✅ Barrel configuration (getBarrelConfig, setBarrelConfig)
-- ✅ Statistics support (getBarrelStats)
-- ✅ Range queries and prefix searches (CritBit mode)
-- ✅ Cursor-based pagination
-- ✅ getOrDefault / get_or_default method
-- ✅ Pub/Sub messaging (full implementation across all clients: subscribe, publish, history, presence, listTopics, listSubscribers)
-- ✅ JWT authentication support
-- ✅ Thread-safe operations
-- ✅ Comprehensive test coverage
-- ✅ Full documentation
-
-### Client Features (Target)
-- Connection pooling
-- Automatic failover for replicas
-- Request batching
-- Async I/O support
-- Circuit breakers
-
-## Web Admin Console ✅ COMPLETED
-
-A modern Flutter-based web admin console for visual database management with integrated server deployment support.
-
-### Features Implemented
-- ✅ Connection management with JWT authentication
-- ✅ Barrel management (create, delete, switch)
-- ✅ Data explorer with full CRUD operations (browse, search, add, edit, delete)
-- ✅ Query interface for prefix and range queries (CritBit mode)
-- ✅ Statistics dashboard with comprehensive metrics
-- ✅ JSON visualization with syntax highlighting and collapsible nodes
-- ✅ Pagination with cursor-based navigation
-- ✅ Split-view layout (key list + value detail)
-- ✅ Real-time data browsing
-- ✅ Responsive Material 3 UI design
-- ✅ **Integrated static file serving from BitBarrel server**
-- ✅ **Docker support with pre-built webadmin bundle**
-- ✅ **Graph Traversal UI** - Explore _ref relationships with path specs like "friends->team"
-- ✅ **Barrel Configuration Editor** - Edit sync mode, buffer sizes, compaction settings from UI
-- ✅ **Import/Export Feature** - Bulk data import/export in JSONL and CSV formats with preview and batch processing
-
-### Location
-- Located in `/webadmin/`
-- Built with Flutter 3.10+ (web support)
-- Uses `watch_it` for reactive state management
-- Implements full CRUD via Dart client library
-
-### Usage
-
-**Option 1: Integrated Server Mode (Recommended)**
-```bash
-cd webadmin
-flutter build web --release
-cd ..
-./bitbarrel serve --webadmin-path=./webadmin/build/web
-# Access at http://localhost:8080/admin/
-```
-
-**Option 2: Separate Development Mode**
-```bash
-cd webadmin
-flutter pub get
-flutter run -d chrome --web-port 8080
-# Access at http://localhost:8080
-```
-
-## Pub/Sub Messaging System ✅ COMPLETED
-
-### Overview
-A generic pub/sub messaging system implemented in BitBarrel, supporting topic-based subscriptions over WebSocket connections.
-
-### Client Support Status
-- **Nim client**: Full PubSub implementation with tests (including query methods)
-- **Go client**: Full PubSub implementation with tests (subscribe/publish + all query methods)
-- **Python client**: Full PubSub implementation with tests (subscribe/publish + all query methods)
-- **TypeScript client**: Full PubSub implementation with tests (subscribe/publish + all query methods)
-- **Dart client**: Full PubSub implementation with tests (subscribe/publish + all query methods)
-
-### Implemented Features
-
-**Core Components:**
-- ✅ **PubSubManager** (`src/pubsub/manager.nim`) - Topic management, message routing
-- ✅ **EventBroker** (`src/pubsub/eventbroker.nim`) - WebSocket event delivery to subscribers
-- ✅ **PubSubHooks** (`src/pubsub/hooks.nim`) - Key-value change notifications (optional)
-- ✅ **Pattern matching** (`src/pubsub/pattern.nim`) - Wildcard topic subscriptions
-- ✅ **Storage Backends** (`src/pubsub/storage_*.nim`) - Pluggable storage system
-  - Memory backend (volatile, fast)
-  - Shared barrel backend (persistent)
-  - Per-topic barrel backend (isolated)
-  - Hybrid configuration with pattern matching
-- ✅ **HistoryStoreV2** (`src/pubsub/history_v2.nim`) - Enhanced history API
-
-**Protocol Commands (0x40-0x46):**
-- ✅ SUBSCRIBE (0x40) - Subscribe to a topic
-- ✅ UNSUBSCRIBE (0x41) - Unsubscribe from a topic
-- ✅ PUBLISH (0x42) - Publish message to topic
-- ✅ LIST_SUBSCRIBERS (0x43) - List topic subscribers
-- ✅ HISTORY (0x44) - Get message history
-- ✅ LIST_TOPICS (0x45) - List all topics
-- ✅ PRESENCE (0x46) - Get online members for topic
-
-**Event Types:**
-- mtData - Normal published messages
-- mtPresence - Member join/leave notifications
-- mtKvChange - Key-value change events (optional via PubSubHooks)
-
-**Data Model:**
-```nim
-PubSubEvent = object
-  topic: string
-  messageType: PubSubMessageType
-  sequence: uint64        # Topic-specific sequence
-  timestamp: int64
-  headers: string
-  payload: string
-
-Subscription = object
-  id: string
-  clientId: uint64
-  topic: string
-  pattern: string         # For wildcard subscriptions
-```
-
-**BitBarrel Integration:**
-```nim
-# Store message with topic:sequence composite key
-let key = "msg:" & topic & ":" & $sequence
-barrel.set(key, message.toJson())
-
-# Update topic metadata
-let metaKey = "meta:" & topic
-barrel.set(metaKey, %{"lastSeq": sequence, "lastTs": timestamp})
-```
-
-**Features:**
-- Topic-based pub/sub with wildcard support
-- Message persistence and replay
-- Last message retention per topic
-- Slow subscriber detection and handling
-- Message ordering guarantees per topic
-
-**Configuration:**
-```nim
-PubSubConfig(
-  maxTopics: 10000,                    # Maximum topics
-  messagesInMemory: 1000,              # Per topic ring buffer size
-  persistenceBatch: 100,               # Batch size for writes
-  maxMessageSize: 64 * 1024,          # Maximum message size
-  retentionHours: 24 * 7,              # Message retention period
-  slowSubscriberThreshold: 5000      # Disconnect slow subscribers
-)
-```
-
-**Examples:**
-- `examples/pubsub/basic_pubsub.nim` - Basic Pub/Sub usage
-- `examples/pubsub/storage_backends.nim` - Storage backend comparison
-- `examples/pubsub/presence_tracking.nim` - Presence features
-
-**Documentation:**
-- `docs/USER_GUIDE/pubsub.md` - User guide with examples
-- `docs/FEATURES/pubsub-storage.md` - Storage backend deep dive
-
-## Priority 3: Advanced Operations & Features
-
-### Replication (Master-Replica)
-- Master-replica replication for high availability
-- Asynchronous replication by default
-- Configurable sync replication for critical data
-- Replica promotion on master failure
-
-### Multi-Key Transactions (Limited)
-- Basic transaction support for multiple operations
-- Batch commits/rollbacks
-- Optimistic concurrency control
-- Limited scope (single barrel)
-
-### Secondary Indexes
-- Additional indexes beyond primary key
-- Efficient queries on indexed fields
-- Automatic index maintenance on writes
-
-### Full-Text Search
-- Text search capabilities for string values
-- Keyword indexing
-- Search query language support
-
-## Priority 4: Monitoring & Observability
-
-### Prometheus Metrics ✅ COMPLETED
-- ✅ `/metrics` endpoint with Prometheus text exposition format
-- ✅ Operation metrics (reads, writes, deletes) with success/failure tracking
-- ✅ Latency histograms with standard buckets (1ms to 1s)
-- ✅ Storage metrics (file count, size, fragmentation)
-- ✅ Key counts (active and deleted)
-- ✅ Server metrics (sessions, barrels, uptime)
-- ✅ Comprehensive documentation with PromQL examples
-- ✅ Test suite for metrics collection
-
-### Health Checks
-- `/health` endpoint for load balancer integration
-- Startup/readiness probes
-- Dependency checks
-
-### Structured Logging
-- JSON log format for centralized logging
-- Configurable log levels
-- Request tracing with correlation IDs
-
-## Priority 5: Operations & Management
-
-### Backup and Snapshot
-- Online snapshot capability
-- Incremental backups
-- Point-in-time recovery
-- Backup verification tools
-
-### Configuration Management
-- ✅ JSON configuration support (COMPLETED)
-- Environment variable overrides
-- Configuration validation
-- Hot reload for certain settings
-
-### Resource Management
-- Configurable connection limits
-- Memory usage limits and alerts
-- Disk space monitoring
-- Graceful degradation under load
-
-## Future Ideas (Lower Priority)
-
-### Advanced Storage Formats
-- Columnar storage for analytical workloads
-- Log-structured merge (LSM) tree option
-- Tiered storage (hot/warm/cold)
-- Front-truncation compaction using `FALLOC_FL_COLLAPSE_RANGE` (Linux-specific)
-
-### Query Language
-- Simple query DSL
-- Aggregation functions
-- Projection and filtering
-
-### Security
-- ✅ JWT authentication with HS256 and static secret - COMPLETED
-- ✅ Role-based access control (RBAC) - COMPLETED
-- TLS client certificates for additional security (future)
-- Encryption at rest
-- Audit logging
-
-### Cloud Integration
-- Cloud storage backends (S3, GCS, Azure Blob)
-- Kubernetes operator
-- Helm charts
-- Docker images
-
-## Known Issues
-
-### ORC Crash in Threading Tests
-Some network tests may have a known issue with Nim's ORC garbage collector crashing during thread cleanup (Nim issue #25253). This is NOT a BitBarrel code issue.
-
-**Fixed:**
-- `test_compact.nim` - Fixed through proper thread lifecycle management (waiting for thread completion before cleanup)
-
-**Potentially affected tests:**
-- `test_client.nim` - network client tests (may crash on cleanup)
-
-**Symptoms:**
-- Crash in `nim/orc.nim:unregisterCycle()` during thread shutdown
-- Only affects tests using threads with circular references
-
-**Solution:**
-Ensure threads complete before parent objects are destroyed. See `barrel.nim:close()` for the pattern used to fix compaction tests.
-
-### Compression Format Change (December 2025) - FIXED ✅
-**Issue:** Compression broke data file recovery - barrels with compression recovered 0 records after restart.
-
-**Root Cause:** Old format stored uncompressed size in `valueLen` but wrote compressed data, causing incorrect record size calculations during `rebuildIndexFromDataFile()`.
-
-**Solution:** Implemented Option 2 record format:
-- **Uncompressed**: `[valueLen=actual][flags=0][algo=0][value]` (no change)
-- **Compressed**: `[valueLen=actual][flags=1][algo=X][originalLen][value]` (+4 bytes)
-- `valueLen` now stores actual disk size
-- `originalLen` field added only for compressed records
-
-**Impact:**
-- Uncompressed records: 100% backward compatible
-- Compressed records: +4 bytes per record
-- Data file recovery now works correctly with compression
-- All 31 tests passing
-
-**Commits:** 6db8c01 through 1c9bc6c (December 2025)
-
-### Experimental Features
-- HugeBarrel direct API (bmHugeCritBit mode) remains experimental
-- Full production-grade HugeBarrel implementation features planned, see `/docs/research/HUGECRITBIT.md`
-- Coordinated compaction is missing
-- Network server support for HugeBarrel is complete and production-ready
-
-### Incomplete Features
-- CLI interactive client is a stub only
-
-## Development Priorities
-
-### Immediate (Next Release)
-1. ✅ Network protocol server (MummyX integration) - COMPLETED
-2. ✅ Basic client library - COMPLETED
-3. ✅ Server/client integration tests - COMPLETED
-4. ✅ Go client library - COMPLETED
-5. ✅ Reference traversal - COMPLETED
-6. ✅ Prometheus metrics endpoint - COMPLETED
-7. ✅ Pub/Sub messaging system - COMPLETED
-
-### Short-term (2-3 Releases)
-1. Replication (master-replica)
-2. Additional client libraries (Python, Dart/Flutter, TypeScript) ✅ COMPLETED
-
-### Medium-term (3-6 Months)
-1. Multi-key transactions
-2. Secondary indexes
-3. Full-text search
-4. Java and Rust client libraries
-
-### Long-term (6+ Months)
-1. Clustering and sharding
-2. Advanced storage formats
-3. Comprehensive cloud integration
-
-## Contributing
-
-Priority areas for contributions:
-1. **Network layer** - MummyX integration, protocol design
-2. **Performance** - Optimizations, benchmarks, profiling
-3. **Testing** - New test cases, property-based testing
-4. **Documentation** - Examples, tutorials, API docs
-5. **Client libraries** - Bindings for different languages
-
-See existing issues or create new ones for specific features.
-
-## Getting Started
-
-For documentation on current features:
-- [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - Quick start guide
-- [docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md) - Comprehensive tutorial
-- [docs/USER_GUIDE/api-reference.md](docs/USER_GUIDE/api-reference.md) - API documentation
-- [docs/USER_GUIDE/configuration.md](docs/USER_GUIDE/configuration.md) - Configuration options
-- [docs/DEVELOPER_GUIDE/architecture.md](docs/DEVELOPER_GUIDE/architecture.md) - System design
-- [docs/DEVELOPER_GUIDE/memory-management.md](docs/DEVELOPER_GUIDE/memory-management.md) - Memory patterns
-- [docs/FEATURES/compression.md](docs/FEATURES/compression.md) - Compression details
-- [docs/FEATURES/data-integrity.md](docs/FEATURES/data-integrity.md) - CRC32 implementation
-- [docs/FEATURES/networking.md](docs/FEATURES/networking.md) - Network protocol
-- [docs/research/HUGECRITBIT.md](docs/research/HUGECRITBIT.md) - HugeBarrel experimental design
-
-## Project Statistics
-
-**Current Implementation:**
-- Source files: 40+ modules
-- Test files: 33 test suites (hierarchical structure)
-  - api/ (7 files): Core, error, range tests
-  - unit/ (4 files): Storage, KeyDir, compression unit tests
-  - system/ (6 files): Integration, concurrency, stress tests
-  - recovery/ (3 files): Recovery, compaction, hintfile tests
-  - io/ (3 files): Read/Write buffer, protocol tests
-  - network/ (3 files): Client/server tests
-  - hugebarrel/ (4 files): HugeBarrel feature tests
-  - config/ (1 file): Configuration tests
-  - docs/ (1 file): Documentation examples verification
-  - Plus: testutils.nim, test_cli_integration.nim
-- Demo files: 4 demos (basic, performance, graph, advanced)
-- Documentation: Comprehensive (reorganized into USER_GUIDE, DEVELOPER_GUIDE, FEATURES, research)
-- Client libraries: Nim (✅), Go (✅), Dart/Flutter (✅), Python (✅), TypeScript (✅)
-
-**Storage Modules:**
-- Core: keydir.nim, critbitindex.nim, datafile.nim, record.nim, compact.nim
-- I/O: writebuffer.nim, readbuffer.nim, crc32.nim, compression.nim
-- Recovery: hintfile.nim, recovery.nim, critbithint.nim
-- Range/HugeBarrel: hugebarrel.nim, rangekeydir.nim, rangesearch.nim, rangeindex.nim, rangecache.nim, rangehint.nim, orderedrange.nim
-
-**Performance (Current):**
-- Write throughput: ~250K ops/sec (None sync)
-- Read throughput: ~180K ops/sec
-- Recovery time: <1s with hint files
-- Memory overhead: ~40 bytes per key
-
-**Recent Refactoring (Dec 2025):**
-- Test suite reorganized into hierarchical directories (testament-based discovery)
-- Removed deprecated APIs: SimpleBB, SimpleConfig, DefaultConfig, merge_policy, CompactConfig
-- Switched to whisky library for WebSocket client
-- Added doc_examples verification task
-
----
-
-**Status**: Core implementation complete and production-ready for embedded scenarios. Network layer (including HugeBarrel support) and Go client completed. HugeBarrel is fully accessible via network protocol, though direct API remains experimental. Pub/Sub and clustering planned for future releases.
+# BitBarrel Development Priorities
+
+## Current Status
+
+BitBarrel is a production-ready Bitcask-style key-value storage engine with comprehensive features:
+- Three indexing modes (bmHash, bmCritBit, bmHugeCritBit)
+- Full network protocol with WebSocket and REST APIs
+- Pub/Sub messaging system with history storage
+- Multiple client libraries (Nim, Go, Python, Dart, TypeScript)
+- Web admin console
+- Comprehensive test suite
+
+Recent fixes have addressed protocol mismatches and pub/sub storage initialization issues.
+
+## Priority Levels
+
+### Critical (Immediate - Blocking Issues)
+1. **Client library consistency verification**
+   - Ensure all clients handle `LIST_SUBSCRIBERS` protocol correctly (topic in `value` field)
+   - Verify pub/sub storage configuration works across all clients
+   - Test recent protocol fixes with all client libraries
+
+2. **Documentation consistency**
+   - Ensure all documentation reflects recent fixes (protocol, pub/sub storage)
+   - Update CLAUDE.md testing section to match actual nimble tasks
+   - Verify bmHugeCritBit documentation accuracy
+
+### High Priority (Next Release)
+3. **ORC crash prevention patterns documentation**
+   - Document `{.acyclic.}` usage patterns in developer guide
+   - Add closure elimination examples from compact.nim
+   - Update network architecture documentation with thread safety patterns
+
+4. **Testing framework improvements**
+   - Add missing test commands to documentation
+   - Verify test directory structure documentation accuracy
+   - Ensure all test commands work as documented
+
+5. **Pub/Sub storage backend validation**
+   - Test hybrid storage configuration patterns
+   - Verify bmCritBit mode requirement for shared barrel storage
+   - Test history storage with multiple concurrent topics
+
+### Medium Priority (Feature Enhancements)
+6. **HugeBarrel (bmHugeCritBit) production readiness**
+   - Complete coordinated compaction implementation
+   - Improve documentation for separate API (`openHugeBarrel()`)
+   - Add comprehensive tests for massive dataset scenarios
+
+7. **Client library enhancements**
+   - Connection pooling implementation
+   - Request batching optimization
+   - Improved error handling and retry logic
+
+8. **Performance optimization**
+   - Benchmark recent fixes impact on performance
+   - Optimize pub/sub storage for high-throughput scenarios
+   - Profile network protocol overhead
+
+### Low Priority (Future Roadmap)
+9. **Replication system**
+   - Master-replica architecture design
+   - Asynchronous replication implementation
+   - Failover and promotion mechanisms
+
+10. **Advanced query features**
+    - Secondary indexes implementation
+    - Simple query DSL for filtering
+    - Aggregation functions
+
+11. **Monitoring and observability**
+    - Enhanced Prometheus metrics
+    - Structured logging improvements
+    - Health check endpoints
+
+## Recently Completed (Verification Needed)
+
+The following items were recently fixed and need verification:
+
+### Protocol Fixes ✅
+- **LIST_SUBSCRIBERS command**: Fixed protocol mismatch where topic should be in `value` field, not `key` field
+- **Verification**: All clients should be tested with updated protocol documentation
+
+### Pub/Sub Storage Fixes ✅
+- **History store connection**: Fixed history store not being connected to pub/sub manager
+- **Config mismatch**: Fixed `setSharedBarrelConfig()` updating both `defaultStrategy` and `defaultTopicConfig.strategy`
+- **bmCritBit initialization**: Fixed shared barrel backend requiring bmCritBit mode from start
+- **Verification**: Test pub/sub history storage with persistence enabled
+
+### Client Library Fixes ✅
+- **Python client**: Fixed handling of interleaved Pub/Sub events
+- **Nim client**: Fixed request/response handling and batching
+- **All clients**: Added configurable timeout to network client `sendAndWait`
+- **Verification**: Run client integration tests
+
+## Known Issues Requiring Attention
+
+### ORC Garbage Collector Crashes
+- **Status**: Mitigated with `{.acyclic.}` patterns and closure elimination
+- **Affected**: Threaded code with cross-thread references
+- **Action**: Document patterns and ensure all threaded code follows best practices
+
+### bmHugeCritBit Implementation Status
+- **Status**: Partially implemented with separate API (`openHugeBarrel()`)
+- **Limitation**: Not accessible via standard `openBarrel()` API
+- **Action**: Clarify documentation and consider API unification
+
+### Testing Framework
+- **Issue**: Documentation shows `testAll` command that doesn't exist
+- **Action**: Update documentation to reflect actual nimble test tasks
+- **Verification**: Ensure all test categories are documented
+
+## Development Guidelines
+
+### Code Quality
+- Remove compiler warnings (unused imports, variables)
+- Follow Nim coding conventions (camelCase, no shadowing of `result`)
+- Use `{.acyclic.}` for types involved in cross-thread references
+- Eliminate closures in threaded code, use raw pointers instead
+
+### Documentation
+- Update documentation after each significant change
+- Ensure consistency between CLAUDE.md and other documentation
+- Include code examples for public APIs
+- Document protocol changes and breaking changes
+
+### Testing
+- Run tests after each change (`nimble test`)
+- Verify client library tests pass (`nimble testClients`)
+- Test network protocol with all clients
+- Run benchmarks to verify performance impact
+
+## Contribution Areas
+
+Priority areas for community contributions:
+1. **Client libraries**: Additional language bindings, performance improvements
+2. **Documentation**: Tutorials, examples, API documentation
+3. **Testing**: New test cases, property-based testing, stress tests
+4. **Performance**: Profiling, optimization, benchmarking
+
+## Getting Started for Developers
+
+See [CLAUDE.md](CLAUDE.md) for detailed project instructions including:
+- Build commands and dependencies
+- Testing framework usage
+- Architecture and code patterns
+- Documentation guidelines
+
+For user documentation:
+- [GETTING_STARTED.md](docs/GETTING_STARTED.md) - Quick start guide
+- [USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md) - Comprehensive tutorial
+- [PROTOCOL.md](docs/PROTOCOL.md) - Network protocol specification
+
+Last updated: 2026-01-18 (based on git history through commit ab48639)
