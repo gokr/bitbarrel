@@ -59,6 +59,8 @@ BitBarrel supports three different index modes to optimize for different use cas
 - Automatic range splitting and management
 - Supports range queries with lazy loading
 - Best for: Massive datasets, limited RAM, ordered access patterns
+- **Status**: Partially implemented with separate API (`openHugeBarrel()` from `storage/hugebarrel` module)
+- Network server supports HugeBarrel transparently via standard `createBarrel` command
 
 ## File Formats
 
@@ -224,6 +226,114 @@ parallel:
   for i in 0..999:
     discard db.set(fmt"key:{i}", fmt"value:{i}")
 ```
+
+### ORC Crash Prevention Patterns
+
+BitBarrel uses specific patterns to prevent crashes with Nim's ORC garbage collector, particularly in threaded code with cross-thread references.
+
+#### Background
+Nim's ORC garbage collector can crash during thread shutdown when detecting cycles across thread boundaries. This affects threaded code using closures that capture references.
+
+#### Solution Patterns
+
+**1. Mark types as `{.acyclic.}`**
+
+Types involved in cross-thread references are marked with `{.acyclic.}` to prevent ORC cycle detection:
+```nim
+type
+  BarrelObj {.acyclic.} = object
+    # ... fields including compactController: CompactController
+
+  CompactControllerObj {.acyclic.} = object
+    # ... raw pointers instead of closures
+
+  HistoryStoreObj {.acyclic.} = object
+    # ... used in pub/sub system
+
+  PubSubManagerObj {.acyclic.} = object
+    # ... used in network layer
+```
+
+**2. Eliminate closures in cross-thread code**
+
+Instead of closures that capture references (which create GC-managed environments), store raw pointers directly:
+
+```nim
+# BAD - closures cause ORC crashes in threaded code
+proc newCompactController(keyDir: ptr KeyDir): CompactController =
+  proc updateCallback(key: string, entry: KeyDirEntry) {.gcsafe.} =
+    keyDir[].add(key, entry)  # Closure captures keyDir
+  result.updateEntry = updateCallback  # ORC tracks closure environment
+
+# GOOD - direct pointer storage, no closures
+type
+  IndexMode = enum
+    imNone, imKeyDir, imCritBit
+
+  CompactControllerObj = object
+    indexMode: IndexMode
+    keyDirPtr: pointer    # Raw pointer, not tracked by ORC
+    critBitPtr: pointer
+
+proc updateIndex(controller: CompactController, key: string, entry: KeyDirEntry) =
+  case controller.indexMode
+  of imKeyDir:
+    cast[ptr KeyDir](controller.keyDirPtr)[].add(key, entry)
+  # ...
+```
+
+**3. Cleanup order matters**
+
+Shutdown controllers BEFORE deinitializing resources they reference:
+
+```nim
+proc close*(barrel: Barrel) =
+  # Wait for threads to complete
+  while barrel.compactionState.inProgress:
+    sleep(10)
+  barrel.joinCompactionThread()
+
+  # Shutdown controller BEFORE deinit - it holds pointers to these
+  if barrel.compactController != nil:
+    barrel.compactController.shutdown()
+    barrel.compactController = nil
+
+  # Now safe to deinit
+  barrel.keyDir.deinit()
+```
+
+#### When to apply these patterns
+
+- **Use `{.acyclic.}`**: On ref object types involved in cross-thread patterns
+- **Eliminate closures**: When callbacks/procs need to access data across threads
+- **Use raw pointers**: Instead of closures that capture references
+- **Explicit cleanup**: Shutdown controllers before deinitializing referenced resources
+
+#### Affected components
+
+The following components use these patterns to prevent ORC crashes:
+
+1. **Compaction system** (`src/storage/compact.nim`):
+   - `CompactControllerObj` marked `{.acyclic.}`
+   - Stores raw `keyDirPtr` and `critBitPtr` instead of closures
+   - Background worker thread with cross-thread references
+
+2. **Pub/Sub system** (`src/pubsub/`):
+   - `HistoryStoreObj`, `EventBrokerObj`, `PubSubManagerObj`, `PresenceManagerObj` all marked `{.acyclic.}`
+   - Network thread integration requires cycle prevention
+
+3. **Network layer** (`src/network/`):
+   - WebSocket worker pool with cross-thread object references
+   - `{.acyclic.}` types prevent ORC crashes during thread shutdown
+
+#### References
+
+See actual implementation in:
+- `src/storage/compact.nim:22` - CompactControllerObj with `{.acyclic.}` and raw pointers
+- `src/bitbarrel/barrel.nim:37` - BarrelObj marked `{.acyclic.}`
+- `src/pubsub/history.nim:16` - HistoryStoreObj marked `{.acyclic.}`
+
+These patterns ensure all threaded tests pass without ORC crashes.
 
 ## Key Features
 

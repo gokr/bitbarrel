@@ -76,7 +76,6 @@ tests/
 **Run all tests:**
 ```bash
 nimble test          # Runs all tests using testament
-nimble testAll       # Alias for test
 ```
 
 **Run specific test categories:**
@@ -88,8 +87,27 @@ nimble testRecovery      # Recovery system tests
 nimble testAPI       # API tests
 nimble testUnit      # All unit tests
 nimble testSystem    # System/integration tests
+nimble testError     # Error handling tests
 nimble testHugeBarrel # HugeBarrel feature tests
 nimble testNetwork   # Network client/server tests
+nimble testPubSub    # Pub/Sub tests
+nimble testPubSubTypes    # Pub/Sub types tests
+nimble testPubSubPattern  # Pattern matching tests
+nimble testPubSubManager  # Manager tests
+nimble testPubSubHooks    # Barrel hooks tests
+nimble testPubSubHistory  # History tests
+nimble testPubSubIntegration # Pub/Sub integration tests
+nimble testPluginSystem  # Query result hooks plugin system tests
+```
+
+**Run client library tests:**
+```bash
+nimble testNimClient      # Test Nim client library
+nimble testGoClient       # Test Go client library
+nimble testPythonClient   # Test Python client library
+nimble testDartClient     # Test Dart client library
+nimble testTypeScriptClient # Test TypeScript client library
+nimble testClients        # Test all client libraries
 ```
 
 **Run individual test files with testament directly:**
@@ -270,7 +288,9 @@ BitBarrel supports three indexing modes, each optimized for different use cases:
 #### bmHugeCritBit (Two-tier for massive datasets)
 - Designed for massive datasets with range queries
 - Two-tier architecture with range partitioning
-- **Status**: Not yet implemented
+- **Status**: Partially implemented with separate API (`openHugeBarrel()`)
+- Requires importing `storage/hugebarrel` module
+- Network server supports HugeBarrel transparently via standard `createBarrel` command
 
 ### Range Queries and Cursor-Based Pagination
 
