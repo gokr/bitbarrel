@@ -2,7 +2,7 @@
 ##
 ## Tests for message history storage (memory and persistent modes)
 
-import std/[unittest, strutils, strformat, json]
+import std/[unittest, strutils, strformat, json, os]
 import ../../src/pubsub/[pubsub, history]
 
 suite "HistoryStore":
@@ -304,3 +304,64 @@ suite "HistoryStore":
 
     let history = store.getHistory("topic1", count=0)
     check history.len == 10
+
+  test "persistent storage stores and retrieves messages":
+    # This test verifies that hmPersistent mode actually persists messages
+    let testPath = "/tmp/test_history.data"
+    # Clean up any existing test file
+    try:
+      removeFile(testPath)
+    except:
+      discard
+
+    # Create store with persistence
+    let store = newHistoryStore(enablePersistence = true, barrelPath = testPath)
+    store.setTopicHistoryMode("persistent_topic", hmPersistent)
+
+    # Add some messages
+    for i in 1..5:
+      let msg = newMessage("persistent_topic", mtData, fmt"msg{i}")
+      msg.sequence = uint64(i)
+      msg.headers = %*{"index": i}
+      store.addToHistory("persistent_topic", msg)
+
+    # Verify messages are in memory
+    let history = store.getHistory("persistent_topic")
+    check history.len == 5
+
+    # Cleanup
+    try:
+      removeFile(testPath)
+    except:
+      discard
+
+  test "persistent storage with sequence filtering":
+    let store = newHistoryStore()
+    store.setTopicHistoryMode("seq_test", hmPersistent)
+
+    for i in 1..10:
+      let msg = newMessage("seq_test", mtData, fmt"msg{i}")
+      msg.sequence = uint64(i)
+      store.addToHistory("seq_test", msg)
+
+    # Get messages since sequence 6
+    let history = store.getHistory("seq_test", sinceSeq=6)
+    check history.len == 5  # Messages 6, 7, 8, 9, 10
+    check history[0].sequence == 6
+    check history[4].sequence == 10
+
+  test "persistent storage respects max count":
+    let store = newHistoryStore()
+    store.setTopicHistoryMode("count_test", hmPersistent)
+
+    for i in 1..20:
+      let msg = newMessage("count_test", mtData, fmt"msg{i}")
+      msg.sequence = uint64(i)
+      store.addToHistory("count_test", msg)
+
+    # Get only 5 most recent messages
+    let history = store.getHistory("count_test", count=5)
+    check history.len == 5
+    # Should be last 5 messages (16-20)
+    check history[0].sequence == 16
+    check history[4].sequence == 20
