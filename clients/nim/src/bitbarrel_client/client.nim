@@ -211,13 +211,15 @@ proc receiveMessages*(client: var BitBarrelClient, timeoutMs: int = 100) =
     # Timeout or other error - ignore
     discard
 
-proc sendAndWait*(client: var BitBarrelClient, req: Request, preserveSeq: bool = false): Response =
+proc sendAndWait*(client: var BitBarrelClient, req: Request, preserveSeq: bool = false,
+                   timeoutMs: int = 3000): Response =
   ## Send request and wait for response
   ##
   ## Also processes pub/sub events while waiting.
   ## Thread-safe: uses lock to prevent concurrent access.
   ## Raises ClientError on timeout or communication error.
   ## If preserveSeq is true, uses req.seq instead of generating a new one.
+  ## timeoutMs: Maximum time to wait for response (default: 3000ms)
   withLock client.lock:
     var mutableReq = req
     if not preserveSeq:
@@ -227,14 +229,17 @@ proc sendAndWait*(client: var BitBarrelClient, req: Request, preserveSeq: bool =
     try:
       # Send request as binary frame
       let encodedReq = encodeRequest(mutableReq)
+      when defined(debug):
+        echo &"sendAndWait: seq={mutableReq.seq} command={mutableReq.command} timeout={timeoutMs}"
       client.ws.send(encodedReq, kind = BinaryMessage)
 
       # Wait for response
       var attempts = 0
-      const maxAttempts = 30  # 30 * 100ms = 3 seconds
+      const pollTimeout = 100  # 100ms per poll
+      let maxAttempts = timeoutMs div pollTimeout
 
       while attempts < maxAttempts:
-        let msg = client.ws.receiveMessage(timeout = 100)
+        let msg = client.ws.receiveMessage(timeout = pollTimeout)
         if msg.isSome() and msg.get().kind == BinaryMessage:
           let data = msg.get().data
 
@@ -255,7 +260,11 @@ proc sendAndWait*(client: var BitBarrelClient, req: Request, preserveSeq: bool =
 
           # Regular response
           let resp = decodeResponse(data)
+          when defined(debug):
+            echo &"sendAndWait: received response seq={resp.seq} status={resp.status}"
           if resp.seq == mutableReq.seq:
+            when defined(debug):
+              echo &"sendAndWait: matched seq={resp.seq}"
             return resp
 
         inc attempts
@@ -554,8 +563,12 @@ proc setMany*(client: var BitBarrelClient, pairs: openArray[(string, string)]): 
   # Note: The batch request has its own seq, but we need to preserve reqSeq for the outer request
   # The batchReq.seq is used for the batch response to correlate with the batch request
 
+  # Calculate timeout: base timeout (30000ms) + 50ms per item
+  let timeoutMs = 30000 + (pairs.len * 50)
+
   let req = Request(command: cmdBatchSet, value: encodeBatchSetRequest(batchReq), seq: reqSeq)
-  let resp = client.sendAndWait(req, preserveSeq = true)
+  let resp = client.sendAndWait(req, preserveSeq = true, timeoutMs = timeoutMs)
+  client.seqCounter += 1  # Increment after using this sequence number
 
   if resp.status == statusOk and resp.value.len > 0:
     # Decode batch response
@@ -594,8 +607,12 @@ proc getMany*(client: var BitBarrelClient, keys: openArray[string]): seq[(string
   let reqSeq = client.seqCounter
   let batchReq = BatchGetRequest(seq: reqSeq, keys: batchKeys)
 
+  # Calculate timeout: base timeout (30000ms) + 50ms per item
+  let timeoutMs = 30000 + (keys.len * 50)
+
   let req = Request(command: cmdBatchGet, value: encodeBatchGetRequest(batchReq), seq: reqSeq)
-  let resp = client.sendAndWait(req, preserveSeq = true)
+  let resp = client.sendAndWait(req, preserveSeq = true, timeoutMs = timeoutMs)
+  client.seqCounter += 1  # Increment after using this sequence number
 
   if resp.status == statusOk and resp.value.len > 0:
     # Decode batch response
@@ -636,8 +653,12 @@ proc deleteMany*(client: var BitBarrelClient, keys: openArray[string]): int =
   let reqSeq = client.seqCounter
   let batchReq = BatchDeleteRequest(seq: reqSeq, keys: batchKeys)
 
+  # Calculate timeout: base timeout (30000ms) + 50ms per item
+  let timeoutMs = 30000 + (keys.len * 50)
+
   let req = Request(command: cmdBatchDelete, value: encodeBatchDeleteRequest(batchReq), seq: reqSeq)
-  let resp = client.sendAndWait(req, preserveSeq = true)
+  let resp = client.sendAndWait(req, preserveSeq = true, timeoutMs = timeoutMs)
+  client.seqCounter += 1  # Increment after using this sequence number
 
   if resp.status == statusOk and resp.value.len > 0:
     # Decode batch response
