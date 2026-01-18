@@ -22,28 +22,31 @@ export class Protocol {
    * All multi-byte integers are big-endian.
    */
   static encodeRequest(req: Request): Buffer {
-    if (req.key.length > MaxKeySize) {
-      throw new ProtocolError(`Key too large: ${req.key.length} bytes (max ${MaxKeySize})`);
+    // Use latin1 for byte length calculation to handle binary data correctly
+    const keyByteLen = Buffer.byteLength(req.key, 'latin1');
+    const valByteLen = Buffer.byteLength(req.value, 'latin1');
+
+    if (keyByteLen > MaxKeySize) {
+      throw new ProtocolError(`Key too large: ${keyByteLen} bytes (max ${MaxKeySize})`);
     }
-    if (req.value.length > MaxValueSize) {
-      throw new ProtocolError(`Value too large: ${req.value.length} bytes (max ${MaxValueSize})`);
+    if (valByteLen > MaxValueSize) {
+      throw new ProtocolError(`Value too large: ${valByteLen} bytes (max ${MaxValueSize})`);
     }
 
-    const keyLen = req.key.length;
-    const valLen = req.value.length;
-    const buffer = Buffer.allocUnsafe(1 + 4 + 2 + keyLen + 4 + valLen);
+    const buffer = Buffer.allocUnsafe(1 + 4 + 2 + keyByteLen + 4 + valByteLen);
 
     let offset = 0;
     buffer.writeUInt8(req.command, offset++);
     buffer.writeUInt32BE(req.seq, offset);
     offset += 4;
-    buffer.writeUInt16BE(keyLen, offset);
+    buffer.writeUInt16BE(keyByteLen, offset);
     offset += 2;
-    buffer.write(req.key, offset);
-    offset += keyLen;
-    buffer.writeUInt32BE(valLen, offset);
+    // Use latin1 encoding to preserve binary data
+    buffer.write(req.key, offset, 'latin1');
+    offset += keyByteLen;
+    buffer.writeUInt32BE(valByteLen, offset);
     offset += 4;
-    buffer.write(req.value, offset);
+    buffer.write(req.value, offset, 'latin1');
 
     return buffer;
   }
@@ -97,21 +100,24 @@ export class Protocol {
    * All multi-byte integers are big-endian.
    */
   static encodeResponse(resp: Response): Buffer {
-    if (resp.value.length > MaxValueSize) {
-      throw new ProtocolError(`Value too large: ${resp.value.length} bytes (max ${MaxValueSize})`);
+    // Use latin1 for byte length calculation to handle binary data correctly
+    const valByteLen = Buffer.byteLength(resp.value, 'latin1');
+
+    if (valByteLen > MaxValueSize) {
+      throw new ProtocolError(`Value too large: ${valByteLen} bytes (max ${MaxValueSize})`);
     }
 
-    const valLen = resp.value.length;
-    const buffer = Buffer.allocUnsafe(1 + 4 + 4 + valLen);
+    const buffer = Buffer.allocUnsafe(1 + 4 + 4 + valByteLen);
 
     let offset = 0;
     buffer.writeUInt8(resp.status, offset++);
     buffer.writeUInt32BE(resp.seq, offset);
     offset += 4;
-    buffer.writeUInt32BE(valLen, offset);
+    buffer.writeUInt32BE(valByteLen, offset);
     offset += 4;
-    if (valLen > 0) {
-      buffer.write(resp.value, offset);
+    if (valByteLen > 0) {
+      // Use latin1 encoding to preserve binary data
+      buffer.write(resp.value, offset, 'latin1');
     }
 
     return buffer;

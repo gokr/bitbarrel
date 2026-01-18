@@ -551,7 +551,15 @@ export class BitBarrelClient extends EventEmitter {
   async rangeCount(startKey: string, endKey: string): Promise<number> {
     this.checkBarrelSelected();
 
-    const req = Protocol.newRequest(Cmd.RangeCount, startKey, endKey);
+    // Encode range request like Go client does
+    const rangePayload: RangeRequest = {
+      startKey,
+      endKey,
+      limit: 0,
+      cursor: '',
+    };
+    const rangeData = Protocol.encodeRangeRequest(rangePayload);
+    const req = Protocol.newRequest(Cmd.RangeCount, '', rangeData.toString('binary'));
     const resp = await this.sendAndWait(req);
 
     if (resp.status === Resp.Ok) {

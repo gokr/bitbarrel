@@ -66,6 +66,11 @@ export const enum Command {
   RangeKeys = 0x24,
   PrefixKeys = 0x25,
 
+  // Batch operations
+  BatchGet = 0x26,
+  BatchSet = 0x27,
+  BatchDelete = 0x28,
+
   // Pub/Sub
   Subscribe = 0x40,
   Unsubscribe = 0x41,
