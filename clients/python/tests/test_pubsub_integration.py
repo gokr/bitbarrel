@@ -342,7 +342,7 @@ class TestPubSub:
         # Verify event properties
         for event in history:
             assert event.topic == topic
-            assert event.msg_type == PubSubMessageType.DATA
+            assert event.message_type == PubSubMessageType.DATA
             assert event.sequence > 0
             assert event.timestamp > 0
 

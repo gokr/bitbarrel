@@ -936,7 +936,7 @@ class Client:
                     break
 
                 # Try to read a message without blocking
-                self._ws.set_timeout(0.1)  # 100ms timeout
+                self._ws.set_timeout(0.01)  # 10ms timeout for faster message delivery
                 try:
                     data = self._ws.recv_binary()
                     # Reset timeout back to original after receiving
