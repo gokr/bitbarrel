@@ -1879,13 +1879,14 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
       heartbeatTimeoutMs = psConfig.heartbeatTimeoutMs
     )
 
-    # Create history store with shared barrel backend
+    # Create history store with shared barrel backend (configure bmCritBit for ordered queries)
+    var barrelConfig = defaultBarrelConfig()
+    barrelConfig.mode = bmCritBit  # Required for range queries
     result.historyStore = newSharedBarrelHistoryStore(
-      config.dataDir / "pubsub_history.data"
+      config.dataDir / "pubsub_history.data",
+      barrelConfig
     )
 
-    # Configure bmCritBit mode for ordered queries
-    result.historyStore.storageManager.config.sharedBarrelConfig.mode = bmCritBit
     try:
       result.historyStore.storageManager.initSharedBackend()
     except CatchableError as e:
