@@ -86,6 +86,11 @@ class BitBarrelWebSocket {
 
       Uint8List data;
       if (message is String) {
+        // Silently ignore welcome messages from the server
+        if (message.contains('Connected') || message.contains('Welcome')) {
+          // Skip this message and wait for the next one (which should be binary)
+          return await receive();
+        }
         data = Uint8List.fromList(message.codeUnits);
         throw ProtocolException('Unexpected text message: $message');
       } else if (message is List<int>) {
