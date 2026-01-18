@@ -139,56 +139,55 @@ proc subscribe*(manager: PubSubManager, clientId: uint64,
   let subId = manager.generateSubscriptionId()
   let timestamp = toUnix(getTime()) * 1000
 
-  withLock manager.subsLock:
-    # Check subscription limit per client
-    if manager.config.maxSubscriptionsPerClient > 0:
-      if clientId notin manager.clientSubscriptions:
-        manager.clientSubscriptions[clientId] = initHashSet[string]()
-      if manager.clientSubscriptions[clientId].len >=
-         manager.config.maxSubscriptionsPerClient:
-        raise newException(ValueError, "Maximum subscriptions per client reached")
+  # Check validation first (no locks needed)
+  if pattern.len > 0:
+    if not validatePattern(pattern):
+      raise newException(ValueError, "Invalid pattern: " & pattern)
+  else:
+    if not validateTopic(topic):
+      raise newException(ValueError, "Invalid topic: " & topic)
 
-    # Check if it's a pattern subscription
-    if pattern.len > 0:
-      if not validatePattern(pattern):
-        raise newException(ValueError, "Invalid pattern: " & pattern)
+  # Check subscription limit BEFORE acquiring any locks (no nested locking)
+  if manager.config.maxSubscriptionsPerClient > 0:
+    withLock manager.subsLock:
+      if clientId in manager.clientSubscriptions:
+        if manager.clientSubscriptions[clientId].len >=
+           manager.config.maxSubscriptionsPerClient:
+          raise newException(ValueError, "Maximum subscriptions per client reached")
 
-      # Add to pattern subscriptions
-      withLock manager.patternLock:
-        if pattern notin manager.patternSubscriptions:
-          manager.patternSubscriptions[pattern] = initHashSet[string]()
-        manager.patternSubscriptions[pattern].incl(subId)
+  # Add to pattern subscriptions first (if applicable) - uses patternLock
+  if pattern.len > 0:
+    withLock manager.patternLock:
+      if pattern notin manager.patternSubscriptions:
+        manager.patternSubscriptions[pattern] = initHashSet[string]()
+      manager.patternSubscriptions[pattern].incl(subId)
 
-      # Create pattern subscription record
-      manager.subscriptions[subId] = Subscription(
-        id: subId,
-        clientId: clientId,
-        topic: "",
-        pattern: pattern,
-        createdAt: timestamp,
-        lastActive: timestamp,
-        options: options
-      )
-    else:
-      # Exact topic subscription
-      if not validateTopic(topic):
-        raise newException(ValueError, "Invalid topic: " & topic)
+  # For exact topic subscription, add to topic - uses topicsLock
+  # We inline topic creation here to avoid double-locking
+  if pattern.len == 0:
+    withLock manager.topicsLock:
+      # Create topic if it doesn't exist
+      if topic notin manager.topics:
+        if manager.config.maxTopics > 0 and
+           manager.topics.len >= manager.config.maxTopics:
+          raise newException(ValueError, "Maximum topics reached")
+        manager.topics[topic] = newTopic(topic, manager.config.defaultTopicConfig)
 
-      # Get or create topic and add subscriber
-      let tpc = manager.getOrCreateTopic(topic)
+      let tpc = manager.topics[topic]
       if not tpc.addSubscriber(subId):
         raise newException(ValueError, "Maximum subscribers for topic reached")
 
-      # Create subscription record
-      manager.subscriptions[subId] = Subscription(
-        id: subId,
-        clientId: clientId,
-        topic: topic,
-        pattern: "",
-        createdAt: timestamp,
-        lastActive: timestamp,
-        options: options
-      )
+  # Create subscription record - uses subsLock (no nested locks)
+  withLock manager.subsLock:
+    manager.subscriptions[subId] = Subscription(
+      id: subId,
+      clientId: clientId,
+      topic: if pattern.len > 0: "" else: topic,
+      pattern: pattern,
+      createdAt: timestamp,
+      lastActive: timestamp,
+      options: options
+    )
 
     # Track subscription for client
     if clientId notin manager.clientSubscriptions:
@@ -280,32 +279,49 @@ proc unsubscribeAll*(manager: PubSubManager, clientId: uint64): int =
 
 proc getSubscribersForTopic*(manager: PubSubManager, topic: string): seq[Subscription] =
   ## Get all exact subscribers for a topic (no patterns)
+  ##
+  ## Avoid nested locking by getting the subscriber IDs first,
+  ## then looking up the subscriptions.
 
-  result = @[]
+  # First get the subscriber IDs from the topic
+  var subIds: HashSet[string]
   withLock manager.topicsLock:
     if topic notin manager.topics:
       return
 
     let tpc = manager.topics[topic]
-    withLock manager.subsLock:
-      for subId in tpc.subscribers:
-        if subId in manager.subscriptions:
-          result.add(manager.subscriptions[subId])
+    subIds = tpc.subscribers
+
+  # Now look up the actual subscriptions
+  result = @[]
+  withLock manager.subsLock:
+    for subId in subIds:
+      if subId in manager.subscriptions:
+        result.add(manager.subscriptions[subId])
 
 proc getPatternSubscribersForTopic*(manager: PubSubManager, topic: string): seq[Subscription] =
   ## Get all pattern-matching subscribers for a topic
+  ##
+  ## Avoid nested locking by collecting matching subscription IDs first,
+  ## then looking up the actual subscriptions.
 
-  result = @[]
+  # First collect all pattern-subscription pairs that match the topic
+  var patternSubIds: seq[(string, string)]  # (pattern, subId) pairs
   withLock manager.patternLock:
     for pattern, subIds in manager.patternSubscriptions:
       if matchesPattern(topic, pattern):
-        withLock manager.subsLock:
-          for subId in subIds:
-            if subId in manager.subscriptions:
-              let sub = manager.subscriptions[subId]
-              # Only include if not already in exact topic (deduplicate)
-              if sub.pattern == pattern:  # Ensure this is a pattern sub
-                result.add(sub)
+        for subId in subIds:
+          patternSubIds.add((pattern, subId))
+
+  # Now look up the actual subscriptions (avoid nested locking)
+  result = @[]
+  withLock manager.subsLock:
+    for (pattern, subId) in patternSubIds:
+      if subId in manager.subscriptions:
+        let sub = manager.subscriptions[subId]
+        # Only include if this is actually a pattern sub for the matched pattern
+        if sub.pattern == pattern:
+          result.add(sub)
 
 proc getAllSubscribersForTopic*(manager: PubSubManager, topic: string): seq[Subscription] =
   ## Get all subscribers including exact and pattern-matched
