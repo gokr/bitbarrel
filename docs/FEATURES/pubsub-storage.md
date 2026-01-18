@@ -137,7 +137,7 @@ var config = TopicStorageConfig(
 
 **Characteristics:**
 - Single BitBarrel file for all topics
-- Uses `bmCritBit` mode for ordered storage
+- Uses `bmCritBit` mode for ordered storage (requires bmCritBit mode from initialization)
 - Efficient prefix queries for topic history
 - Configurable retention per topic
 - Compression support
@@ -351,6 +351,17 @@ proc initStorageConfig*(): StorageConfig =
   result.topicOverrides = @[]
   result.enableStats = true
   result.idleCleanupInterval = 300  # 5 minutes
+
+proc setSharedBarrelConfig*(config: var StorageConfig,
+                            path: string,
+                            barrelConfig: BarrelConfig) =
+  ## Configure shared barrel storage
+  ## Note: Sets both defaultStrategy and defaultTopicConfig.strategy to ssSharedBarrel
+  config.defaultStrategy = ssSharedBarrel
+  config.sharedBarrelPath = path
+  config.sharedBarrelConfig = barrelConfig
+  config.defaultTopicConfig.strategy = ssSharedBarrel
+  config.defaultTopicConfig.indexMode = barrelConfig.mode
 ```
 
 ### Pattern-Based Configuration

@@ -558,6 +558,10 @@ var storageConfig = initStorageConfig()
 storageConfig.defaultStrategy = ssSharedBarrel
 storageConfig.sharedBarrelConfig.barrelPath = "data/pubsub_history.data"
 storageConfig.sharedBarrelConfig.maxMessages = 10000  # Per topic
+
+# Note: Shared barrel storage requires bmCritBit mode for efficient range queries
+# The barrel must be initialized with bmCritBit mode from the start
+storageConfig.sharedBarrelConfig.mode = bmCritBit
 ```
 
 **Message Format:**
