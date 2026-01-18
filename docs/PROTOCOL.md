@@ -627,8 +627,8 @@ List all subscribers for a topic.
 
 **Request:**
 - Command: 0x43
-- Key: Topic name
-- Value: Empty
+- Key: Empty
+- Value: Topic name (Note: topic is sent in value field, not key field due to protocol fix in commit ab48639)
 
 **Response:**
 - Status: OK (0x00) with subscribers JSON
