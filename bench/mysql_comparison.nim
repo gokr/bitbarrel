@@ -16,7 +16,7 @@
 ## Note: MySQL benchmark requires libmysqlclient.so to be installed.
 ## If MySQL is not available, the benchmark will skip MySQL tests gracefully.
 
-import std/[times, strformat, os, strutils, osproc, net, sequtils, streams]
+import std/[times, strformat, os, strutils, osproc, net, sequtils, streams, httpclient]
 import db_connector/db_sqlite
 import ../src/bitbarrel/barrel
 import ../src/network/client
@@ -109,6 +109,25 @@ proc drainProcessOutput(p: Process) =
   except:
     # Ignore errors - process may have closed streams
     discard
+
+proc waitForServerReady(address: string, port: Port, timeout: int = 10): bool =
+  ## Wait for server to be ready by checking HTTP endpoint
+  echo "  Waiting for server to be ready..."
+  let client = newHttpClient()
+  client.timeout = 1  # 1 second timeout for each attempt
+
+  for i in 0..<timeout * 2:  # Check every 0.5 seconds
+    try:
+      let response = client.get(&"http://{address}:{port}/status")
+      if response.code == Http200 and response.body.contains("\"status\"") and response.body.contains("\"ok\""):
+        echo &"  ✓ Server is ready (waited {float(i) / 2.0}s)"
+        return true
+    except:
+      discard  # Server not ready yet
+
+    sleep(500)  # Wait 500ms
+
+  return false
 
 proc benchmarkBitBarrel(numOps: int): tuple[writes, reads: BenchmarkResult] =
   printHeader("BitBarrel Benchmark (embedded)")
@@ -292,17 +311,16 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
       result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
       result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
       return
-    # Try to connect
-    var socket = newSocket()
+    # Try to connect via HTTP endpoint
+    let client = newHttpClient()
+    client.timeout = 1
     try:
-      socket.connect("localhost", Port(port))
-      connected = true
-      socket.close()
-      break
+      let response = client.get(&"http://localhost:{port}/status")
+      if response.code == Http200 and response.body.contains("\"status\"") and response.body.contains("\"ok\""):
+        connected = true
+        break
     except:
-      discard
-    finally:
-      socket.close()
+      discard  # Server not ready yet
 
   if not connected:
     echo "  Error: Server did not become ready within 10 seconds"
@@ -310,6 +328,10 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
     result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     return
+
+  # Extra wait for WebSocket handlers to initialize
+  echo "  Waiting extra time for WebSocket handler..."
+  sleep(5000)
 
   echo "  ✓ Server started (PID: " & $serverProcess.processID() & ")"
 
