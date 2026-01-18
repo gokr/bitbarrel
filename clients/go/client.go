@@ -1011,7 +1011,8 @@ func (c *Client) ListSubscribers(topic string) ([]SubscriptionInfo, error) {
 		return nil, err
 	}
 
-	req := NewRequest(CmdListSubscribers, topic, "")
+	// Server expects topic in value field, not key
+	req := NewRequest(CmdListSubscribers, "", topic)
 	resp, err := c.sendRequest(req)
 	if err != nil {
 		return nil, err

@@ -849,8 +849,8 @@ class Client:
             ConnectionError: If not connected
             ServerError: If request fails
         """
-        # List subscribers request uses empty key, topic is in response
-        value = self._send_request(Command.LIST_SUBSCRIBERS, topic, "")
+        # Server expects topic in value field, not key
+        value = self._send_request(Command.LIST_SUBSCRIBERS, "", topic)
         return decode_list_subscribers_response(value)
 
     def list_topics(self) -> List[TopicInfo]:

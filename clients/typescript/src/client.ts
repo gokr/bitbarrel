@@ -794,7 +794,8 @@ export class BitBarrelClient extends EventEmitter {
    * List subscribers for a topic
    */
   async listSubscribers(topic: string): Promise<SubscriptionInfo[]> {
-    const req = Protocol.newRequest(Cmd.ListSubscribers, topic, '');
+    // Server expects topic in value field, not key
+    const req = Protocol.newRequest(Cmd.ListSubscribers, '', topic);
     const resp = await this.sendAndWait(req);
 
     if (resp.status !== Resp.Ok) {
