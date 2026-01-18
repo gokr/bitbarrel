@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:test/test.dart';
 import 'package:bitbarrel/bitbarrel.dart';
 
@@ -33,7 +34,8 @@ void main() {
 
     setUp(() async {
       if (!serverAvailable) {
-        print('Skipping Pub/Sub integration tests - no server running on localhost:9876');n        return;
+        print('Skipping Pub/Sub integration tests - no server running on localhost:9876');
+        return;
       }
 
       client = BitBarrelClient.localhost();
@@ -112,7 +114,7 @@ void main() {
       });
 
       // Subscribe to pattern
-      final subId = await client.subscribePattern('user:*');
+      final subId = await client.subscribe('user:*');
       await Future.delayed(Duration(milliseconds: 100));
 
       // Publish matching messages
@@ -168,7 +170,9 @@ void main() {
       });
 
       final topic = uniqueTopicName('test:msgtypes');
-      final subId = await client.subscribe(topic);
+      // Subscribe with enablePresence to receive presence-type messages
+      final subId = await client.subscribe(topic,
+          options: const SubscriptionOptions(enablePresence: true));
       await Future.delayed(Duration(milliseconds: 100));
 
       // Publish different message types
@@ -231,7 +235,10 @@ void main() {
       }
 
       expect(messagesReceived, isNotEmpty);
-      expect(messagesReceived.first.headers, equals(headers));
+      // Compare JSON values (ignoring whitespace differences)
+      final headersJson = jsonDecode(headers) as Map<String, dynamic>;
+      final receivedHeadersJson = jsonDecode(messagesReceived.first.headers) as Map<String, dynamic>;
+      expect(receivedHeadersJson, equals(headersJson));
       expect(messagesReceived.first.payload, equals('message with headers'));
 
       await client.unsubscribe(subId);
