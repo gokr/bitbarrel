@@ -153,7 +153,7 @@ proc close*(client: var BitBarrelClient) {.raises: [].} =
       discard
     client.connected = false
 
-proc sendAndWait*(client: var BitBarrelClient, req: Request): protocol.Response =
+proc sendAndWait*(client: var BitBarrelClient, req: Request, timeoutMs: int = 30000): protocol.Response =
   ## Send request and wait for response
   var mutableReq = req
   mutableReq.seq = client.seqCounter
@@ -161,16 +161,21 @@ proc sendAndWait*(client: var BitBarrelClient, req: Request): protocol.Response 
 
   try:
     # Send request as binary frame
+    when defined(debug):
+      echo &"[Client] sendAndWait: seq={mutableReq.seq} timeout={timeoutMs}ms"
     client.ws.send(encodeRequest(mutableReq), kind = BinaryMessage)
 
     # Wait for response
     var attempts = 0
-    const maxAttempts = 30  # 30 * 100ms = 3 seconds
+    const pollTimeout = 100  # 100ms per poll
+    let maxAttempts = timeoutMs div pollTimeout
 
     while attempts < maxAttempts:
-      let msg = client.ws.receiveMessage(timeout = 100)
+      let msg = client.ws.receiveMessage(timeout = pollTimeout)
       if msg.isSome() and msg.get().kind == BinaryMessage:
         let resp = decodeResponse(msg.get().data)
+        when defined(debug):
+          echo &"[Client] sendAndWait: received response seq={resp.seq}"
         if resp.seq == mutableReq.seq:
           return resp
       inc attempts
@@ -909,8 +914,10 @@ proc setMany*(client: var BitBarrelClient, pairs: openArray[(string, string)]): 
   let batchReq = BatchSetRequest(seq: client.seqCounter, pairs: batchPairs)
   client.seqCounter += 1
 
+  # Calculate timeout: base 30s + 50ms per item
+  let timeoutMs = 30000 + 50 * batchPairs.len
   let req = Request(command: cmdBatchSet, value: encodeBatchSetRequest(batchReq), seq: batchReq.seq)
-  let resp = client.sendAndWait(req)
+  let resp = client.sendAndWait(req, timeoutMs)
 
   if resp.status == statusOk and resp.value.len > 0:
     # Decode batch response
@@ -948,8 +955,10 @@ proc getMany*(client: var BitBarrelClient, keys: openArray[string]): seq[(string
   let batchReq = BatchGetRequest(seq: client.seqCounter, keys: batchKeys)
   client.seqCounter += 1
 
+  # Calculate timeout: base 30s + 50ms per item
+  let timeoutMs = 30000 + 50 * batchKeys.len
   let req = Request(command: cmdBatchGet, value: encodeBatchGetRequest(batchReq), seq: batchReq.seq)
-  let resp = client.sendAndWait(req)
+  let resp = client.sendAndWait(req, timeoutMs)
 
   if resp.status == statusOk and resp.value.len > 0:
     # Decode batch response
