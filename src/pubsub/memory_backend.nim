@@ -3,7 +3,7 @@
 ## In-memory ring buffer implementation for pub/sub message history.
 ## Messages are stored in per-topic sequences with configurable size limits.
 
-import std/[tables, locks, sequtils]
+import std/[tables, locks, sequtils, algorithm]
 import ./pubsub
 import ./storage_backend
 
@@ -61,6 +61,7 @@ method store(backend: MemoryStorageBackend, topic: string,
 method retrieve(backend: MemoryStorageBackend, topic: string,
                 params: HistoryQueryParams): seq[Message] {.gcsafe.} =
   ## Retrieve messages from memory ring buffer
+  ## Returns messages in newest-first order
   withLock backend.messagesLock:
     if topic notin backend.messages:
       return @[]
@@ -74,9 +75,10 @@ method retrieve(backend: MemoryStorageBackend, topic: string,
     # Limit count if specified
     if params.limit > 0 and messages.len > params.limit:
       # Return most recent messages
-      return messages[^params.limit..^1]
+      messages = messages[^params.limit..^1]
 
-    return messages
+    # Return in newest-first order
+    return reversed(messages)
 
 method clear(backend: MemoryStorageBackend, topic: string): bool {.gcsafe.} =
   ## Clear all messages for a topic
