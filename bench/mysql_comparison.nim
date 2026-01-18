@@ -16,7 +16,7 @@
 ## Note: MySQL benchmark requires libmysqlclient.so to be installed.
 ## If MySQL is not available, the benchmark will skip MySQL tests gracefully.
 
-import std/[times, strformat, os, strutils, osproc, net, sequtils]
+import std/[times, strformat, os, strutils, osproc, net, sequtils, streams]
 import db_connector/db_sqlite
 import ../src/bitbarrel/barrel
 import ../src/network/client
@@ -54,9 +54,13 @@ proc formatLatency(ms: float): string =
 
 proc printHeader(title: string) =
   echo ""
+  stdout.flushFile
   echo "╔════════════════════════════════════════════════════════════╗"
+  stdout.flushFile
   echo &"║ {title:<58} ║"
+  stdout.flushFile
   echo "╚════════════════════════════════════════════════════════════╝"
+  stdout.flushFile
 
 proc printComparison(title: string, bb, db: BenchmarkResult, bbName = "BitBarrel", dbName = "SQLite") =
   echo ""
@@ -77,6 +81,34 @@ proc printFourWayComparison(title: string, bbEmb, sqEmb, bbSrv, mySrv: Benchmark
   if mySrv.opsPerSec > 0:
     let bbVsMysql = bbSrv.opsPerSec / mySrv.opsPerSec
     echo &"  BitBarrel vs MySQL:   {bbVsMysql:>6.2f}x faster"
+
+when defined(linux) or defined(posix):
+  import std/posix
+
+proc drainProcessOutput(p: Process) =
+  ## Drain available output from process to prevent pipe buffer exhaustion
+  try:
+    let outHandle = p.outputHandle
+    if outHandle == -1:
+      return
+
+    when defined(linux) or defined(posix):
+      # Set non-blocking mode temporarily
+      let flags = fcntl(outHandle.cint, F_GETFL, 0)
+      discard fcntl(outHandle.cint, F_SETFL, flags or O_NONBLOCK)
+      defer: discard fcntl(outHandle.cint, F_SETFL, flags)
+
+    # Data available, read up to 4096 bytes
+    var buffer = newString(4096)
+    let bytesRead = posix.read(outHandle.cint, buffer[0].addr, buffer.len)
+    if bytesRead <= 0:
+      return
+    # Write to stderr for debugging
+    stderr.write(buffer[0..<bytesRead])
+    stderr.flushFile
+  except:
+    # Ignore errors - process may have closed streams
+    discard
 
 proc benchmarkBitBarrel(numOps: int): tuple[writes, reads: BenchmarkResult] =
   printHeader("BitBarrel Benchmark (embedded)")
@@ -209,16 +241,22 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
   echo &"  Port: {port}"
 
   let serverDir = "bench/bb_server_test"
+  echo "  [DEBUG] Server directory: ", serverDir
 
   # Clean up any existing test directory
   if dirExists(serverDir):
+    echo "  [DEBUG] Removing existing directory"
     removeDir(serverDir, checkDir = false)
+  else:
+    echo "  [DEBUG] Directory does not exist, creating"
 
   createDir(serverDir)
+  echo "  [DEBUG] Directory created"
 
   # Start BitBarrel server
   echo ""
   echo "  Starting BitBarrel server..."
+  echo "  [DEBUG] Looking for bitbarrel binary"
 
   let serverPath = if fileExists("bitbarrel"):
       "bitbarrel"
@@ -230,27 +268,45 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
   var serverProcess: Process
 
   if fileExists(serverPath):
-    serverProcess = startProcess(
-      serverPath,
-      args = ["serve", "--port=" & $port, "--data-dir=" & serverDir],
-      options = {poUsePath, poStdErrToStdOut}
-    )
+    let logFile = getTempDir() / "bitbarrel_server.log"
+    let cmd = serverPath & " serve --port=" & $port & " --data-dir=" & serverDir & " > " & logFile & " 2>&1"
+    serverProcess = startProcess(cmd, options = {poUsePath, poEvalCommand})
   else:
     echo "  Warning: bitbarrel binary not found, skipping server benchmark"
     result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     return
 
-  # Wait for server to start
-  sleep(2000)
+  # Wait for server to be ready (max 10 seconds)
+  var connected = false
+  for i in 1..10:
+    sleep(1000)
+    echo "  Waiting for server... attempt ", i, "/10"
+    # Drain process output to prevent pipe buffer exhaustion
+    # drainProcessOutput(serverProcess)  # Output redirected to file
+    if not serverProcess.running():
+      echo "  Error: Server process died"
+      let exitCode = serverProcess.peekExitCode()
+      if exitCode != 0:
+        echo "  Exit code: " & $exitCode
+      result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
+      result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
+      return
+    # Try to connect
+    var socket = newSocket()
+    try:
+      socket.connect("localhost", Port(port))
+      connected = true
+      socket.close()
+      break
+    except:
+      discard
+    finally:
+      socket.close()
 
-  # Verify server is running
-  if not serverProcess.running():
-    echo "  Error: Failed to start BitBarrel server"
-    # Get exit status for more info
-    let exitCode = serverProcess.peekExitCode()
-    if exitCode != 0:
-      echo "  Exit code: " & $exitCode
+  if not connected:
+    echo "  Error: Server did not become ready within 10 seconds"
+    serverProcess.terminate()
     result.writes = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     result.reads = BenchmarkResult(opsPerSec: 0.0, avgLatencyMs: 0.0)
     return
@@ -267,21 +323,34 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
     # Create test barrel
     discard client.createBarrel("bench_test")
     discard client.useBarrel("bench_test")
+    discard client.ping()
     echo "  ✓ Barrel created"
 
-    # Write benchmark (batch)
+    # Write benchmark (batch in chunks of 1000)
     echo ""
-    echo "  Running writes (batch)..."
+    echo "  Running writes (batch, 10 items per request)..."
 
-    # Build all pairs first
-    var pairs: seq[(string, string)] = @[]
-    for i in 0..<numOps:
-      let key = &"key_{i:08}"
-      let value = &"value_{i:08}_" & repeat('x', 40)
-      pairs.add((key, value))
+    const batchSize = 10
+    var totalWritten = 0
 
     let writeStart = epochTime()
-    let writeCount = client.setMany(pairs)
+
+    for batchStart in countup(0, numOps - 1, batchSize):
+      let batchEnd = min(batchStart + batchSize, numOps)
+      var pairs: seq[(string, string)] = @[]
+      for i in batchStart..<batchEnd:
+        let key = &"key_{i:08}"
+        let value = &"value_{i:08}_" & repeat('x', 40)
+        pairs.add((key, value))
+
+      echo &"  [DEBUG] Calling setMany for batch {batchStart}..{batchEnd-1} (size: {pairs.len})"
+      let batchStartTime = epochTime()
+      totalWritten += client.setMany(pairs)
+      let batchElapsed = epochTime() - batchStartTime
+      echo &"  [DEBUG] setMany completed in {batchElapsed:.3f}s"
+      # Drain server output to prevent pipe blocking
+      # drainProcessOutput(serverProcess)  # Output redirected to file
+
     let writeElapsed = epochTime() - writeStart
 
     result.writes = BenchmarkResult(
@@ -289,21 +358,35 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
       avgLatencyMs: writeElapsed * 1000.0 / numOps.float
     )
 
-    echo &"  ✓ Writes completed in {writeElapsed:.3f}s ({writeCount}/{numOps} successful)"
+    echo &"  ✓ Writes completed in {writeElapsed:.3f}s ({totalWritten}/{numOps} successful)"
     echo &"  ✓ Throughput: {result.writes.opsPerSec:.0f} ops/sec"
 
     sleep(100)
 
-    # Read benchmark (batch)
+    # Read benchmark (batch in chunks of 1000)
     echo ""
-    echo "  Running reads (batch)..."
+    echo "  Running reads (batch, 10 keys per request)..."
 
-    var keys: seq[string] = @[]
-    for i in 0..<numOps:
-      keys.add(&"key_{i:08}")
-
+    var totalRead = 0
     let readStart = epochTime()
-    let readResults = client.getMany(keys)
+
+    var allResults: seq[(string, string)] = @[]
+    for batchStart in countup(0, numOps - 1, batchSize):
+      let batchEnd = min(batchStart + batchSize, numOps)
+      var keys: seq[string] = @[]
+      for i in batchStart..<batchEnd:
+        keys.add(&"key_{i:08}")
+
+      echo &"  [DEBUG] Calling getMany for batch {batchStart}..{batchEnd-1} (size: {keys.len})"
+      let batchStartTime = epochTime()
+      let results = client.getMany(keys)
+      let batchElapsed = epochTime() - batchStartTime
+      echo &"  [DEBUG] getMany completed in {batchElapsed:.3f}s, got {results.len} results"
+      # Drain server output to prevent pipe blocking
+      # drainProcessOutput(serverProcess)  # Output redirected to file
+      allResults.add(results)
+      totalRead += results.len
+
     let readElapsed = epochTime() - readStart
 
     result.reads = BenchmarkResult(
@@ -311,7 +394,7 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
       avgLatencyMs: readElapsed * 1000.0 / numOps.float
     )
 
-    echo &"  ✓ Reads completed in {readElapsed:.3f}s ({readResults.len}/{numOps} found)"
+    echo &"  ✓ Reads completed in {readElapsed:.3f}s ({totalRead}/{numOps} found)"
     echo &"  ✓ Throughput: {result.reads.opsPerSec:.0f} ops/sec"
 
     # Cleanup barrel
