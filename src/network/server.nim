@@ -311,8 +311,14 @@ proc handleWebSocketMessage*(
 ) =
   ## Process a binary WebSocket message from client
   var req: ProtoRequest
+  writeLine(stderr, "[DEBUG] handleWebSocketMessage: entered")
+  flushFile(stderr)
   try:
+    writeLine(stderr, "[DEBUG] handleWebSocketMessage: received data length=" & $data.len)
+    flushFile(stderr)
     req = decodeRequest(data)
+    writeLine(stderr, "[DEBUG] handleWebSocketMessage: seq=" & $req.seq & " command=" & $req.command)
+    flushFile(stderr)
   except CatchableError as e:
     # Send error response with seq=0 since we couldn't decode the request
     let errResp = invalidResponse(0, "Invalid binary protocol: " & e.msg)
@@ -383,6 +389,9 @@ proc handleWebSocketMessage*(
       resp.status = statusBarrelNotFound
 
   of cmdUseBarrel:
+    echo "cmdUseBarrel: key=" & req.key
+    writeLine(stderr, fmt("[{epochTime():.3f}] cmdUseBarrel: key={req.key}"))
+    flushFile(stderr)
     # Check if barrel exists
     let barrel = server.registry.getBarrel(req.key)
     if barrel.isSome():
@@ -848,140 +857,187 @@ proc handleWebSocketMessage*(
               resp.value = "Prefix keys error: " & e.msg
 
   of cmdBatchGet:
+    echo fmt"[DEBUG] cmdBatchGet: seq={req.seq}"
+    flushFile(stdout)
     # Batch get requires a current barrel
+    var wrapperOpt: Option[BarrelWrapper]
+    var canRead = false
+
     withLock server.sessionsLock:
       if not server.sessions[ws.clientId].hasCurrentBarrel():
         resp.status = statusNoBarrel
       else:
         let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
         let barrel = server.registry.getBarrel(barrelName)
+        let authSess = server.sessions[ws.clientId].authSession
 
         if barrel.isNone():
           resp.status = statusBarrelNotFound
+        elif not authSess.canReadData():
+          resp.status = statusUnauthorized
+          resp.value = "Unauthorized: read access required"
         else:
-          var wrapper = barrel.get()
-          let authSess = server.sessions[ws.clientId].authSession
-          if not authSess.canReadData():
-            resp.status = statusUnauthorized
-            resp.value = "Unauthorized: read access required"
+          wrapperOpt = barrel
+          canRead = true
+
+    # Process batch outside lock to avoid blocking other requests
+    if resp.status == statusOk and canRead and wrapperOpt.isSome():
+      echo fmt"[DEBUG] cmdBatchGet: starting processing, batch size={req.value.len}"
+      flushFile(stdout)
+      try:
+        # Decode batch get request
+        let batchReq = decodeBatchGetRequest(req.value)
+        echo fmt"[DEBUG] cmdBatchGet: decoded batch size={batchReq.keys.len}"
+        flushFile(stdout)
+        var wrapper = wrapperOpt.get()
+
+        # Execute batch get operations
+        var results: seq[tuple[status: uint8, value: string]]
+        results = newSeq[tuple[status: uint8, value: string]](batchReq.keys.len)
+
+        for i, key in batchReq.keys:
+          let start = epochTime()
+          let value = wrapperGet(wrapper, key)
+          if value.len > 0:
+            server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
+            results[i] = (uint8(ord(statusOk)), value)
           else:
-            try:
-              # Decode batch get request
-              let batchReq = decodeBatchGetRequest(req.value)
+            server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
+            results[i] = (uint8(ord(statusNotFound)), "")
 
-              # Execute batch get operations
-              var results: seq[tuple[status: uint8, value: string]]
-              results = newSeq[tuple[status: uint8, value: string]](batchReq.keys.len)
+        # Encode and send response
+        echo fmt"[DEBUG] cmdBatchGet: processing complete, sending response seq={req.seq}"
+        flushFile(stdout)
+        let batchResp = BatchGetResponse(seq: req.seq, results: results)
+        let batchRespData = okResponse(req.seq, encodeBatchGetResponse(batchResp))
+        ws.send(encodeResponse(batchRespData), BinaryMessage)
+        echo fmt"[DEBUG] cmdBatchGet: response sent seq={req.seq}"
+        flushFile(stdout)
+        return  # Skip normal response sending
 
-              for i, key in batchReq.keys:
-                let start = epochTime()
-                let value = wrapperGet(wrapper, key)
-                if value.len > 0:
-                  server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
-                  results[i] = (uint8(ord(statusOk)), value)
-                else:
-                  server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
-                  results[i] = (uint8(ord(statusNotFound)), "")
-
-              # Encode and send response (use req.seq for proper client matching)
-              let batchResp = BatchGetResponse(seq: req.seq, results: results)
-              let resp = okResponse(req.seq, encodeBatchGetResponse(batchResp))
-              ws.send(encodeResponse(resp), BinaryMessage)
-              return  # Skip normal response sending
-
-            except CatchableError as e:
-              resp.status = statusError
-              resp.value = "Batch get error: " & e.msg
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Batch get error: " & e.msg
 
   of cmdBatchSet:
+    echo fmt"[DEBUG] cmdBatchSet: seq={req.seq}"
+    # flushFile(stdout)
     # Batch set requires a current barrel
+    var wrapperOpt: Option[BarrelWrapper]
+    var canWrite = false
+    var errorMsg = ""
+
     withLock server.sessionsLock:
       if not server.sessions[ws.clientId].hasCurrentBarrel():
         resp.status = statusNoBarrel
       else:
         let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
         let barrel = server.registry.getBarrel(barrelName)
+        let authSess = server.sessions[ws.clientId].authSession
 
         if barrel.isNone():
           resp.status = statusBarrelNotFound
+        elif not authSess.canWriteData():
+          resp.status = statusUnauthorized
+          resp.value = "Unauthorized: write access required"
         else:
-          var wrapper = barrel.get()
-          let authSess = server.sessions[ws.clientId].authSession
-          if not authSess.canWriteData():
-            resp.status = statusUnauthorized
-            resp.value = "Unauthorized: write access required"
+          wrapperOpt = barrel
+          canWrite = true
+
+    # Process batch outside lock to avoid blocking other requests
+    if resp.status == statusOk and canWrite and wrapperOpt.isSome():
+      echo fmt"[DEBUG] cmdBatchSet: starting processing, batch size={req.value.len}"
+      # flushFile(stdout)
+      try:
+        # Decode batch set request
+        echo fmt"[DEBUG] cmdBatchSet: attempting decode, data len={req.value.len}"
+        # flushFile(stdout)
+        let batchReq = decodeBatchSetRequest(req.value)
+        echo fmt"[DEBUG] cmdBatchSet: decoded batch size={batchReq.pairs.len}"
+        # flushFile(stdout)
+        var wrapper = wrapperOpt.get()
+
+        # Execute batch set operations
+        var statuses: seq[uint8]
+        statuses = newSeq[uint8](batchReq.pairs.len)
+
+        for i, pair in batchReq.pairs:
+          let start = epochTime()
+          if wrapperSet(wrapper, pair.key, pair.value):
+            server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
+            statuses[i] = uint8(ord(statusOk))
           else:
-            try:
-              # Decode batch set request
-              let batchReq = decodeBatchSetRequest(req.value)
+            server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
+            statuses[i] = uint8(ord(statusError))
 
-              # Execute batch set operations
-              var statuses: seq[uint8]
-              statuses = newSeq[uint8](batchReq.pairs.len)
+        # Encode and send response
+        echo fmt"[DEBUG] cmdBatchSet: processing complete, sending response seq={req.seq}"
+        # flushFile(stdout)
+        let batchResp = BatchSetResponse(seq: req.seq, statuses: statuses)
+        let batchRespData = okResponse(req.seq, encodeBatchSetResponse(batchResp))
+        ws.send(encodeResponse(batchRespData), BinaryMessage)
+        echo fmt"[DEBUG] cmdBatchSet: response sent seq={req.seq}"
+        # flushFile(stdout)
+        return
 
-              for i, pair in batchReq.pairs:
-                let start = epochTime()
-                if wrapperSet(wrapper, pair.key, pair.value):
-                  server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
-                  statuses[i] = uint8(ord(statusOk))
-                else:
-                  server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
-                  statuses[i] = uint8(ord(statusError))
-
-              # Encode and send response (use req.seq for proper client matching)
-              let batchResp = BatchSetResponse(seq: req.seq, statuses: statuses)
-              let resp = okResponse(req.seq, encodeBatchSetResponse(batchResp))
-              ws.send(encodeResponse(resp), BinaryMessage)
-              return  # Skip normal response sending
-
-            except CatchableError as e:
-              resp.status = statusError
-              resp.value = "Batch set error: " & e.msg
+      except CatchableError as e:
+        echo fmt"[DEBUG] cmdBatchSet: exception caught: {e.msg}"
+        echo "Stack trace: ", e.getStackTrace()
+        # flushFile(stdout)
+        resp.status = statusError
+        resp.value = "Batch set error: " & e.msg
 
   of cmdBatchDelete:
     # Batch delete requires a current barrel
+    var wrapperOpt: Option[BarrelWrapper]
+    var canWrite = false
+
     withLock server.sessionsLock:
       if not server.sessions[ws.clientId].hasCurrentBarrel():
         resp.status = statusNoBarrel
       else:
         let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
         let barrel = server.registry.getBarrel(barrelName)
+        let authSess = server.sessions[ws.clientId].authSession
 
         if barrel.isNone():
           resp.status = statusBarrelNotFound
+        elif not authSess.canWriteData():
+          resp.status = statusUnauthorized
+          resp.value = "Unauthorized: write access required"
         else:
-          var wrapper = barrel.get()
-          let authSess = server.sessions[ws.clientId].authSession
-          if not authSess.canWriteData():
-            resp.status = statusUnauthorized
-            resp.value = "Unauthorized: write access required"
+          wrapperOpt = barrel
+          canWrite = true
+
+    # Process batch outside lock to avoid blocking other requests
+    if resp.status == statusOk and canWrite and wrapperOpt.isSome():
+      try:
+        # Decode batch delete request
+        let batchReq = decodeBatchDeleteRequest(req.value)
+        var wrapper = wrapperOpt.get()
+
+        # Execute batch delete operations
+        var statuses: seq[uint8]
+        statuses = newSeq[uint8](batchReq.keys.len)
+
+        for i, key in batchReq.keys:
+          let start = epochTime()
+          if wrapperDelete(wrapper, key):
+            server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
+            statuses[i] = uint8(ord(statusOk))
           else:
-            try:
-              # Decode batch delete request
-              let batchReq = decodeBatchDeleteRequest(req.value)
+            server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
+            statuses[i] = uint8(ord(statusError))
 
-              # Execute batch delete operations
-              var statuses: seq[uint8]
-              statuses = newSeq[uint8](batchReq.keys.len)
+        # Encode and send response
+        let batchResp = BatchDeleteResponse(seq: req.seq, statuses: statuses)
+        let batchRespData = okResponse(req.seq, encodeBatchDeleteResponse(batchResp))
+        ws.send(encodeResponse(batchRespData), BinaryMessage)
+        return
 
-              for i, key in batchReq.keys:
-                let start = epochTime()
-                if wrapperDelete(wrapper, key):
-                  server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
-                  statuses[i] = uint8(ord(statusOk))
-                else:
-                  server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
-                  statuses[i] = uint8(ord(statusError))
-
-              # Encode and send response (use req.seq for proper client matching)
-              let batchResp = BatchDeleteResponse(seq: req.seq, statuses: statuses)
-              let resp = okResponse(req.seq, encodeBatchDeleteResponse(batchResp))
-              ws.send(encodeResponse(resp), BinaryMessage)
-              return  # Skip normal response sending
-
-            except CatchableError as e:
-              resp.status = statusError
-              resp.value = "Batch delete error: " & e.msg
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Batch delete error: " & e.msg
 
   of cmdGetBarrelStats:
     # Get barrel statistics requires a current barrel
@@ -1013,25 +1069,37 @@ proc handleWebSocketMessage*(
 
   of cmdSubscribe:
     ## Subscribe to a topic or pattern
+    writeLine(stderr, "[DEBUG] SUBSCRIBE: Entered handler")
+    flushFile(stderr)
     if not server.pubSubEnabled or server.pubSubManager == nil:
       resp.status = statusError
       resp.value = "Pub/sub not enabled"
     else:
       try:
+        writeLine(stderr, "[DEBUG] SUBSCRIBE: About to decode request")
+        flushFile(stderr)
         let subReq = protocol.decodeSubscribeRequest(req.value)
+        writeLine(stderr, "[DEBUG] SUBSCRIBE: Decoded, topic=" & subReq.topic & " pattern=" & subReq.pattern)
+        flushFile(stderr)
         let subOptions = pubsub.SubscriptionOptions(
           enableKvEvents: subReq.options.enableKvEvents,
           enablePresence: subReq.options.enablePresence,
           replayHistory: subReq.options.replayHistory
         )
+        writeLine(stderr, "[DEBUG] SUBSCRIBE: About to call subscribe()")
+        flushFile(stderr)
         let subId = server.pubSubManager.subscribe(
           ws.clientId, subReq.topic, subReq.pattern, subOptions
         )
+        writeLine(stderr, "[DEBUG] SUBSCRIBE: subscribe() returned, subId=" & subId)
+        flushFile(stderr)
         resp.status = statusOk
         resp.value = subId
 
         # If presence enabled, join the topic
         if subReq.options.enablePresence and server.presenceManager != nil:
+          writeLine(stderr, "[DEBUG] SUBSCRIBE: Joining presence topic")
+          flushFile(stderr)
           withLock server.sessionsLock:
             if ws.clientId in server.sessions:
               let username = server.sessions[ws.clientId].authSession.username
@@ -1042,6 +1110,8 @@ proc handleWebSocketMessage*(
                 discard server.presenceManager.joinTopic(subReq.topic, ws.clientId, username)
 
       except CatchableError as e:
+        writeLine(stderr, "[DEBUG] SUBSCRIBE: Exception - " & e.msg)
+        flushFile(stderr)
         resp.status = statusError
         resp.value = "Subscribe error: " & e.msg
 
@@ -1093,7 +1163,8 @@ proc handleWebSocketMessage*(
       resp.value = "Pub/sub not enabled"
     else:
       try:
-        let subscribers = server.pubSubManager.getSubscribersForTopic(req.value)
+        # Client sends topic in req.key (not req.value)
+        let subscribers = server.pubSubManager.getSubscribersForTopic(req.key)
         var respArray = newJArray()
         for sub in subscribers:
           var subJson = newJObject()
@@ -1190,6 +1261,8 @@ proc handleWebSocketMessage*(
     resp.value = "Unknown command"
 
   # Send response
+  writeLine(stderr, "[DEBUG] Sending response seq=" & $resp.seq & " status=" & $resp.status)
+  flushFile(stderr)
   ws.send(encodeResponse(resp), BinaryMessage)
 
 proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
@@ -1222,7 +1295,20 @@ proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
     session.authSession = authSession
     withLock server.sessionsLock:
       server.sessions[ws.clientId] = session
-    ws.send("Connected to BitBarrel network server")
+    # Send welcome message (client expects text welcome)
+    echo "[DEBUG] Upgrade: about to send welcome, clientId=" & $ws.clientId
+    writeLine(stderr, "[DEBUG] Upgrade: about to send welcome, clientId=" & $ws.clientId)
+    flushFile(stderr)
+    try:
+      ws.send("Connected to BitBarrel network server", TextMessage)
+      echo "[DEBUG] Sent welcome message after upgrade, clientId=" & $ws.clientId
+      writeLine(stderr, "[DEBUG] Sent welcome message after upgrade, clientId=" & $ws.clientId)
+      flushFile(stderr)
+    except CatchableError as e:
+      echo "[DEBUG] Failed to send welcome message: " & e.msg
+      writeLine(stderr, "[DEBUG] Failed to send welcome message: " & e.msg)
+      flushFile(stderr)
+    # Don't send text message - client expects only binary messages (after welcome)
   except CatchableError:
     request.respond(400, body = "WebSocket upgrade failed")
 
@@ -1233,21 +1319,49 @@ proc websocketHandler*(
   message: mummy.Message
 ) =
   ## Handle WebSocket events
+  echo "WEBSOCKET HANDLER ENTERED: event=" & $event & " clientId=" & $ws.clientId
+  writeLine(stderr, "WEBSOCKET HANDLER ENTERED: event=" & $event & " clientId=" & $ws.clientId)
+  flushFile(stderr)
   {.gcsafe.}:
     case event:
     of OpenEvent:
       # Session created lazily on first message
-      echo "WebSocket connection opened: clientId=", ws.clientId
+      writeLine(stderr, "DEBUG: OpenEvent entered, clientId=" & $ws.clientId)
+      flushFile(stderr)
+      echo "OPEN EVENT TRIGGERED"
+      writeLine(stderr, "STDERR TEST1: OpenEvent")
+      flushFile(stderr)
+      writeLine(stderr, "STDERR TEST2: Time: " & $epochTime())
+      flushFile(stderr)
+      writeLine(stderr, "ZZZ WebSocket connection opened: clientId=" & $ws.clientId)
+      flushFile(stderr)
 
       # Store WebSocket in table for later use (e.g., pub/sub events)
+      writeLine(stderr, "DEBUG: Before storing websocket")
+      flushFile(stderr)
       withLock server.sessionsLock:
         server.webSockets[ws.clientId] = ws
+      writeLine(stderr, "DEBUG: After storing websocket")
+      flushFile(stderr)
+
+      # Send welcome message (client expects this)
+      writeLine(stderr, "[DEBUG] Attempting to send welcome message to clientId=" & $ws.clientId)
+      flushFile(stderr)
+      try:
+        ws.send("Connected to BitBarrel network server", TextMessage)
+        writeLine(stderr, "[DEBUG] Sent welcome message to clientId=" & $ws.clientId)
+        flushFile(stderr)
+      except CatchableError as e:
+        writeLine(stderr, "[DEBUG] Failed to send welcome message: " & e.msg)
+        flushFile(stderr)
 
       # Register client with event broker for pub/sub (just stores the clientId)
       if server.pubSubEnabled and server.eventBroker != nil:
         server.eventBroker.addClient(ws.clientId)
 
     of MessageEvent:
+      writeLine(stderr, "[DEBUG] MessageEvent: data length=" & $message.data.len)
+      flushFile(stderr)
       if message.kind == BinaryMessage:
         server.handleWebSocketMessage(ws, message.data)
       else:
@@ -1255,10 +1369,12 @@ proc websocketHandler*(
         ws.send(encodeResponse(invalidResponse(0, "Use binary protocol")), BinaryMessage)
 
     of ErrorEvent:
-      echo "WebSocket error: clientId=", ws.clientId
+      writeLine(stderr, "WebSocket error: clientId=" & $ws.clientId & " message data len=" & $message.data.len & " kind=" & $message.kind)
+      flushFile(stderr)
 
     of CloseEvent:
-      echo "WebSocket connection closed: clientId=", ws.clientId
+      writeLine(stderr, "WebSocket connection closed: clientId=" & $ws.clientId)
+      flushFile(stderr)
 
       # Remove WebSocket from storage table
       withLock server.sessionsLock:
@@ -1286,6 +1402,7 @@ proc websocketHandler*(
       # Clean up session
       withLock server.sessionsLock:
         server.sessions.del(ws.clientId)
+
 
 proc handleRestBarrels*(server: BitBarrelServer, request: mummy.Request) =
   ## Handle REST API for barrel management
@@ -1651,6 +1768,13 @@ proc handleRestTraverse(server: BitBarrelServer, request: mummy.Request,
 proc newServer*(config: ServerConfig): BitBarrelServer =
   ## Create a new BitBarrel server instance
   new(result)
+  # Ensure data directory exists before initializing components
+  try:
+    createDir(config.dataDir)
+  except OSError as e:
+    echo "Warning: Failed to create data directory '", config.dataDir, "': ", e.msg
+    # Continue anyway - some components may fail later
+
   result.registry = newBarrelRegistry(config.dataDir)
 
   # Discover existing barrels in data directory
@@ -1677,17 +1801,17 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
 
     # Create pub/sub configuration
     let psConfig = PubSubConfig(
-      enabled: true,
-      maxTopics: if config.maxPubSubTopics > 0: config.maxPubSubTopics else: 0,
-      maxSubscriptionsPerClient: if config.maxSubscriptionsPerClient > 0:
-                                     config.maxSubscriptionsPerClient
-                                   else: 0,
-      heartbeatTimeoutMs: if config.pubSubHeartbeatTimeoutMs > 0:
-                             config.pubSubHeartbeatTimeoutMs
-                           else: 30000,
-      heartbeatCheckIntervalMs: 5000,
-      defaultTopicConfig: defaultTopicConfig()
-    )
+        enabled: true,
+        maxTopics: if config.maxPubSubTopics > 0: config.maxPubSubTopics else: 0,
+        maxSubscriptionsPerClient: if config.maxSubscriptionsPerClient > 0:
+                                       config.maxSubscriptionsPerClient
+                                     else: 0,
+        heartbeatTimeoutMs: if config.pubSubHeartbeatTimeoutMs > 0:
+                               config.pubSubHeartbeatTimeoutMs
+                             else: 30000,
+        heartbeatCheckIntervalMs: 5000,
+        defaultTopicConfig: defaultTopicConfig()
+      )
 
     # Create pub/sub manager with message callback
     type ServerRef = ptr BitBarrelServerObj
@@ -1762,7 +1886,13 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
 
     # Configure bmCritBit mode for ordered queries
     result.historyStore.storageManager.config.sharedBarrelConfig.mode = bmCritBit
-    result.historyStore.storageManager.initSharedBackend()
+    try:
+      result.historyStore.storageManager.initSharedBackend()
+    except CatchableError as e:
+      echo "[PubSub] Error initializing shared backend: ", e.msg
+      echo "Stack trace: ", e.getStackTrace()
+      # Disable history store on error
+      result.historyStore = nil
 
     # Register barrel hook for k/v change events
     managerRef.setKvChangeCallback(proc(barrelName: string, key: string,
