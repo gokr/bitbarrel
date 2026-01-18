@@ -297,10 +297,10 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
       echo ""
       echo "=== Testing Python client ==="
       ORIG_DIR=$(pwd)
-      if [ -f "clients/python/venv/bin/activate" ]; then
+      if [ -f "clients/python/.venv/bin/activate" ]; then
         cd clients/python
         # Use . instead of source for sh compatibility
-        . venv/bin/activate
+        . .venv/bin/activate
         # Add the package to Python path
         PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
         TEST_RESULT=$?
@@ -313,7 +313,7 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
           ALL_PASSED=false
         fi
       else
-        echo "⚠ Python client has no venv, trying system Python..."
+        echo "⚠ Python client has no .venv, trying system Python..."
         cd clients/python
         PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
         if [ $? -eq 0 ]; then
