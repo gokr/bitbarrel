@@ -1295,19 +1295,6 @@ proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
     session.authSession = authSession
     withLock server.sessionsLock:
       server.sessions[ws.clientId] = session
-    # Send welcome message (client expects text welcome)
-    echo "[DEBUG] Upgrade: about to send welcome, clientId=" & $ws.clientId
-    writeLine(stderr, "[DEBUG] Upgrade: about to send welcome, clientId=" & $ws.clientId)
-    flushFile(stderr)
-    try:
-      ws.send("Connected to BitBarrel network server", TextMessage)
-      echo "[DEBUG] Sent welcome message after upgrade, clientId=" & $ws.clientId
-      writeLine(stderr, "[DEBUG] Sent welcome message after upgrade, clientId=" & $ws.clientId)
-      flushFile(stderr)
-    except CatchableError as e:
-      echo "[DEBUG] Failed to send welcome message: " & e.msg
-      writeLine(stderr, "[DEBUG] Failed to send welcome message: " & e.msg)
-      flushFile(stderr)
     # Don't send text message - client expects only binary messages (after welcome)
   except CatchableError:
     request.respond(400, body = "WebSocket upgrade failed")
@@ -1335,6 +1322,7 @@ proc websocketHandler*(
       flushFile(stderr)
       writeLine(stderr, "ZZZ WebSocket connection opened: clientId=" & $ws.clientId)
       flushFile(stderr)
+      writeLine(stderr, "DEBUG: After ZZZ flush")
 
       # Store WebSocket in table for later use (e.g., pub/sub events)
       writeLine(stderr, "DEBUG: Before storing websocket")
@@ -1342,6 +1330,8 @@ proc websocketHandler*(
       withLock server.sessionsLock:
         server.webSockets[ws.clientId] = ws
       writeLine(stderr, "DEBUG: After storing websocket")
+      flushFile(stderr)
+      writeLine(stderr, "WebSocket handler initialized for clientId=" & $ws.clientId)
       flushFile(stderr)
 
       # Send welcome message (client expects this)
@@ -1370,6 +1360,8 @@ proc websocketHandler*(
 
     of ErrorEvent:
       writeLine(stderr, "WebSocket error: clientId=" & $ws.clientId & " message data len=" & $message.data.len & " kind=" & $message.kind)
+      if message.data.len > 0:
+        writeLine(stderr, "WebSocket error data: " & $(message.data))
       flushFile(stderr)
 
     of CloseEvent:
