@@ -242,6 +242,9 @@ task testTypeScriptClient, "Test TypeScript client library - starts server on po
 
 task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript) - starts server on port 9876":
   exec """
+    # Save root directory
+    ROOT_DIR=$(pwd)
+
     # Start BitBarrel server in background
     echo "Starting BitBarrel server on port 9876..."
     ./bitbarrel -p=9876 serve > /tmp/bitbarrel_server.log 2>&1 &
@@ -277,16 +280,14 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
       echo ""
       echo "=== Testing Go client ==="
       if [ -f "clients/go/go.mod" ]; then
-        cd clients/go
         # Run only package tests (not examples), with server environment
         export BITBARREL_TEST_SERVER=true
-        if go test -v $(go list ./... | grep -v examples); then
+        if (cd "$ROOT_DIR/clients/go" && go test -v $(go list ./... | grep -v examples)); then
           echo "✓ Go client tests passed"
         else
           echo "✗ Go client tests failed"
           ALL_PASSED=false
         fi
-        cd ../..
       else
         echo "⚠ Go client has no go.mod, skipping"
       fi
@@ -296,17 +297,8 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
     if [ -d "clients/python" ]; then
       echo ""
       echo "=== Testing Python client ==="
-      ORIG_DIR=$(pwd)
       if [ -f "clients/python/.venv/bin/activate" ]; then
-        cd clients/python
-        # Use . instead of source for sh compatibility
-        . .venv/bin/activate
-        # Add the package to Python path
-        PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
-        TEST_RESULT=$?
-        deactivate
-        cd "$ORIG_DIR"
-        if [ $TEST_RESULT -eq 0 ]; then
+        if (cd "$ROOT_DIR/clients/python" && . .venv/bin/activate && PYTHONPATH=.:$PYTHONPATH pytest tests/ -v); then
           echo "✓ Python client tests passed"
         else
           echo "✗ Python client tests failed"
@@ -314,15 +306,12 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
         fi
       else
         echo "⚠ Python client has no .venv, trying system Python..."
-        cd clients/python
-        PYTHONPATH=.:$PYTHONPATH pytest tests/ -v
-        if [ $? -eq 0 ]; then
+        if (cd "$ROOT_DIR/clients/python" && PYTHONPATH=.:$PYTHONPATH pytest tests/ -v); then
           echo "✓ Python client tests passed"
         else
           echo "✗ Python client tests failed"
           ALL_PASSED=false
         fi
-        cd "$ORIG_DIR"
       fi
     fi
 
@@ -331,9 +320,8 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
       echo ""
       echo "=== Testing Dart client ==="
       if [ -f "clients/dart/pubspec.yaml" ]; then
-        cd clients/dart
         if which dart >/dev/null 2>&1; then
-          if dart test 2>/dev/null; then
+          if (cd "$ROOT_DIR/clients/dart" && dart test --reporter compact); then
             echo "✓ Dart client tests passed"
           else
             echo "✗ Dart client tests failed"
@@ -342,7 +330,6 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
         else
           echo "⚠ Dart not installed, skipping"
         fi
-        cd ../..
       else
         echo "⚠ Dart client has no pubspec.yaml, skipping"
       fi
@@ -353,14 +340,12 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
       echo ""
       echo "=== Testing TypeScript client ==="
       if [ -f "clients/typescript/package.json" ]; then
-        cd clients/typescript
-        if npm test 2>/dev/null; then
+        if (cd "$ROOT_DIR/clients/typescript" && npm test 2>/dev/null); then
           echo "✓ TypeScript client tests passed"
         else
           echo "✗ TypeScript client tests failed"
           ALL_PASSED=false
         fi
-        cd ../..
       else
         echo "⚠ TypeScript client package.json not found, skipping"
       fi
@@ -371,14 +356,12 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
       echo ""
       echo "=== Testing Nim client ==="
       if [ -f "clients/nim/bitbarrel_client.nimble" ]; then
-        cd clients/nim
-        if nimble test 2>/dev/null; then
+        if (cd "$ROOT_DIR/clients/nim" && nimble test 2>/dev/null); then
           echo "✓ Nim client tests passed"
         else
           echo "✗ Nim client tests failed"
           ALL_PASSED=false
         fi
-        cd ../..
       else
         echo "⚠ Nim client has no nimble file, skipping"
       fi
