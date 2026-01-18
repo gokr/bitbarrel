@@ -926,7 +926,7 @@ class Client:
         """Stop the event receiver thread."""
         if self._event_receiver_thread and self._event_receiver_thread.is_alive():
             self._event_receiver_stop.set()
-            self._event_receiver_thread.join(timeout=2.0)
+            self._event_receiver_thread.join(timeout=0.1)  # Short timeout for faster tests
 
     def _receive_pubsub_events(self) -> None:
         """Background thread function to receive PubSub events."""

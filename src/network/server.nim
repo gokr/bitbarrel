@@ -1889,6 +1889,8 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
 
     try:
       result.historyStore.storageManager.initSharedBackend()
+      # Assign history store to manager so it can store published messages
+      managerRef.historyStore = result.historyStore
     except CatchableError as e:
       echo "[PubSub] Error initializing shared backend: ", e.msg
       echo "Stack trace: ", e.getStackTrace()
