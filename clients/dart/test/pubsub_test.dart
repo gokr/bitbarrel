@@ -44,8 +44,8 @@ void main() {
         pattern: '',
         options: opts1.encode(),
       );
-      // Only high bit set
-      expect(data1.last, equals(0x01));
+      // Options byte is first, enableKvEvents sets bit 0
+      expect(data1.first, equals(0x01));
 
       final opts2 = SubscriptionOptions(
         enableKvEvents: true,
@@ -57,8 +57,8 @@ void main() {
         pattern: '',
         options: opts2.encode(),
       );
-      // All bits set
-      expect(data2.last, equals(0x07));
+      // All bits set (enableKvEvents=0x01, enablePresence=0x02, replayHistory=0x04)
+      expect(data2.first, equals(0x07));
     });
 
     test('encodePublishRequest produces correct format', () {
@@ -120,13 +120,16 @@ void main() {
 
   group('PubSub Protocol Decoders', () {
     test('decodePubSubEvent decodes valid event', () {
-      // Create a pub/sub event: [cmd:0xFF][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:2][headers][payloadLen:4][payload]
-      final buffer = ByteData(1 + 2 + 5 + 1 + 8 + 8 + 2 + 0 + 4 + 12);
+      // Create a pub/sub event: [cmd:1][seq_placeholder:4][topicLen:2][topic][msgType:1][seq:8][ts:8][headersLen:4][headers][payloadLen:4][payload]
+      final buffer = ByteData(1 + 4 + 2 + 5 + 1 + 8 + 8 + 4 + 0 + 4 + 12);
       var offset = 0;
 
       // Command
       buffer.setUint8(offset++, Command.pubsubEvent);
 
+      // Sequence placeholder (4 bytes, not used for async events)
+      buffer.setUint32(offset, 0, Endian.big);
+      offset += 4;
 
       // Topic 'topic'
       final topic = 'topic';
@@ -157,9 +160,9 @@ void main() {
       buffer.setUint32(offset, tsLow, Endian.big);
       offset += 4;
 
-      // Headers
-      buffer.setUint16(offset, 0, Endian.big);
-      offset += 2;
+      // Headers (4-byte length)
+      buffer.setUint32(offset, 0, Endian.big);
+      offset += 4;
 
       // Payload
       final payload = 'test payload';

@@ -755,8 +755,8 @@ class BitBarrelClient {
   Future<List<SubscriptionInfo>> listSubscribers(String topic) async {
     final value = await _sendRequest(
       command: Command.listSubscribers,
-      key: topic,
-      value: '',
+      key: '',
+      value: topic,
     );
 
     return ProtocolDecoder.decodeListSubscribersResponse(value);
