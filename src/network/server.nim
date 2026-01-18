@@ -1163,8 +1163,8 @@ proc handleWebSocketMessage*(
       resp.value = "Pub/sub not enabled"
     else:
       try:
-        # Client sends topic in req.key (not req.value)
-        let subscribers = server.pubSubManager.getSubscribersForTopic(req.key)
+        # Client sends topic in req.value (not req.key)
+        let subscribers = server.pubSubManager.getSubscribersForTopic(req.value)
         var respArray = newJArray()
         for sub in subscribers:
           var subJson = newJObject()
