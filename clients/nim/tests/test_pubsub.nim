@@ -392,10 +392,10 @@ suite "Query Methods":
           # History is implemented, run full test
           check history.len >= 3
 
-          # Verify history order (newest first)
-          check history[0].payload == "message 3"
+          # Verify history order (chronological: oldest first)
+          check history[0].payload == "message 1"
           check history[1].payload == "message 2"
-          check history[2].payload == "message 1"
+          check history[2].payload == "message 3"
 
           # Verify event properties
           for event in history:
