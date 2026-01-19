@@ -878,8 +878,16 @@ func DecodePubSubEvent(data []byte) (PubSubEvent, error) {
 		if offset+headersLen > len(data) {
 			return result, errors.New("truncated headers")
 		}
-		result.Headers = string(data[offset : offset+headersLen])
+		headersData := data[offset : offset+headersLen]
+		// Parse headers JSON string
+		if err := json.Unmarshal(headersData, &result.Headers); err != nil {
+			// If unmarshal fails, create empty map
+			result.Headers = make(map[string]interface{})
+		}
 		offset += headersLen
+	} else {
+		// Empty headers
+		result.Headers = make(map[string]interface{})
 	}
 
 	// Read payload
@@ -1021,18 +1029,19 @@ func DecodeListTopicsResponse(data string) ([]TopicInfo, error) {
 }
 
 // DecodeHistoryResponse decodes a history response
-// The response is JSON: [{"topic": "...", "messageType": 0, "sequence": 123, "timestamp": 1234567890, "headers": "...", "payload": "..."}]
+// The response is JSON: [{"topic": "...", "messageType": 0, "sequence": 123, "timestamp": 1234567890, "headers": {...}, "payload": "..."}]
 func DecodeHistoryResponse(data string) ([]PubSubEvent, error) {
 	if len(data) == 0 {
 		return []PubSubEvent{}, nil
 	}
 
+	// Use intermediate struct with interface{} for payload to handle both strings and objects
 	var items []struct {
 		Topic       string          `json:"topic"`
 		MessageType PubSubMessageType `json:"messageType"`
 		Sequence    uint64          `json:"sequence"`
 		Timestamp   int64           `json:"timestamp"`
-		Headers     string          `json:"headers"`
+		Headers     map[string]interface{} `json:"headers"`
 		Payload     interface{}     `json:"payload"`
 	}
 
@@ -1042,7 +1051,20 @@ func DecodeHistoryResponse(data string) ([]PubSubEvent, error) {
 
 	result := make([]PubSubEvent, len(items))
 	for i, item := range items {
-		payloadStr := serializeHistoryPayload(item.Payload)
+		// Convert payload to string
+		var payloadStr string
+		if s, ok := item.Payload.(string); ok {
+			payloadStr = s
+		} else {
+			// Serialize object to JSON string
+			data, err := json.Marshal(item.Payload)
+			if err != nil {
+				payloadStr = fmt.Sprintf("%v", item.Payload)
+			} else {
+				payloadStr = string(data)
+			}
+		}
+
 		result[i] = PubSubEvent{
 			Topic:       item.Topic,
 			MessageType: item.MessageType,
@@ -1056,18 +1078,6 @@ func DecodeHistoryResponse(data string) ([]PubSubEvent, error) {
 	return result, nil
 }
 
-// serializeHistoryPayload converts a history payload to string
-func serializeHistoryPayload(payload interface{}) string {
-	if s, ok := payload.(string); ok {
-		return s
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Sprintf("%v", payload)
-	}
-	return string(data)
-}
-
 // DecodePresenceResponse decodes a presence response
 // The response is JSON: [{"topic": "...", "members": [...], "lastUpdate": 1234567890}]
 func DecodePresenceResponse(topic string, data string) (PresenceInfo, error) {
@@ -1079,11 +1089,7 @@ func DecodePresenceResponse(topic string, data string) (PresenceInfo, error) {
 		return result, nil
 	}
 
-	var items []struct {
-		Topic      string            `json:"topic"`
-		Members    []json.RawMessage `json:"members"`
-		LastUpdate int64             `json:"lastUpdate"`
-	}
+	var items []PresenceInfo
 
 	if err := json.Unmarshal([]byte(data), &items); err != nil {
 		return result, fmt.Errorf("failed to decode presence response: %w", err)
@@ -1093,36 +1099,5 @@ func DecodePresenceResponse(topic string, data string) (PresenceInfo, error) {
 		return result, nil
 	}
 
-	item := items[0]
-	result.Topic = item.Topic
-	result.LastUpdate = item.LastUpdate
-
-	result.Members = make([]PresenceMember, len(item.Members))
-	for i, memberData := range item.Members {
-		var m struct {
-			ClientID uint64           `json:"clientId"`
-			Username string           `json:"username"`
-			JoinedAt int64            `json:"joinedAt"`
-			LastPing int64            `json:"lastPing"`
-			Metadata []byte           `json:"metadata"`
-		}
-		if err := json.Unmarshal(memberData, &m); err != nil {
-			return result, fmt.Errorf("failed to decode member: %w", err)
-		}
-
-		var metadataStr string
-		if len(m.Metadata) > 0 {
-			metadataStr = string(m.Metadata)
-		}
-
-		result.Members[i] = PresenceMember{
-			ClientID: m.ClientID,
-			Username: m.Username,
-			JoinedAt: m.JoinedAt,
-			LastPing: m.LastPing,
-			Metadata: metadataStr,
-		}
-	}
-
-	return result, nil
+	return items[0], nil
 }
