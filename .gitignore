@@ -70,3 +70,4 @@ dist-ssr/
 .vercel/
 .netlify/
 *.out
+clients/c/build/
