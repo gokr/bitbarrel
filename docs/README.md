@@ -41,6 +41,7 @@ Detailed documentation for specific BitBarrel features:
   - [Networking](FEATURES/networking.md) - Network protocol and client
   - [Hint Files](FEATURES/hint-files.md) - Metadata files for fast recovery (40K+ keys/sec)
   - [Read-Ahead LRU Buffering](FEATURES/read-buffering.md) - Caching with LRU eviction
+  - [Query Result Plugins](FEATURES/plugins.md) - Transform query results dynamically
 
 ### Client Libraries and Tools
 BitBarrel provides client libraries for multiple programming languages and a web admin console:
