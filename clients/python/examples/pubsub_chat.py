@@ -9,6 +9,7 @@ presence tracking, and query operations following the 12-step pattern.
 import json
 import time
 from bitbarrel import Client
+from bitbarrel.errors import BarrelExistsError
 
 
 def pubsub_chat_example():
@@ -24,9 +25,9 @@ def pubsub_chat_example():
         # Step 2: Setup chat storage barrel
         print("2. Setting up chat storage barrel...")
         try:
-            client.create_barrel("chat_storage", mode="bmCritBit")
-            print("✓ Created chat_storage barrel (bmCritBit mode)")
-        except Exception:
+            client.create_barrel("chat_storage")
+            print("✓ Created chat_storage barrel")
+        except BarrelExistsError:
             # Barrel might already exist
             print("✓ Using existing chat_storage barrel")
         client.use_barrel("chat_storage")
@@ -34,12 +35,9 @@ def pubsub_chat_example():
 
         # Step 3: Subscribe to "room:general" with options (history replay, presence)
         print("3. Subscribing to 'room:general'...")
-        subscription_options = {
-            "replay_history": True,
-            "track_presence": True,
-            "pattern": False,  # exact match
-        }
-        client.subscribe("room:general", **subscription_options)
+        from bitbarrel.protocol import SubscriptionOptions
+        subscription_options = SubscriptionOptions(replay_history=True, enable_presence=True)
+        client.subscribe("room:general", subscription_options)
         print("✓ Subscribed to 'room:general' with history replay and presence tracking\n")
 
         # Step 4: Publish 5 chat messages from 5 users
@@ -80,7 +78,7 @@ def pubsub_chat_example():
 
         # Step 6: Subscribe to "room:*" pattern
         print("6. Subscribing to 'room:*' pattern...")
-        client.subscribe("room:*", pattern=True)
+        client.subscribe("room:*")
         print("✓ Subscribed to 'room:*' pattern\n")
 
         # Step 7: Publish to different rooms (tech, random)
