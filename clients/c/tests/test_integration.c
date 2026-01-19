@@ -23,9 +23,9 @@ int main(void) {
     }
     printf("✓ Library initialized\n");
 
-    // Create configuration - connect to localhost:9876 (test server port)
+    // Create configuration - connect to localhost:9876/ws (test server WebSocket path)
     BBConfig config = bb_config_default();
-    config.url = "ws://localhost:9876";
+    config.url = "ws://localhost:9876/ws";
     config.timeout_ms = 5000;
     config.max_retries = 3;
     config.enable_auto_reconnect = true;
