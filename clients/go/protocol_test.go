@@ -245,17 +245,17 @@ func TestDecodeRequestErrors(t *testing.T) {
 		},
 		{
 			name:    "Invalid command",
-			data:    []byte{0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+			data:    []byte{0xFF, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, // 12 bytes minimum for v1.1
 			wantErr: "invalid command",
 		},
 		{
 			name:    "Truncated key",
-			data:    []byte{CmdGet, 0, 0, 0, 0, 0, 5, 0x74, 0x65, 0x73, 0x74}, // seq=0, key len=5, 3 key bytes, truncated before value len
+			data:    []byte{CmdGet, 0, 0, 0, 0, 0, 0, 5, 0x74, 0x65, 0x73, 0x74}, // seq=0, flags=0, key len=5, 3 key bytes, truncated before value len
 			wantErr: "truncated request",
 		},
 		{
 			name:    "Key length too large",
-			data:    []byte{CmdGet, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0}, // key length 65535 but no data
+			data:    []byte{CmdGet, 0, 0, 0, 0, 0, 0xFF, 0xFF, 0, 0, 0, 0}, // key length 65535 but no data
 			wantErr: "truncated request",
 		},
 	}
