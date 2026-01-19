@@ -16,9 +16,9 @@ void main() {
         value: 'test_value',
       );
 
-      // Format: [cmd:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
-      // Expected: [0x02][0x00 0x00 0x00 0x2A][0x00 0x08][test_key][0x00 0x00 0x00 0x0A][test_value]
-      expect(data.length, equals(1 + 4 + 2 + 8 + 4 + 10));
+      // Format v1.1: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+      // Expected: [0x02][0x00 0x00 0x00 0x2A][0x00][0x00 0x08][test_key][0x00 0x00 0x00 0x0A][test_value]
+      expect(data.length, equals(1 + 4 + 1 + 2 + 8 + 4 + 10));
       expect(data[0], equals(Command.set));
     });
 
@@ -29,8 +29,8 @@ void main() {
         key: 'key',
       );
 
-      // GET has no value
-      expect(data.length, equals(1 + 4 + 2 + 3 + 4 + 0));
+      // GET has no value, v1.1 format includes flags
+      expect(data.length, equals(1 + 4 + 1 + 2 + 3 + 4 + 0));
       expect(data[0], equals(Command.get));
     });
 
