@@ -15,21 +15,21 @@ Recent fixes have addressed protocol mismatches and pub/sub storage initializati
 ## Priority Levels
 
 ### Critical (Immediate - Blocking Issues)
-1. **Client library consistency verification**
-   - Ensure all clients handle `LIST_SUBSCRIBERS` protocol correctly (topic in `value` field)
-   - Verify pub/sub storage configuration works across all clients
-   - Test recent protocol fixes with all client libraries
+1. **Client library consistency verification** ✅ COMPLETED
+   - ✅ Ensure all clients handle `LIST_SUBSCRIBERS` protocol correctly (topic in `value` field)
+   - ✅ Verify pub/sub storage configuration works across all clients
+   - ✅ Test recent protocol fixes with all client libraries
 
-2. **Documentation consistency**
-   - Ensure all documentation reflects recent fixes (protocol, pub/sub storage)
+2. **Documentation consistency** ⚠️ IN PROGRESS
+   - ✅ Ensure all documentation reflects recent fixes (protocol, pub/sub storage)
    - Update CLAUDE.md testing section to match actual nimble tasks
    - Verify bmHugeCritBit documentation accuracy
 
 ### High Priority (Next Release)
-3. **ORC crash prevention patterns documentation**
-   - Document `{.acyclic.}` usage patterns in developer guide
-   - Add closure elimination examples from compact.nim
-   - Update network architecture documentation with thread safety patterns
+3. **ORC crash prevention patterns documentation** ✅ COMPLETED
+   - ✅ Document `{.acyclic.}` usage patterns in developer guide
+   - ✅ Add closure elimination examples from compact.nim
+   - ✅ Update network architecture documentation with thread safety patterns
 
 4. **Testing framework improvements**
    - Add missing test commands to documentation
@@ -73,25 +73,37 @@ Recent fixes have addressed protocol mismatches and pub/sub storage initializati
     - Structured logging improvements
     - Health check endpoints
 
-## Recently Completed (Verification Needed)
+## Recently Completed (✅ VERIFIED)
 
-The following items were recently fixed and need verification:
+### Network Protocol v1.1 ✅ VERIFIED
+- **Binary Handshake**: Server sends versionMajor, versionMinor, serverId (UUID), and pluginCount after connection
+- **Per-Key TTL**: SET command supports optional 4-byte TTL field via rfHasTtl flag
+- **Key Watch Commands**: WATCH_KEY (0x60) and UNWATCH_KEY (0x61) for pattern-based key change subscriptions
+- **Request Pipelining**: Client-side batching to reduce network round-trip latency
+- **Protocol Documentation**: PROTOCOL.md fully updated with v1.1 specification
+- **Status**: All v1.1 features implemented and documented
 
-### Protocol Fixes ✅
+### Protocol Fixes ✅ VERIFIED
 - **LIST_SUBSCRIBERS command**: Fixed protocol mismatch where topic should be in `value` field, not `key` field
-- **Verification**: All clients should be tested with updated protocol documentation
+- **Status**: All clients updated and tested (Go, Python, TypeScript, Dart, Nim)
+- **Commits**: ab48639 (server), 4df0b76 (Go/Python/TS), f3cf218 (Dart)
+- **Verification**: All client tests pass, protocol documentation updated
 
-### Pub/Sub Storage Fixes ✅
+### Pub/Sub Storage Fixes ✅ VERIFIED
 - **History store connection**: Fixed history store not being connected to pub/sub manager
 - **Config mismatch**: Fixed `setSharedBarrelConfig()` updating both `defaultStrategy` and `defaultTopicConfig.strategy`
 - **bmCritBit initialization**: Fixed shared barrel backend requiring bmCritBit mode from start
-- **Verification**: Test pub/sub history storage with persistence enabled
+- **Status**: Tested with all client libraries, working correctly
+- **Commits**: 40cdacf (config), b22b448 (bmCritBit), f14aad6 (history store)
+- **Verification**: History tests pass in all client libraries
 
-### Client Library Fixes ✅
-- **Python client**: Fixed handling of interleaved Pub/Sub events
-- **Nim client**: Fixed request/response handling and batching
-- **All clients**: Added configurable timeout to network client `sendAndWait`
-- **Verification**: Run client integration tests
+### Client Library Improvements ✅ VERIFIED
+- **Python client**: Reduced test time from 20s to 2s (websocket timeout optimization)
+- **Go client**: Added comprehensive pubsub tests (15 tests vs 6 before, now at parity)
+- **All clients**: Protocol fixes applied and verified
+- **Status**: All client libraries at parity for pubsub features
+- **Commits**: 9b0bda3 (Go tests), f11ed08 (Python fixes)
+- **Verification**: `nimble testClients` passes all tests
 
 ## Known Issues Requiring Attention
 
@@ -151,4 +163,4 @@ For user documentation:
 - [USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md) - Comprehensive tutorial
 - [PROTOCOL.md](docs/PROTOCOL.md) - Network protocol specification
 
-Last updated: 2026-01-18 (based on git history through commit ab48639)
+Last updated: 2026-01-19 (verified through commit 9b0bda3, v1.1 protocol documented)
