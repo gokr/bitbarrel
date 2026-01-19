@@ -7,13 +7,13 @@
 ## - Data format conversion
 ## - Field masking for sensitive data
 
-import ../../src/plugins/query_result_hooks
+import ../../src/hooks/query_result_hooks
 import std/[strutils, json, times, tables, os]
 
 ## 1. Data Validation Plugin
 ## Validates JSON values against a schema and filters out invalid records
 ## This example checks for required "id" and "name" fields in JSON objects
-discard registerPlugin(
+discard registerHook(
   name = "validate_json_schema",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -40,7 +40,7 @@ discard registerPlugin(
 ## Filters results based on user permissions (simulated)
 ## This example uses metadata.clientId to determine access rights
 ## In practice, you would integrate with your authentication system
-discard registerPlugin(
+discard registerHook(
   name = "access_control",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -69,7 +69,7 @@ discard registerPlugin(
 ## Logs query performance metrics and tracks statistics
 ## This plugin demonstrates how to collect performance data
 var queryStats = initTable[string, int]()  # Simple in-memory stats
-discard registerPlugin(
+discard registerHook(
   name = "performance_monitor",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -102,7 +102,7 @@ discard registerPlugin(
 ## 4. Data Transformation Plugin
 ## Converts values between formats (e.g., JSON to CSV)
 ## This example transforms JSON objects into CSV rows
-discard registerPlugin(
+discard registerHook(
   name = "json_to_csv",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -130,7 +130,7 @@ discard registerPlugin(
 ## 5. Field Masking Plugin
 ## Masks sensitive fields in nested JSON data
 ## This example masks email addresses and phone numbers
-discard registerPlugin(
+discard registerHook(
   name = "mask_sensitive_fields",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -170,7 +170,7 @@ discard registerPlugin(
 ## Limits query results based on client rate limits
 ## This example uses simple in-memory tracking
 var clientQueryCount = initTable[string, int]()
-discard registerPlugin(
+discard registerHook(
   name = "rate_limiter",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -205,7 +205,7 @@ discard registerPlugin(
 ## 7. Geographic Filtering Plugin
 ## Filters results based on geographic data in values
 ## This example assumes JSON values with "location" field
-discard registerPlugin(
+discard registerHook(
   name = "geo_filter",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -235,7 +235,7 @@ discard registerPlugin(
 ## 8. Cache Warming Plugin
 ## Prepares data for caching systems
 ## This example extracts key fields for cache optimization
-discard registerPlugin(
+discard registerHook(
   name = "cache_warmer",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],

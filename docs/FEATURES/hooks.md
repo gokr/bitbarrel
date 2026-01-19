@@ -1,22 +1,22 @@
-# Query Result Plugins
+# Query Result Hooks
 
-BitBarrel's plugin system allows you to transform query results dynamically before they are returned to clients. Plugins can filter, modify, or enrich range and prefix query results based on your application needs.
+BitBarrel's hook system allows you to transform query results dynamically before they are returned to clients. Hooks can filter, modify, or enrich range and prefix query results based on your application needs.
 
 ## Overview
 
-The query result plugin system provides:
+The query result hook system provides:
 
 - **Dynamic result transformation** - Modify query results at runtime
-- **Type-safe plugin registration** - Register plugins with clear boundaries
+- **Type-safe hook registration** - Register hooks with clear boundaries
 - **Hook-based architecture** - Apply hooks to range and prefix queries
-- **Thread-safe registry** - Safe concurrent plugin management
-- **Client-transparent** - Plugins work seamlessly with network clients
+- **Thread-safe registry** - Safe concurrent hook management
+- **Client-transparent** - Hooks work seamlessly with network clients
 
-## Current Plugin/Hook Coverage
+## Current Hook Coverage
 
-BitBarrel has two distinct hook/plugin systems:
+BitBarrel has two distinct hook systems:
 
-### 1. Query Result Plugins (`src/plugins/query_result_hooks.nim`)
+### 1. Query Result Hooks (`src/hooks/query_result_hooks.nim`)
 Transform results from range and prefix queries before returning to clients.
 
 **Supported Commands:**
@@ -26,9 +26,9 @@ Transform results from range and prefix queries before returning to clients.
 - `cmdPrefixKeys` (0x25) - Keys-only prefix queries ❌ (no plugin support)
 - `cmdRangeCount` (0x23) - Range count queries ❌ (no plugin support)
 
-**Protocol Support:** RangeRequest and PrefixRequest have `plugins: seq[string]` fields.
+**Protocol Support:** RangeRequest and PrefixRequest have `hooks: seq[string]` fields.
 
-**Client API:** `rangeQuery()` and `prefixQuery()` accept optional `plugins` parameter.
+**Client API:** `rangeQuery()` and `prefixQuery()` accept optional `hooks` parameter.
 
 ### 2. Barrel Event Hooks (`src/pubsub/barrel_hooks.nim`)
 Trigger callbacks when keys are set or deleted in a barrel.
@@ -41,7 +41,7 @@ Trigger callbacks when keys are set or deleted in a barrel.
 
 **Registry:** Thread-safe with priority-based execution.
 
-**Coverage Gaps:** The following operations currently have NO plugin/hook support:
+**Coverage Gaps:** The following operations currently have NO hook support:
 - `cmdGet` (0x01) - Single key retrieval
 - `cmdListKeys` (0x06) - List all keys
 - All batch operations (`cmdBatchGet`, `cmdBatchSet`, `cmdBatchDelete`)
@@ -52,12 +52,12 @@ See the [Extension Proposals](#extension-proposals) section for future enhanceme
 
 ## Plugin Types
 
-### Range Query Plugins (`hkRangeQuery`)
+### Range Query Hooks (`hkRangeQuery`)
 Applied to range query results:
 - `itemsInRange()` / `rangeQuery()`
 - Affects both key-value pairs and keys-only variants
 
-### Prefix Query Plugins (`hkPrefixQuery`)
+### Prefix Query Hooks (`hkPrefixQuery`)
 Applied to prefix query results:
 - `itemsWithPrefix()` / `prefixQuery()`
 - Affects both key-value pairs and keys-only variants
@@ -67,9 +67,9 @@ Applied to prefix query results:
 ### Basic Plugin Structure
 
 ```nim
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
-# Define your plugin logic
+# Define your hook logic
 proc myFilterPlugin(metadata: HookMetadata,
                     items: var seq[(string, string)],
                     nextCursor: var string,
@@ -77,10 +77,10 @@ proc myFilterPlugin(metadata: HookMetadata,
   ## Filter items based on custom logic
   items.keepItIf(it[1].contains("active"))
 
-# Register the plugin
-let pluginId = registerPlugin(
-  "activeItemsOnly",     # Unique plugin name
-  myFilterPlugin,        # Plugin procedure
+# Register the hook
+let pluginId = registerHook(
+  "activeItemsOnly",     # Unique hook name
+  myFilterHook,        # Plugin procedure
   hkRangeQuery,          # Hook type
   "Filter to active items only"  # Description
 )
@@ -88,7 +88,7 @@ let pluginId = registerPlugin(
 
 ### Plugin Parameters
 
-Plugins receive four parameters:
+Hooks receive four parameters:
 
 1. **metadata** - HookMetadata containing:
    - `hookType` - Type of query (range or prefix)
@@ -118,7 +118,7 @@ proc filterByKeyword(metadata: HookMetadata,
                      hasMore: var bool) =
   items.keepItIf(it[1].contains("premium"))
 
-let pluginId = registerPlugin(
+let pluginId = registerHook(
   "premiumOnly",
   filterByKeyword,
   hkRangeQuery,
@@ -139,7 +139,7 @@ proc enforceMaxLimit(metadata: HookMetadata,
     items.setLen(100)
     hasMore = true  # Indicate more results available
 
-let pluginId = registerPlugin(
+let pluginId = registerHook(
   "max100Results",
   enforceMaxLimit,
   hkRangeQuery,
@@ -160,7 +160,7 @@ proc addTimestamp(metadata: HookMetadata,
   for item in items.mitems:
     item[1] = fmt"{item[1]}|retrieved_at={timestamp}"
 
-let pluginId = registerPlugin(
+let pluginId = registerHook(
   "addTimestamp",
   addTimestamp,
   hkPrefixQuery,
@@ -180,7 +180,7 @@ proc userAccessFilter(metadata: HookMetadata,
   # Assume we have currentUserId available
   items.keepItIf(it[0].startsWith(fmt"user:{currentUserId}:"))
 
-let pluginId = registerPlugin(
+let pluginId = registerHook(
   "userAccessOnly",
   userAccessFilter,
   hkRangeQuery,
@@ -188,27 +188,27 @@ let pluginId = registerPlugin(
 )
 ```
 
-## Using Plugins
+## Using Hooks
 
 ### Server-Side Usage (Direct API)
 
 ```nim
 import bitbarrel
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
-# Register plugin first
-let pluginId = registerPlugin("myPlugin", myPluginProc, hkRangeQuery, "Description")
+# Register hook first
+let pluginId = registerHook("myPlugin", myPluginProc, hkRangeQuery, "Description")
 
 # Open barrel in bmCritBit mode for range queries
 var barrel = openBarrel("data.db", bmCritBit)
 
-// Use plugin in range query
+// Use hook in range query
 let (items, cursor, hasMore) = barrel.itemsInRange(
   startKey = "user:1000",
   endKey = "user:2000",
   limit = 100,
   cursor = "",
-  plugins = @["myPlugin"]  // Apply plugin
+  hooks = @["myPlugin"]  // Apply plugin
 )
 ```
 
@@ -227,53 +227,53 @@ let (items, cursor, hasMore) = client.rangeQuery(
   endKey = "user:2000",
   limit = 100,
   cursor = "",
-  plugins = @["activeOnly", "maxResults"]  // Multiple plugins
+  hooks = @["activeOnly", "maxResults"]  // Multiple hooks
 )
 
-// Prefix query with plugin
+// Prefix query with hook
 let (items, cursor, hasMore) = client.prefixQuery(
   prefix = "order:2024-",
   limit = 50,
   cursor = "",
-  plugins = @["filterByStatus"]  // Plugin applied
+  hooks = @["filterByStatus"]  // Plugin applied
 )
 ```
 
 ### Plugin Chaining
 
-Multiple plugins can be applied to the same query. They execute in the order specified:
+Multiple hooks can be applied to the same query. They execute in the order specified:
 
 ```nim
-// Plugins execute in order: filter1 → filter2 → transform
-let plugins = @["filter1", "filter2", "transform"]
+// Hooks execute in order: filter1 → filter2 → transform
+let hooks = @["filter1", "filter2", "transform"]
 let (items, cursor, hasMore) = client.rangeQuery(
-  "start", "end", 100, "", plugins
+  "start", "end", 100, "", hooks
 )
 ```
 
-**Plugin execution order matters** - later plugins receive results from earlier plugins.
+**Plugin execution order matters** - later hooks receive results from earlier hooks.
 
-## Managing Plugins
+## Managing Hooks
 
-### Listing Registered Plugins
+### Listing Registered Hooks
 
 ```nim
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
-let registeredPlugins = getRegisteredPlugins()
-for name, hookType in registeredPlugins:
-  echo fmt"Plugin: {name}, Type: {hookType}"
+let registeredHooks = getRegisteredHooks())
+for name, hookType in registeredHooks:
+  echo fmt"Hook: {name}, Type: {hookType}"
 ```
 
-### Unregistering Plugins
+### Unregistering Hooks
 
 ```nim
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
 # Unregister by name
-unregisterPlugin("myPlugin")
+unregisterHook("myPlugin")
 
-# After unregistering, plugin is no longer available for queries
+# After unregistering, hook is no longer available for queries
 ```
 
 ### Plugin Lifecycle
@@ -288,47 +288,47 @@ unregisterPlugin("myPlugin")
 
 ### Do's
 
-✅ **Register plugins at startup** - Register all plugins during application initialization
+✅ **Register hooks at startup** - Register all hooks during application initialization
 
 ✅ **Use descriptive names** - Choose clear, unique plugin names
 
-✅ **Handle empty results** - Plugins should work correctly with empty item lists
+✅ **Handle empty results** - Hooks should work correctly with empty item lists
 
 ✅ **Document plugin behavior** - Provide clear descriptions for each plugin
 
-✅ **Test with pagination** - Ensure plugins work correctly with cursor-based pagination
+✅ **Test with pagination** - Ensure hooks work correctly with cursor-based pagination
 
-✅ **Use appropriate hook types** - Register range plugins as `hkRangeQuery`, prefix as `hkPrefixQuery`
+✅ **Use appropriate hook types** - Register range hooks as `hkRangeQuery`, prefix as `hkPrefixQuery`
 
 ### Don'ts
 
 ❌ **Don't modify key structure** - Avoid changing keys in ways that break cursor pagination
 
-❌ **Don't make plugins stateful** - Plugins should be stateless and deterministic
+❌ **Don't make hooks stateful** - Hooks should be stateless and deterministic
 
-❌ **Don't perform I/O in plugins** - Keep plugins fast and in-memory only
+❌ **Don't perform I/O in hooks** - Keep hooks fast and in-memory only
 
-❌ **Don't depend on plugin order** - Design plugins to be composable in any order
+❌ **Don't depend on plugin order** - Design hooks to be composable in any order
 
-❌ **Don't throw exceptions** - Handle errors gracefully within plugins
+❌ **Don't throw exceptions** - Handle errors gracefully within hooks
 
 ## Security Considerations
 
 ### Plugin Trust Model
 
-- Plugins execute with server privileges
-- Only register plugins from trusted sources
+- Hooks execute with server privileges
+- Only register hooks from trusted sources
 - Review plugin code before registration
 - Consider plugin behavior in multi-tenant scenarios
 
-### Client-Specified Plugins
+### Client-Specified Hooks
 
-When clients can specify plugins (network API):
+When clients can specify hooks (network API):
 
 ```nim
-// Server can restrict which plugins clients can use
+// Server can restrict which hooks clients can use
 proc validateClientPlugin(pluginName: string): bool =
-  # Only allow safe, audited plugins
+  # Only allow safe, audited hooks
   result = pluginName in ["safeFilter1", "safeFilter2"]
 ```
 
@@ -343,14 +343,14 @@ proc validateClientPlugin(pluginName: string): bool =
 
 ### Optimization Tips
 
-1. **Keep plugins simple** - Avoid complex logic in frequently-called plugins
+1. **Keep hooks simple** - Avoid complex logic in frequently-called hooks
 2. **Batch operations** - Process all items in a single pass
 3. **Avoid allocations** - Minimize memory allocations in hot paths
 4. **Use efficient algorithms** - Prefer O(n) operations over O(n²)
 
-### When to Use Plugins vs. Application Logic
+### When to Use Hooks vs. Application Logic
 
-**Use plugins when:**
+**Use hooks when:**
 - Transformation needs to be applied consistently across multiple queries
 - You want to enforce constraints at the data layer
 - You need to modify results before network transmission
@@ -362,9 +362,9 @@ proc validateClientPlugin(pluginName: string): bool =
 - Logic is complex and better handled in application code
 - You want to keep data layer simple
 
-## Debugging Plugins
+## Debugging Hooks
 
-### Logging in Plugins
+### Logging in Hooks
 
 ```nim
 proc debugPlugin(metadata: HookMetadata,
@@ -382,7 +382,7 @@ proc debugPlugin(metadata: HookMetadata,
   echo fmt"Filtered from {before} to {after} items"
 ```
 
-### Testing Plugins
+### Testing Hooks
 
 ```nim
 import unittest
@@ -411,9 +411,9 @@ suite "Plugin Tests":
 
 ```nim
 import bitbarrel
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
-# Define plugins
+# Define hooks
 proc filterPremium(metadata: HookMetadata,
                    items: var seq[(string, string)],
                    nextCursor: var string,
@@ -428,10 +428,10 @@ proc addMetadata(metadata: HookMetadata,
   for item in items.mitems:
     item[1] = fmt"{item[1]}|processed={now}|query={metadata.queryParams}"
 
-# Register plugins
-discard registerPlugin("premiumOnly", filterPremium, hkRangeQuery,
+# Register hooks
+discard registerHook("premiumOnly", filterPremium, hkRangeQuery,
                       "Show only premium accounts")
-discard registerPlugin("addQueryMetadata", addMetadata, hkRangeQuery,
+discard registerHook("addQueryMetadata", addMetadata, hkRangeQuery,
                       "Add processing metadata to values")
 
 # Use in application
@@ -443,12 +443,12 @@ proc getPremiumUsers(): seq[(string, string)] =
     endKey = "user:9999",
     limit = 100,
     cursor = "",
-    plugins = @["premiumOnly", "addQueryMetadata"]
+    hooks = @["premiumOnly", "addQueryMetadata"]
   )
 
   return items
 
-# For network clients, plugins work the same way
+# For network clients, hooks work the same way
 import network/client
 
 var client = newClient("localhost", 9876.Port)
@@ -457,13 +457,13 @@ discard client.useBarrel("users")
 
 let (items, cursor, hasMore) = client.rangeQuery(
   "user:0000", "user:9999", 100, "",
-  plugins = @["premiumOnly", "addQueryMetadata"]
+  hooks = @["premiumOnly", "addQueryMetadata"]
 )
 ```
 
 ## Barrel Event Hooks
 
-Barrel event hooks provide a way to execute callbacks when key-value pairs are set or deleted in a barrel. Unlike query result plugins which transform query results, barrel hooks are triggered by write operations and are useful for:
+Barrel event hooks provide a way to execute callbacks when key-value pairs are set or deleted in a barrel. Unlike query result hooks which transform query results, barrel hooks are triggered by write operations and are useful for:
 
 - Audit logging and change tracking
 - Cache invalidation
@@ -594,7 +594,7 @@ Future enhancements to the plugin/hook system could include:
 - Transform single values before returning to client
 
 ### 3. Plugin Parameter Enhancement
-- Allow clients to pass custom parameters to plugins
+- Allow clients to pass custom parameters to hooks
 - Extend protocol with `pluginParams: Table[string, string]`
 
 ### 4. Batch Operation Plugin Support
@@ -605,7 +605,7 @@ Future enhancements to the plugin/hook system could include:
 - Hooks for barrel lifecycle events (create, open, close, drop)
 
 ### 6. Unified Plugin Registry
-- Single registry for both query plugins and barrel hooks
+- Single registry for both query hooks and barrel hooks
 - Consistent API and management
 
 ## API Reference
@@ -619,7 +619,7 @@ proc registerPlugin*(name: string,
                      description: string = ""): PluginId
 ```
 
-Register a new query result plugin.
+Register a new query result hook.
 
 **Parameters:**
 - `name`: Unique plugin identifier
@@ -627,7 +627,7 @@ Register a new query result plugin.
 - `hookType`: Hook kind (`hkRangeQuery` or `hkPrefixQuery`)
 - `description`: Human-readable description
 
-**Returns:** Plugin ID (used for internal tracking)
+**Returns:** Hook ID (used for internal tracking)
 
 **Raises:** `PluginAlreadyRegisteredError` if name already exists
 
@@ -640,24 +640,24 @@ proc unregisterPlugin*(name: string)
 Remove a plugin from the registry.
 
 **Parameters:**
-- `name`: Plugin name to unregister
+- `name`: Hook name to unregister
 
 **Raises:** `PluginNotFoundError` if plugin doesn't exist
 
-### getRegisteredPlugins
+### getRegisteredHooks
 
 ```nim
-proc getRegisteredPlugins*(): Table[string, HookKind]
+proc getRegisteredHooks*(): Table[string, HookKind]
 ```
 
-Get all currently registered plugins.
+Get all currently registered hooks.
 
 **Returns:** Table mapping plugin names to hook types
 
-### applyPlugins (Internal)
+### applyHooks (Internal)
 
 ```nim
-proc applyPlugins*(hookType: HookKind,
+proc applyHooks*(hookType: HookKind,
                    items: var seq[(string, string)],
                    nextCursor: var string,
                    hasMore: var bool,
@@ -665,7 +665,7 @@ proc applyPlugins*(hookType: HookKind,
                    queryParams: string)
 ```
 
-Apply multiple plugins to query results (called internally).
+Apply multiple hooks to query results (called internally).
 
 ## Troubleshooting
 
@@ -678,9 +678,9 @@ Apply multiple plugins to query results (called internally).
 **Solution:**
 ```nim
 // Verify plugin is registered
-if "myPlugin" notin getRegisteredPlugins():
+if "myPlugin" notin getRegisteredHooks()):
   echo "Plugin not registered!"
-  registerPlugin("myPlugin", myProc, hkRangeQuery, "")
+  registerHook("myPlugin", myProc, hkRangeQuery, "")
 ```
 
 ### Wrong Hook Type Error
@@ -691,26 +691,26 @@ if "myPlugin" notin getRegisteredPlugins():
 
 **Solution:**
 ```nim
-// Register separate plugins for each hook type
-let rangeId = registerPlugin("myFilter", filterProc, hkRangeQuery, "")
-let prefixId = registerPlugin("myFilter", filterProc, hkPrefixQuery, "")
+// Register separate hooks for each hook type
+let rangeId = registerHook("myFilter", filterProc, hkRangeQuery, "")
+let prefixId = registerHook("myFilter", filterProc, hkPrefixQuery, "")
 ```
 
 ### Plugin Order Issues
 
-**Problem:** Results not as expected with multiple plugins
+**Problem:** Results not as expected with multiple hooks
 
 **Cause:** Plugin execution order affects final result
 
 **Solution:**
 ```nim
-// Reorder plugins to achieve desired result
+// Reorder hooks to achieve desired result
 // Filter → Transform → Limit (example order)
-let plugins = @["filter", "transform", "limit"]
+let hooks = @["filter", "transform", "limit"]
 ```
 
 ## Related Documentation
 
-- [Pub/Sub Messaging Guide](../USER_GUIDE/pubsub.md) - Real-time messaging with plugins
-- [Network Client Guide](./networking-guide.md) - Using plugins with network clients
-- [Plugin Tests](../../tests/plugins/test_query_result_hooks.nim) - Comprehensive test examples
+- [Pub/Sub Messaging Guide](../USER_GUIDE/pubsub.md) - Real-time messaging with hooks
+- [Network Client Guide](./networking-guide.md) - Using hooks with network clients
+- [Plugin Tests](../../tests/hooks/test_query_result_hooks.nim) - Comprehensive test examples

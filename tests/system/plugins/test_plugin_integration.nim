@@ -5,7 +5,7 @@
 ## Uses direct barrel access and plugin hook calls for reliable testing
 
 import std/[unittest, os, strutils, atomics, sequtils]
-import ../../../src/plugins/query_result_hooks
+import ../../../src/hooks/query_result_hooks
 import ../../../src/bitbarrel/barrel
 import ../../../src/bitbarrel/config
 import ../../testutils
@@ -20,7 +20,7 @@ var
 
 suite "Query Result Plugin Integration Tests":
   setup:
-    clearAllPlugins()
+    clearAllHooks()
     pluginCallCounter.store(0)
     pluginExecCounter.store(0)
     pluginExecMarker1.store(0)
@@ -28,12 +28,12 @@ suite "Query Result Plugin Integration Tests":
     pluginExecMarker3.store(0)
 
   teardown:
-    clearAllPlugins()
+    clearAllHooks()
 
   test "rangeQuery with simple transformation plugin":
     withTestDir("plugin_transform_test"):
       # Register a test plugin that appends "_transformed" to values
-      discard registerPlugin("test_transformer",
+      discard registerHook("test_transformer",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -66,7 +66,7 @@ suite "Query Result Plugin Integration Tests":
         hookKind: hkRangeQuery
       )
 
-      discard applyQueryResultPlugins(@["test_transformer"], metadata, items, nextCursor, hasMore)
+      discard applyQueryResultHooks(@["test_transformer"], metadata, items, nextCursor, hasMore)
 
       # Verify plugin was called
       check pluginCallCounter.load() == 1
@@ -85,7 +85,7 @@ suite "Query Result Plugin Integration Tests":
   test "plugin filtering":
     withTestDir("plugin_filter_test"):
       # Register a plugin that filters out items with value containing "skip"
-      discard registerPlugin("filter_skip",
+      discard registerHook("filter_skip",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -120,7 +120,7 @@ suite "Query Result Plugin Integration Tests":
         hookKind: hkPrefixQuery
       )
 
-      discard applyQueryResultPlugins(@["filter_skip"], metadata, items, nextCursor, hasMore)
+      discard applyQueryResultHooks(@["filter_skip"], metadata, items, nextCursor, hasMore)
 
       # Verify filtering
       check items.len == 2
@@ -130,7 +130,7 @@ suite "Query Result Plugin Integration Tests":
   test "plugin priority ordering":
     withTestDir("plugin_priority_test"):
       # Register plugins with different priorities
-      discard registerPlugin("high_priority",
+      discard registerHook("high_priority",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -139,7 +139,7 @@ suite "Query Result Plugin Integration Tests":
         hkRangeQuery,
         "High priority plugin")
 
-      discard registerPlugin("medium_priority",
+      discard registerHook("medium_priority",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -148,7 +148,7 @@ suite "Query Result Plugin Integration Tests":
         hkRangeQuery,
         "Medium priority plugin")
 
-      discard registerPlugin("low_priority",
+      discard registerHook("low_priority",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -172,7 +172,7 @@ suite "Query Result Plugin Integration Tests":
         hookKind: hkRangeQuery
       )
 
-      discard applyQueryResultPlugins(@["high_priority", "medium_priority", "low_priority"], metadata, items, nextCursor, hasMore)
+      discard applyQueryResultHooks(@["high_priority", "medium_priority", "low_priority"], metadata, items, nextCursor, hasMore)
 
       # Higher priority should execute first
       let m1 = pluginExecMarker1.load()
@@ -183,7 +183,7 @@ suite "Query Result Plugin Integration Tests":
 
   test "registered plugin is called":
     withTestDir("plugin_called_test"):
-      let pluginId = registerPlugin("test_plugin",
+      let pluginId = registerHook("test_plugin",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -208,13 +208,13 @@ suite "Query Result Plugin Integration Tests":
       )
 
       # Plugin should be called
-      discard applyQueryResultPlugins(@["test_plugin"], metadata, items, nextCursor, hasMore)
+      discard applyQueryResultHooks(@["test_plugin"], metadata, items, nextCursor, hasMore)
       check pluginCallCounter.load() == 1
 
   test "multiple plugins in chain":
     withTestDir("plugin_chain_test"):
       # First plugin: uppercase values
-      discard registerPlugin("uppercase",
+      discard registerHook("uppercase",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -225,7 +225,7 @@ suite "Query Result Plugin Integration Tests":
         "Uppercase plugin")
 
       # Second plugin: add prefix
-      discard registerPlugin("prefix",
+      discard registerHook("prefix",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -250,7 +250,7 @@ suite "Query Result Plugin Integration Tests":
         hookKind: hkRangeQuery
       )
 
-      discard applyQueryResultPlugins(@["uppercase", "prefix"], metadata, items, nextCursor, hasMore)
+      discard applyQueryResultHooks(@["uppercase", "prefix"], metadata, items, nextCursor, hasMore)
 
       # Should be uppercase first, then prefixed
       check items.len == 1
@@ -259,7 +259,7 @@ suite "Query Result Plugin Integration Tests":
   test "plugin error handling":
     withTestDir("plugin_error_test"):
       # First plugin throws error
-      discard registerPlugin("error_plugin",
+      discard registerHook("error_plugin",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -269,7 +269,7 @@ suite "Query Result Plugin Integration Tests":
         "Error plugin")
 
       # Second plugin should still run
-      discard registerPlugin("counter_plugin",
+      discard registerHook("counter_plugin",
         proc(metadata: HookMetadata,
              items: var seq[(string, string)],
              nextCursor: var string,
@@ -294,7 +294,7 @@ suite "Query Result Plugin Integration Tests":
       )
 
       # Should not raise, error is caught
-      discard applyQueryResultPlugins(@["error_plugin", "counter_plugin"], metadata, items, nextCursor, hasMore)
+      discard applyQueryResultHooks(@["error_plugin", "counter_plugin"], metadata, items, nextCursor, hasMore)
 
       # Second plugin should have been called
       check pluginCallCounter.load() == 1

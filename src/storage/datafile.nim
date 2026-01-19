@@ -8,24 +8,69 @@ from record import Record, encode, decode
 from ./crc32 import crc32
 from writebuffer import WriteBuffer, initWriteBuffer, startWorker, stopWorker, addEntry
 
+when defined(posix):
+  type
+    RwLock {.importc: "pthread_rwlock_t", header: "<pthread.h>".} = object
+    RwLockAttr {.importc: "pthread_rwlockattr_t", header: "<pthread.h>".} = object
+  proc pthreadRwlockInit(lk: var RwLock, attr: pointer): cint {.importc: "pthread_rwlock_init", header: "<pthread.h>".}
+  proc pthreadRwlockDestroy(lk: var RwLock): cint {.importc: "pthread_rwlock_destroy", header: "<pthread.h>".}
+  proc acquireRead*(lk: var RwLock): cint {.importc: "pthread_rwlock_rdlock", header: "<pthread.h>".}
+  proc acquireWrite*(lk: var RwLock): cint {.importc: "pthread_rwlock_wrlock", header: "<pthread.h>".}
+  proc release*(lk: var RwLock): cint {.importc: "pthread_rwlock_unlock", header: "<pthread.h>".}
+  proc initAttr*(attr: var RwLockAttr): cint {.importc: "pthread_rwlockattr_init", header: "<pthread.h>".}
+  proc deinitAttr*(attr: var RwLockAttr): cint {.importc: "pthread_rwlockattr_destroy", header: "<pthread.h>".}
+  proc setKindPreferWriterNonrecursive*(attr: var RwLockAttr, kind: cint): cint {.
+    importc: "pthread_rwlockattr_setkind_np", header: "<pthread.h>".}
+  const PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP* = 1
+
+  proc initLock*(lk: var RwLock, attr: ptr RwLockAttr = nil): cint =
+    if attr == nil:
+      pthreadRwlockInit(lk, nil)
+    else:
+      pthreadRwlockInit(lk, cast[pointer](attr))
+
+  proc deinitLock*(lk: var RwLock): cint =
+    pthreadRwlockDestroy(lk)
+else:
+  type RwLock = Lock
+  proc initRLock(lk: var RwLock) = initLock(lk)
+  proc deinitRLock(lk: var RwLock) = deinitLock(lk)
+  proc acquireRead*(lk: var RwLock) = acquire(lk)
+  proc acquireWrite*(lk: var RwLock) = acquire(lk)
+  proc release*(lk: var RwLock) = release(lk)
+
+template withReadLock*(lock: var RwLock, body: untyped) =
+  discard acquireRead(lock)
+  try:
+    body
+  finally:
+    discard release(lock)
+
+template withWriteLock*(lock: var RwLock, body: untyped) =
+  discard acquireWrite(lock)
+  try:
+    body
+  finally:
+    discard release(lock)
+
 type
   DataFile* = object
     file*: File
     path*: string
     fileId*: uint32
     size*: uint64
-    lock*: Lock
-    writeBuffer*: ptr WriteBuffer  # Optional write buffer
-    syncMode*: SyncMode          # Sync strategy
-    shouldFsync*: bool           # Whether to call fsync
-    compressionConfig*: ptr CompressionConfig  # Compression configuration
-    validateCrc*: bool           # Validate CRC32 on reads (default: true)
+    lock*: RwLock  # Changed from Lock to RwLock for concurrent reads
+    writeBuffer*: ptr WriteBuffer
+    syncMode*: SyncMode
+    shouldFsync*: bool
+    compressionConfig*: ptr CompressionConfig
+    validateCrc*: bool
 
   RecordInfo* = object
-    recordPos*: uint64   # Position of the record (after CRC32)
-    valueSize*: uint32   # Size of value
-    recordSize*: uint32  # Total record size
-    keyLen*: uint16      # Key length (for valuePos calculation)
+    recordPos*: uint64
+    valueSize*: uint32
+    recordSize*: uint32
+    keyLen*: uint16
 
 proc open*(path: string, fileId: uint32): DataFile =
   ## Open a data file, creating it if it doesn't exist
@@ -86,7 +131,14 @@ proc open*(path: string, fileId: uint32): DataFile =
     compressionConfig: nil,
     validateCrc: true
   )
-  initLock(result.lock)
+  when defined(posix):
+    var attr: RwLockAttr
+    discard initAttr(attr)
+    discard setKindPreferWriterNonrecursive(attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
+    discard initLock(result.lock, addr attr)
+    discard deinitAttr(attr)
+  else:
+    initRLock(result.lock)
 
 proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, bufferSize: int, validateCrc: bool = true, compressionConfig: ptr CompressionConfig = nil): DataFile =
   ## Open a data file with configurable sync strategy
@@ -146,7 +198,14 @@ proc open*(path: string, fileId: uint32, syncMode: SyncMode, shouldFsync: bool, 
     compressionConfig: compressionConfig,
     validateCrc: validateCrc
   )
-  initLock(result.lock)
+  when defined(posix):
+    var attr: RwLockAttr
+    discard initAttr(attr)
+    discard setKindPreferWriterNonrecursive(attr, PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
+    discard initLock(result.lock, addr attr)
+    discard deinitAttr(attr)
+  else:
+    initRLock(result.lock)
 
   # Create write buffer if not immediate mode
   if syncMode != syncImmediate and bufferSize > 0:
@@ -170,12 +229,15 @@ proc close*(df: var DataFile) =
   when defined(posix):
     if df.shouldFsync:
       discard fsync(df.file.getFileHandle())
-  deinitLock(df.lock)
+  when defined(posix):
+    discard deinitLock(df.lock)
+  else:
+    deinitRLock(df.lock)
   df.file.close()
 
 proc readHeader*(df: var DataFile): FileHeader =
-  ## Read the file header
-  withLock(df.lock):
+  ## Read the file header (uses read lock for concurrent reads)
+  withReadLock(df.lock):
     let oldPos = df.file.getFilePos()
     df.file.setFilePos(0)
 
@@ -202,7 +264,7 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     var recordInfo: RecordInfo
 
     # Write and update size atomically
-    withLock(df.lock):
+    withWriteLock(df.lock):
       let recordPos = df.size
       let recordDataPos = recordPos + 4  # After CRC32
 
@@ -247,7 +309,7 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
     let encoded = record.encode(df.compressionConfig)
     var crcVal = crc32(encoded)
 
-    withLock(df.lock):
+    withWriteLock(df.lock):
       let recordPos = df.size
 
       # Write CRC32 (4 bytes)
@@ -280,11 +342,11 @@ proc appendRecord*(df: var DataFile, key: string, value: string, timestamp: int6
       )
 
 proc readRecord*(df: var DataFile, recordInfo: RecordInfo): (string, string, int64) =
-  ## Read a record using the recorded position information (thread-safe)
+  ## Read a record using the recorded position information (thread-safe, uses read lock for concurrent reads)
   var storedCrc: uint32
   var recordData: string
 
-  withLock(df.lock):
+  withReadLock(df.lock):
     let oldPos = df.file.getFilePos()
     df.file.setFilePos(recordInfo.recordPos.int - 4)  # Position of CRC32
 

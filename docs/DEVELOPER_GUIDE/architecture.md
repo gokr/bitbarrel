@@ -530,7 +530,7 @@ Client Query → Barrel API → Storage Layer → Query Results
 ### Creating a Plugin
 
 ```nim
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
 proc myFilter(metadata: HookMetadata,
               items: var seq[(string, string)],

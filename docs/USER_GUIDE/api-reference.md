@@ -295,7 +295,7 @@ let (messages, nextCursor, hasMore) = client.history("chat:general", limit=100, 
 ### Creating a Plugin
 
 ```nim
-import plugins/query_result_hooks
+import hooks/query_result_hooks
 
 proc myFilter(metadata: HookMetadata,
               items: var seq[(string, string)],

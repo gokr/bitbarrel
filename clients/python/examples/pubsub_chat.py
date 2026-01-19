@@ -15,9 +15,9 @@ from bitbarrel.errors import BarrelExistsError
 def pubsub_chat_example():
     print("=== BitBarrel PubSub Chat Room Example (12-step pattern) ===\n")
 
-    # Step 1: Connect to BitBarrel server (localhost:1337)
+    # Step 1: Connect to BitBarrel server (localhost:9876)
     print("1. Connecting to BitBarrel server...")
-    client = Client(host="localhost", port=1337)
+    client = Client(host="localhost", port=9876)
     client.connect()
     print("✓ Connected to BitBarrel server\n")
 

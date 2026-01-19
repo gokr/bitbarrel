@@ -97,7 +97,7 @@ nimble testPubSubManager  # Manager tests
 nimble testPubSubHooks    # Barrel hooks tests
 nimble testPubSubHistory  # History tests
 nimble testPubSubIntegration # Pub/Sub integration tests
-nimble testPluginSystem  # Query result hooks plugin system tests
+nimble testHookSystem  # Query result hooks hook system tests
 ```
 
 **Run client library tests:**

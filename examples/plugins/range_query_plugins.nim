@@ -3,12 +3,12 @@
 ## This file demonstrates how to create plugins that transform query results
 ## from range and prefix queries before they are returned to the client.
 
-import ../../src/plugins/query_result_hooks
+import ../../src/hooks/query_result_hooks
 import std/[strutils, json]
 
 # Plugin 1: Filter keys with specific prefix
 ## This plugin filters out items whose keys start with "hidden:"
-discard registerPlugin(
+discard registerHook(
   name = "filter_hidden",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -27,7 +27,7 @@ discard registerPlugin(
 # Plugin 2: Limit results
 ## This plugin limits query results to 50 items
 ## Updates cursor if more items are available
-discard registerPlugin(
+discard registerHook(
   name = "limit_results",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -46,7 +46,7 @@ discard registerPlugin(
 # Plugin 3: Extract JSON field
 ## This plugin extracts the 'name' field from JSON values
 ## If value is not valid JSON or doesn't have 'name' field, keeps original value
-discard registerPlugin(
+discard registerHook(
   name = "extract_json_name",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -67,7 +67,7 @@ discard registerPlugin(
 # Plugin 4: Filter by key pattern
 ## This plugin only includes keys that match a pattern (e.g., contain specific substring)
 ## This is a simple example - you can customize the pattern
-discard registerPlugin(
+discard registerHook(
   name = "filter_pattern_active",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -86,7 +86,7 @@ discard registerPlugin(
 
 # Plugin 5: Sort results by value
 ## This plugin sorts query results by their values alphabetically
-discard registerPlugin(
+discard registerHook(
   name = "sort_by_value",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],
@@ -100,7 +100,7 @@ discard registerPlugin(
 
 # Plugin 6: Redact sensitive values
 ## This plugin redacts values for keys starting with "secret:"
-discard registerPlugin(
+discard registerHook(
   name = "redact_sensitive",
   hook = proc(metadata: HookMetadata,
               items: var seq[(string, string)],

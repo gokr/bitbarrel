@@ -105,7 +105,7 @@ task testPubSubHistory, "Run history tests":
 task testPubSubIntegration, "Run pub/sub integration tests":
   exec "testament pattern \"tests/pubsub/test_integration.nim\""
 
-task testPluginSystem, "Run query result hooks plugin system tests":
+task testHookSystem, "Run query result hooks hook system tests":
   exec "testament pattern \"tests/plugins/*.nim\""
 
 # Tasks for running examples

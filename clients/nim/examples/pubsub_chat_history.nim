@@ -24,7 +24,7 @@ proc main() =
 
   ## 1. Connect to server
   echo "1. Connecting to BitBarrel server..."
-  var client = newClient("localhost", 1337.Port)
+  var client = newClient("localhost", 9876.Port)
 
   try:
     ## 2. Ensure chat room barrel exists (for persistent storage)
@@ -182,7 +182,7 @@ proc main() =
       echo "   Check your server configuration and ensure pubsub is enabled."
     elif "connection" in e.msg or "refused" in e.msg:
       echo ""
-      echo "💡 Tip: Make sure BitBarrel server is running on localhost:1337"
+      echo "💡 Tip: Make sure BitBarrel server is running on localhost:9876"
       echo "   Start server with: ./bitbarrel --pubsub.enabled=true"
   finally:
     client.close()
