@@ -255,8 +255,8 @@ proc encodeRequest*(req: Request): string =
     result.writeUint32BE(uint32(req.ttl))
 
 proc decodeRequest*(data: string): Request =
-  ## Decode a request from binary format.
-  ## Supports both v1.0 and v1.1 formats.
+  ## Decode a request from binary format (v1.1 only).
+  ## Format: ``[type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]``
   var pos = 0
 
   let cmdByte = readByte(data, pos)
@@ -272,33 +272,7 @@ proc decodeRequest*(data: string): Request =
 
   result.command = cast[Command](cmdByte)
   result.seq = readUint32BE(data, pos)
-
-  # Check if this is a v1.0 format (no flags byte) by looking ahead
-  # In v1.0, after seq comes keyLen (2 bytes), in v1.1, after seq comes flags (1 byte)
-  # We can distinguish by checking if the next 5 bytes make sense as keyLen + valueLen
-  # For simplicity, we'll try to read a flags byte and handle both cases
-
-  # Try v1.1 format first (flags byte present)
-  var isV11 = true
-  if pos + 1 <= data.len:
-    let possibleFlags = byte(data[pos])
-    var checkPos = pos + 1  # Skip flags
-    if checkPos + 2 <= data.len:
-      let possibleKeyLen = (uint16(data[checkPos]) shl 8) or uint16(data[checkPos + 1])
-      if possibleKeyLen <= MaxKeySize and checkPos + 2 + int(possibleKeyLen) + 4 <= data.len:
-        # This looks like a valid v1.1 format
-        let flagsByte = readByte(data, pos)
-        result.flags = RequestFlags(flagsByte)
-      else:
-        isV11 = false
-    else:
-      isV11 = false
-  else:
-    isV11 = false
-
-  if not isV11:
-    # v1.0 format: no flags byte
-    result.flags = rfNone
+  result.flags = RequestFlags(readByte(data, pos))
 
   let keyLen = readUint16BE(data, pos)
   if keyLen > MaxKeySize:
@@ -311,7 +285,7 @@ proc decodeRequest*(data: string): Request =
   result.value = readString(data, pos, int(valLen))
 
   # Read TTL if flags indicate it's present
-  if isV11 and (ord(result.flags) and ord(rfHasTtl)) != 0:
+  if (ord(result.flags) and ord(rfHasTtl)) != 0:
     result.ttl = int32(readUint32BE(data, pos))
   else:
     result.ttl = -1
