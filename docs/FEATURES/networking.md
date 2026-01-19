@@ -7,16 +7,23 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 ## Components
 
 ### Binary Protocol (`src/network/protocol.nim`)
-- Request/Response message structures
-- Commands (21 total):
+- Request/Response message structures with v1.1 protocol enhancements
+- Commands (28 total):
   - Data: GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS, PING (7)
   - Barrel: CREATE_BARREL, OPEN_BARREL, USE_BARREL, CLOSE_BARREL, LIST_BARRELS, DROP_BARREL (6)
     - Note: Discovered barrels are lazy-loaded automatically, OPEN_BARREL optional
   - Config: GET_BARREL_CONFIG, SET_BARREL_CONFIG (2)
   - Query: TRAVERSE, RANGE_QUERY, PREFIX_QUERY, RANGE_COUNT, RANGE_KEYS, PREFIX_KEYS (6)
+  - Key Watches: WATCH_KEY (0x60), UNWATCH_KEY (0x61) (2)
+  - Pub/Sub: SUBSCRIBE, UNSUBSCRIBE, PUBLISH, HISTORY, LIST_SUBSCRIBERS, PRESENCE, LIST_TOPICS (7)
 - Status codes: OK, NOT_FOUND, ERROR, INVALID, NO_BARREL, BARREL_EXISTS, BARREL_NOT_FOUND, UNAUTHORIZED
 - Big-endian encoding for cross-platform compatibility
 - Size limits: 64KB max key, 32MB max value
+- Protocol v1.1 features:
+  - Binary handshake with version negotiation, serverId (UUID), and plugin discovery
+  - Request flags byte (rfNone, rfHasTtl) for protocol extensions
+  - Per-key TTL support in SET command
+  - Client-side request pipelining for reduced latency
 
 ### Session & Barrel Registry (`src/network/session.nim`)
 - Session management per WebSocket connection
@@ -93,13 +100,31 @@ nimble testClients
 
 ## Protocol Format
 
-### Standard Request/Response
+### Standard Request/Response (v1.1)
 ```
-Request:  [cmd:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
+Request:  [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|optional]
 Response: [status:1][seq:4][valLen:4][value:M]
 ```
 
-Compact overhead: 11 bytes for GET requests (no value).
+**Request flags (v1.1):**
+- rfNone (0x00): No special flags
+- rfHasTtl (0x01): TTL field present after value (for SET command)
+
+**Binary Handshake (v1.1):**
+Server sends immediately after WebSocket connection:
+```
+[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+```
+
+**Watch Key Request (0x60):**
+```
+[barrelNameLen:2][barrelName][patternLen:2][pattern][options:1]
+```
+
+Compact overhead: 12 bytes for GET requests (no value) in v1.1.
+
+### v1.0 Compatibility
+v1.0 format (without flags byte) is still supported. Servers automatically decode both formats.
 
 ### Range Query Request (encoded in value field)
 ```
@@ -212,11 +237,11 @@ client.Close()
 1. **Client timeout**: Fixed 3-second timeout on all operations (30 attempts × 100ms polling)
 2. **No reconnection**: Client does not auto-reconnect on connection loss
 3. **Large frames**: 64-bit WebSocket frame lengths not supported
-4. **Concurrent requests**: Client operations are serialized (no request pipelining)
-5. **CREATE_BARREL config**: JSON config for CREATE_BARREL creates with defaults (use SET_BARREL_CONFIG after)
-6. **LIST_KEYS**: Returns all keys without pagination (use RANGE_KEYS or PREFIX_KEYS with cursor pagination for large datasets)
-7. **Token refresh**: JWT tokens don't auto-refresh; clients must handle token expiry
-8. **Token storage**: JWT secret must be stored securely; lost secret invalidates all tokens
+4. **CREATE_BARREL config**: JSON config for CREATE_BARREL creates with defaults (use SET_BARREL_CONFIG after)
+5. **LIST_KEYS**: Returns all keys without pagination (use RANGE_KEYS or PREFIX_KEYS with cursor pagination for large datasets)
+6. **Token refresh**: JWT tokens don't auto-refresh; clients must handle token expiry
+7. **Token storage**: JWT secret must be stored securely; lost secret invalidates all tokens
+8. **Client-side pipelining**: Request pipelining is implemented client-side (see Pipeline API) for batching operations
 
 ## Architecture Notes
 
@@ -236,7 +261,6 @@ Client integration tests: `tests/network/`
 ## Future Work
 
 - Connection pooling in client
-- Protocol versioning for backwards compatibility
 - Async client operations
 - Reconnection with exponential backoff
-- Request pipelining
+- Client library support for v1.1 features (WATCH_KEY, pipelining, TTL)
