@@ -1,7 +1,9 @@
 ## Binary protocol for BitBarrel network communication
 ##
-## Request Format: ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
+## Request Format (v1.1+): ``[type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]``
+## Request Format (v1.0): ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
 ## Response Format: ``[status:1][seq:4][valLen:4][value:M]``
+## Handshake Format: ``[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen:2][pluginName1]...``
 ##
 ## All multi-byte integers use big-endian encoding.
 
@@ -49,6 +51,9 @@ type
     cmdHistory = 0x44
     cmdListTopics = 0x45
     cmdPresence = 0x46
+    ## Key watch commands (0x60-0x61)
+    cmdWatchKey = 0x60
+    cmdUnwatchKey = 0x61
 
   PubSubMessageType* = enum
     mtData = 0
@@ -64,6 +69,10 @@ type
     kvSet = 0
     kvDelete = 0x01
 
+  RequestFlags* = enum
+    rfNone = 0
+    rfHasTtl = 0x01  ## TTL field present after value
+
   ResponseStatus* = enum
     statusOk = 0x00
     statusNotFound = 0x01
@@ -77,13 +86,28 @@ type
   Request* = object
     command*: Command
     seq*: uint32
-    key*: string      ## Also used for barrel name
-    value*: string    ## Also used for barrel config JSON
+    flags*: RequestFlags        ## v1.1+: Request flags (TTL, etc.)
+    key*: string               ## Also used for barrel name
+    value*: string             ## Also used for barrel config JSON
+    ttl*: int32                ## v1.1+: TTL in seconds, -1 = use default
 
   Response* = object
     status*: ResponseStatus
     seq*: uint32
     value*: string
+
+  ServerHandshake* = object
+    ## Server handshake sent on connection
+    versionMajor*: uint8
+    versionMinor*: uint8
+    serverId*: string          ## Unique server identifier
+    plugins*: seq[string]      ## Available plugins
+
+  WatchRequest* = object
+    ## Request for watching key changes
+    barrelName*: string        ## Empty = current barrel
+    pattern*: string           ## Key pattern with * wildcard
+    includeValues*: bool       ## Send values in change events
 
   ## Statistics structure for barrel metrics
   BarrelStats* = object
@@ -211,22 +235,28 @@ proc readString(data: string, pos: var int, length: int): string =
 
 proc encodeRequest*(req: Request): string =
   ## Encode a request to binary format.
-  ## Format: ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
+  ## Format v1.1+: ``[type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]``
+  ## Format v1.0: ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
   if req.key.len > MaxKeySize:
     raise newException(ProtocolError, "Key too large: " & $req.key.len)
   if req.value.len > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $req.value.len)
 
-  result = newStringOfCap(1 + 4 + 2 + req.key.len + 4 + req.value.len)
+  result = newStringOfCap(1 + 4 + 1 + 2 + req.key.len + 4 + req.value.len + 4)
   result.writeByte(byte(ord(req.command)))
   result.writeUint32BE(req.seq)
+  result.writeByte(byte(ord(req.flags)))
   result.writeUint16BE(uint16(req.key.len))
   result.add(req.key)
   result.writeUint32BE(uint32(req.value.len))
   result.add(req.value)
 
+  if (ord(req.flags) and ord(rfHasTtl)) != 0:
+    result.writeUint32BE(uint32(req.ttl))
+
 proc decodeRequest*(data: string): Request =
   ## Decode a request from binary format.
+  ## Supports both v1.0 and v1.1 formats.
   var pos = 0
 
   let cmdByte = readByte(data, pos)
@@ -236,11 +266,39 @@ proc decodeRequest*(data: string): Request =
                      0x20,                                       # Traverse
                      0x21, 0x22, 0x23, 0x24, 0x25,              # Range queries
                      0x26, 0x27, 0x28,                          # Batch operations
-                     0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46}:     # Pub/Sub commands
+                     0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46,  # Pub/Sub commands
+                     0x60, 0x61}:                                # Key watch commands
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
   result.command = cast[Command](cmdByte)
   result.seq = readUint32BE(data, pos)
+
+  # Check if this is a v1.0 format (no flags byte) by looking ahead
+  # In v1.0, after seq comes keyLen (2 bytes), in v1.1, after seq comes flags (1 byte)
+  # We can distinguish by checking if the next 5 bytes make sense as keyLen + valueLen
+  # For simplicity, we'll try to read a flags byte and handle both cases
+
+  # Try v1.1 format first (flags byte present)
+  var isV11 = true
+  if pos + 1 <= data.len:
+    let possibleFlags = byte(data[pos])
+    var checkPos = pos + 1  # Skip flags
+    if checkPos + 2 <= data.len:
+      let possibleKeyLen = (uint16(data[checkPos]) shl 8) or uint16(data[checkPos + 1])
+      if possibleKeyLen <= MaxKeySize and checkPos + 2 + int(possibleKeyLen) + 4 <= data.len:
+        # This looks like a valid v1.1 format
+        let flagsByte = readByte(data, pos)
+        result.flags = RequestFlags(flagsByte)
+      else:
+        isV11 = false
+    else:
+      isV11 = false
+  else:
+    isV11 = false
+
+  if not isV11:
+    # v1.0 format: no flags byte
+    result.flags = rfNone
 
   let keyLen = readUint16BE(data, pos)
   if keyLen > MaxKeySize:
@@ -251,6 +309,12 @@ proc decodeRequest*(data: string): Request =
   if valLen > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $valLen)
   result.value = readString(data, pos, int(valLen))
+
+  # Read TTL if flags indicate it's present
+  if isV11 and (ord(result.flags) and ord(rfHasTtl)) != 0:
+    result.ttl = int32(readUint32BE(data, pos))
+  else:
+    result.ttl = -1
 
 proc encodeResponse*(resp: Response): string =
   ## Encode a response to binary format.
@@ -279,6 +343,99 @@ proc decodeResponse*(data: string): Response =
   if valLen > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $valLen)
   result.value = readString(data, pos, int(valLen))
+
+
+## Handshake encoding/decoding
+
+proc encodeHandshake*(h: ServerHandshake): string =
+  ## Encode a server handshake to binary format.
+  ## Format: ``[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen:2][pluginName1]...``
+  if h.serverId.len > MaxKeySize:
+    raise newException(ProtocolError, "Server ID too large: " & $h.serverId.len)
+  if h.plugins.len > 255:
+    raise newException(ProtocolError, "Too many plugins: " & $h.plugins.len)
+
+  var capacity = 1 + 1 + 2 + h.serverId.len + 1
+  for plugin in h.plugins:
+    if plugin.len > 255:
+      raise newException(ProtocolError, "Plugin name too long: " & $plugin.len)
+    capacity += 2 + plugin.len
+
+  result = newStringOfCap(capacity)
+  result.writeByte(h.versionMajor)
+  result.writeByte(h.versionMinor)
+  result.writeUint16BE(uint16(h.serverId.len))
+  result.add(h.serverId)
+  result.writeByte(byte(h.plugins.len))
+
+  for plugin in h.plugins:
+    result.writeUint16BE(uint16(plugin.len))
+    result.add(plugin)
+
+proc decodeHandshake*(data: string): ServerHandshake =
+  ## Decode a server handshake from binary format.
+  var pos = 0
+
+  if pos >= data.len:
+    raise newException(ProtocolError, "Unexpected end of data reading versionMajor")
+
+  result.versionMajor = readByte(data, pos)
+  result.versionMinor = readByte(data, pos)
+
+  let serverIdLen = readUint16BE(data, pos)
+  if serverIdLen > MaxKeySize:
+    raise newException(ProtocolError, "Server ID too large: " & $serverIdLen)
+  result.serverId = readString(data, pos, int(serverIdLen))
+
+  let pluginCount = int(readByte(data, pos))
+  if pluginCount > 255:
+    raise newException(ProtocolError, "Plugin count too large: " & $pluginCount)
+
+  result.plugins = newSeq[string](pluginCount)
+  for i in 0..<pluginCount:
+    let pluginLen = readUint16BE(data, pos)
+    if pluginLen > 255:
+      raise newException(ProtocolError, "Plugin name too long: " & $pluginLen)
+    result.plugins[i] = readString(data, pos, int(pluginLen))
+
+
+## Watch request encoding/decoding
+
+proc encodeWatchRequest*(req: WatchRequest): string =
+  ## Encode a watch request to binary format.
+  ## Format: ``[barrelLen:2][barrel][patternLen:2][pattern][options:1]``
+  if req.barrelName.len > MaxKeySize:
+    raise newException(ProtocolError, "Barrel name too large: " & $req.barrelName.len)
+  if req.pattern.len > MaxKeySize:
+    raise newException(ProtocolError, "Pattern too large: " & $req.pattern.len)
+
+  result = newStringOfCap(2 + req.barrelName.len + 2 + req.pattern.len + 1)
+  result.writeUint16BE(uint16(req.barrelName.len))
+  result.add(req.barrelName)
+  result.writeUint16BE(uint16(req.pattern.len))
+  result.add(req.pattern)
+
+  var options: byte = 0
+  if req.includeValues:
+    options = options or 0x01
+  result.writeByte(options)
+
+proc decodeWatchRequest*(data: string): WatchRequest =
+  ## Decode a watch request from binary format.
+  var pos = 0
+
+  let barrelLen = readUint16BE(data, pos)
+  if barrelLen > MaxKeySize:
+    raise newException(ProtocolError, "Barrel name too large: " & $barrelLen)
+  result.barrelName = readString(data, pos, int(barrelLen))
+
+  let patternLen = readUint16BE(data, pos)
+  if patternLen > MaxKeySize:
+    raise newException(ProtocolError, "Pattern too large: " & $patternLen)
+  result.pattern = readString(data, pos, int(patternLen))
+
+  let optionsByte = readByte(data, pos)
+  result.includeValues = (optionsByte and 0x01) != 0
 
 
 ## Batch operation encoding/decoding
@@ -804,9 +961,10 @@ proc decodeKeysResponse*(data: string): KeysResponse =
   result.nextCursor = readString(data, pos, int(nextCursorLen))
 
 
-proc newRequest*(command: Command, key: string = "", value: string = "", seq: uint32 = 0): Request =
+proc newRequest*(command: Command, key: string = "", value: string = "",
+                 seq: uint32 = 0, flags: RequestFlags = rfNone, ttl: int32 = -1): Request =
   ## Create a new request.
-  Request(command: command, seq: seq, key: key, value: value)
+  Request(command: command, seq: seq, key: key, value: value, flags: flags, ttl: ttl)
 
 proc newResponse*(status: ResponseStatus, seq: uint32, value: string = ""): Response =
   ## Create a new response.
@@ -880,6 +1038,8 @@ proc `$`*(cmd: Command): string =
   of cmdHistory: "HISTORY"
   of cmdListTopics: "LIST_TOPICS"
   of cmdPresence: "PRESENCE"
+  of cmdWatchKey: "WATCH_KEY"
+  of cmdUnwatchKey: "UNWATCH_KEY"
 
 proc `$`*(status: ResponseStatus): string =
   ## String representation of status.
