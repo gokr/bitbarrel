@@ -61,7 +61,7 @@ method store(backend: MemoryStorageBackend, topic: string,
 method retrieve(backend: MemoryStorageBackend, topic: string,
                 params: HistoryQueryParams): seq[Message] {.gcsafe.} =
   ## Retrieve messages from memory ring buffer
-  ## Returns messages in newest-first order
+  ## Returns messages in chronological order (oldest first)
   withLock backend.messagesLock:
     if topic notin backend.messages:
       return @[]
@@ -74,11 +74,11 @@ method retrieve(backend: MemoryStorageBackend, topic: string,
 
     # Limit count if specified
     if params.limit > 0 and messages.len > params.limit:
-      # Return most recent messages
+      # Return most recent messages (still in chronological order)
       messages = messages[^params.limit..^1]
 
-    # Return in newest-first order
-    return reversed(messages)
+    # Return in chronological order (oldest first)
+    return messages
 
 method clear(backend: MemoryStorageBackend, topic: string): bool {.gcsafe.} =
   ## Clear all messages for a topic

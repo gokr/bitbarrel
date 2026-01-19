@@ -220,8 +220,8 @@ method retrieve(backend: SharedBarrelBackend, topic: string,
   if params.limit > 0 and allMessages.len > params.limit:
     allMessages = allMessages[^params.limit..^1]
 
-  # Return newest-first order for history display
-  return reversed(allMessages)
+  # Return chronological order (oldest first)
+  return allMessages
 
 method clear(backend: SharedBarrelBackend, topic: string): bool {.gcsafe.} =
   ## Clear all messages for a topic
