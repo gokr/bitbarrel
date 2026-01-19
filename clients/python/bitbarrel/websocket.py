@@ -67,9 +67,6 @@ class WebSocket:
 
             self._connected = True
 
-            # Consume welcome message immediately during connect
-            self._consume_welcome_message()
-
     def _consume_welcome_message(self) -> None:
         """Consume the welcome message sent by server after connection.
 

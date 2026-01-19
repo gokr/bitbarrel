@@ -44,6 +44,19 @@ class KeysResult:
         self.has_more = has_more
 
 
+class ServerInfo:
+    """Server information from binary handshake."""
+
+    def __init__(self, version_major: int, version_minor: int, server_id: str, plugins: List[str]):
+        self.version_major = version_major
+        self.version_minor = version_minor
+        self.server_id = server_id
+        self.plugins = plugins
+
+    def __repr__(self):
+        return f"ServerInfo(version={self.version_major}.{self.version_minor}, server_id='{self.server_id}', plugins={self.plugins})"
+
+
 class TraverseResult:
     """Result from reference traversal."""
 
@@ -82,6 +95,9 @@ class Client:
         self._current_barrel = ""
         self._lock = threading.Lock()
         self._connected = False
+        # Server info from handshake
+        self._server_info: Optional[ServerInfo] = None
+        self._handshake_received = False
         # Pub/Sub support
         self._subscriptions: dict[str, SubscriptionInfo] = {}
         self._on_message: Optional[Callable[[PubSubEvent], None]] = None
@@ -106,12 +122,38 @@ class Client:
         self._ws.connect()
         self._connected = True
 
+        # Read binary handshake
+        try:
+            handshake_data = self._ws.recv_binary()
+            self._server_info = self._parse_handshake(handshake_data)
+            self._handshake_received = True
+        except Exception as e:
+            self.close()
+            raise ConnectionError(f"Failed to read or parse handshake: {e}")
+
     def close(self) -> None:
         """Close the connection to the server."""
         if self._ws:
             self._ws.close()
             self._ws = None
         self._connected = False
+        self._server_info = None
+        self._handshake_received = False
+
+    def get_server_info(self) -> ServerInfo:
+        """Get server information from the handshake.
+
+        Returns:
+            ServerInfo object containing version, server ID, and plugins
+
+        Raises:
+            ConnectionError: If not connected or handshake not received
+        """
+        if not self._connected:
+            raise ConnectionError("Not connected to server")
+        if not self._handshake_received:
+            raise ConnectionError("Handshake not received")
+        return self._server_info
 
     def __enter__(self):
         """Context manager entry: connect to the server."""
@@ -132,6 +174,58 @@ class Client:
     def current_barrel(self) -> str:
         """Get the current barrel name."""
         return self._current_barrel
+
+    def _parse_handshake(self, data: bytes) -> ServerInfo:
+        """Parse binary handshake from server.
+
+        Format: [versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+        """
+        if len(data) < 2:
+            raise ConnectionError("Handshake too short")
+
+        offset = 0
+
+        # Parse version
+        version_major = data[offset]
+        offset += 1
+        version_minor = data[offset]
+        offset += 1
+
+        # Parse server ID length (2 bytes, big-endian)
+        if len(data) < offset + 2:
+            raise ConnectionError("Handshake truncated at server ID length")
+        server_id_len = (data[offset] << 8) | data[offset + 1]
+        offset += 2
+
+        # Parse server ID
+        if len(data) < offset + server_id_len:
+            raise ConnectionError("Handshake truncated at server ID")
+        server_id = data[offset:offset + server_id_len].decode('utf-8')
+        offset += server_id_len
+
+        # Parse plugin count
+        if len(data) < offset + 1:
+            raise ConnectionError("Handshake truncated at plugin count")
+        plugin_count = data[offset]
+        offset += 1
+
+        # Parse plugins
+        plugins = []
+        for _ in range(plugin_count):
+            # Parse plugin name length (2 bytes, big-endian)
+            if len(data) < offset + 2:
+                raise ConnectionError("Handshake truncated at plugin name length")
+            plugin_name_len = (data[offset] << 8) | data[offset + 1]
+            offset += 2
+
+            # Parse plugin name
+            if len(data) < offset + plugin_name_len:
+                raise ConnectionError("Handshake truncated at plugin name")
+            plugin_name = data[offset:offset + plugin_name_len].decode('utf-8')
+            plugins.append(plugin_name)
+            offset += plugin_name_len
+
+        return ServerInfo(version_major, version_minor, server_id, plugins)
 
     # Barrel management operations
 
