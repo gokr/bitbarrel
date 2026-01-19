@@ -58,27 +58,41 @@ suite "BitBarrel CLI Integration Tests":
     createDir(testDataDir)
     echo &"Test data directory: {testDataDir}"
 
-    # Find bitbarrel binary (check common locations)
+    # Find bitbarrel binary - try multiple path strategies
     var bitbarrelBinary = ""
-    let possiblePaths = [
-      "./src/cli/main",  # Direct compilation
-      "./bitbarrel",     # Installed binary
-      "../bitbarrel",    # Relative path
-    ]
+    let currentDir = getCurrentDir()
+
+    # Path candidates to try
+    var possiblePaths: seq[string] = @[]
+
+    # If running from tests/ directory
+    possiblePaths.add(currentDir / "../bitbarrel")
+    possiblePaths.add(currentDir / "../src/cli/main")
+
+    # If running from project root
+    possiblePaths.add(currentDir / "bitbarrel")
+    possiblePaths.add(currentDir / "src/cli/main")
+
+    # If running from somewhere else, construct paths based on common layouts
+    if currentDir.endsWith("tests"):
+      possiblePaths.add(currentDir.parentDir / "bitbarrel")
+      possiblePaths.add(currentDir.parentDir / "src/cli/main")
 
     for path in possiblePaths:
-      if fileExists(path):
+      if fileExists(path) and not dirExists(path):  # Must be a file, not dir
         bitbarrelBinary = path
+        echo "Found binary: ", bitbarrelBinary
         break
 
-    if bitbarrelBinary == "":
+    if bitbarrelBinary == "" or not fileExists(bitbarrelBinary):
       # Try to compile it
       echo "BitBarrel binary not found, attempting to compile..."
-      let compileResult = execCmd("nim c -r src/cli/main.nim")
+      let projectDir = if currentDir.endsWith("tests"): currentDir.parentDir else: currentDir
+      let compileResult = execCmd("nim c " & projectDir / "src/cli/main.nim")
       if compileResult != 0:
         echo "Failed to compile bitbarrel CLI"
         quit(1)
-      bitbarrelBinary = "./src/cli/main"
+      bitbarrelBinary = projectDir / "src/cli/main"
 
     # Start server using CLI
     echo "Starting BitBarrel server..."
