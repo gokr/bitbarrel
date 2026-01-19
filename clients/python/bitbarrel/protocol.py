@@ -69,7 +69,9 @@ MAX_VALUE_SIZE = 33554432  # 32MB (from updated protocol.go)
 
 
 def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] = "") -> bytes:
-    """Encode a request to binary format.
+    """Encode a request to binary format (v1.1).
+
+    Format: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
 
     Args:
         cmd: Command byte
@@ -86,8 +88,8 @@ def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] =
     value_bytes = value if isinstance(value, bytes) else value.encode("utf-8")
     key_bytes = key.encode("utf-8")
 
-    # Calculate total size: 1 + 4 + 2 + key + 4 + value
-    total_size = 1 + 4 + 2 + len(key_bytes) + 4 + len(value_bytes)
+    # Calculate total size: 1 + 4 + 1 + 2 + key + 4 + value
+    total_size = 1 + 4 + 1 + 2 + len(key_bytes) + 4 + len(value_bytes)
     buf = bytearray(total_size)
 
     offset = 0
@@ -99,6 +101,10 @@ def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] =
     # Sequence (4 bytes, big-endian)
     buf[offset:offset+4] = struct.pack(">I", seq)
     offset += 4
+
+    # Flags (1 byte) - always 0 for now (no TTL support)
+    buf[offset] = 0
+    offset += 1
 
     # Key length (2 bytes, big-endian)
     buf[offset:offset+2] = struct.pack(">H", len(key_bytes))
@@ -119,8 +125,8 @@ def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] =
 
 
 def decode_request(data: bytes) -> Tuple[int, int, str, str]:
-    """Decode a request from binary format."""
-    if len(data) < 11:  # Minimum: 1+4+2+0+4+0
+    """Decode a request from binary format (v1.1)."""
+    if len(data) < 12:  # Minimum: 1+4+1+2+0+4+0
         raise ProtocolError("Request too short")
 
     offset = 0
@@ -145,6 +151,9 @@ def decode_request(data: bytes) -> Tuple[int, int, str, str]:
     # Sequence (4 bytes, big-endian)
     seq = struct.unpack(">I", data[offset:offset+4])[0]
     offset += 4
+
+    # Flags (1 byte) - skip
+    offset += 1
 
     # Key length (2 bytes, big-endian)
     key_len = struct.unpack(">H", data[offset:offset+2])[0]
