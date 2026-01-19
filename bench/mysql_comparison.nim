@@ -342,35 +342,25 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
     client.connect()
     echo "  ✓ Client connected"
 
-    # Create test barrel
-    discard client.createBarrel("bench_test")
+    # Create test barrel with buffered mode (matches MySQL transaction behavior)
+    discard client.createBarrel("bench_test", """{"syncMode": "none"}""")
     discard client.useBarrel("bench_test")
     discard client.ping()
-    echo "  ✓ Barrel created"
+    echo "  ✓ Barrel created (buffered mode)"
 
-    # Write benchmark (batch in chunks of 1000)
+    # Write benchmark (single batch of all operations to minimize network overhead)
     echo ""
-    echo "  Running writes (batch, 1000 items per request)..."
+    echo "  Running writes (single batch of 10,000 items)..."
 
-    const batchSize = 1000
-    var totalWritten = 0
+    # Create all pairs in one batch
+    var allPairs: seq[(string, string)] = @[]
+    for i in 0..<numOps:
+      let key = &"key_{i:08}"
+      let value = &"value_{i:08}_" & repeat('x', 40)
+      allPairs.add((key, value))
 
     let writeStart = epochTime()
-
-    for batchStart in countup(0, numOps - 1, batchSize):
-      let batchEnd = min(batchStart + batchSize, numOps)
-      var pairs: seq[(string, string)] = @[]
-      for i in batchStart..<batchEnd:
-        let key = &"key_{i:08}"
-        let value = &"value_{i:08}_" & repeat('x', 40)
-        pairs.add((key, value))
-
-      let batchStartTime = epochTime()
-      totalWritten += client.setMany(pairs)
-      let batchElapsed = epochTime() - batchStartTime
-      # Drain server output to prevent pipe blocking
-      # drainProcessOutput(serverProcess)  # Output redirected to file
-
+    let totalWritten = client.setMany(allPairs)
     let writeElapsed = epochTime() - writeStart
 
     result.writes = BenchmarkResult(
@@ -383,27 +373,19 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
 
     sleep(100)
 
-    # Read benchmark (batch in chunks of 1000)
+    # Read benchmark (single batch of all keys to minimize network overhead)
     echo ""
-    echo "  Running reads (batch, 1000 keys per request)..."
+    echo "  Running reads (single batch of 10,000 keys)..."
 
-    var totalRead = 0
+    # Create all keys in one batch
+    var allKeys: seq[string] = @[]
+    for i in 0..<numOps:
+      allKeys.add(&"key_{i:08}")
+
     let readStart = epochTime()
-
-    var allResults: seq[(string, string)] = @[]
-    for batchStart in countup(0, numOps - 1, batchSize):
-      let batchEnd = min(batchStart + batchSize, numOps)
-      var keys: seq[string] = @[]
-      for i in batchStart..<batchEnd:
-        keys.add(&"key_{i:08}")
-
-      let results = client.getMany(keys)
-      # Drain server output to prevent pipe blocking
-      # drainProcessOutput(serverProcess)  # Output redirected to file
-      allResults.add(results)
-      totalRead += results.len
-
+    let allResults = client.getMany(allKeys)
     let readElapsed = epochTime() - readStart
+    let totalRead = allResults.len
 
     result.reads = BenchmarkResult(
       opsPerSec: numOps.float / readElapsed,
