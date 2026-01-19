@@ -17,8 +17,8 @@ import type { PubSubMessageType } from './types';
 
 export class Protocol {
   /**
-   * Encode a request: [type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
-   * Format: Command (1 byte) | Sequence (4 bytes) | Key Length (2 bytes) | Key (N bytes) | Value Length (4 bytes) | Value (M bytes)
+   * Encode a request (v1.1): [type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+   * Format: Command (1 byte) | Sequence (4 bytes) | Flags (1 byte) | Key Length (2 bytes) | Key (N bytes) | Value Length (4 bytes) | Value (M bytes)
    * All multi-byte integers are big-endian.
    */
   static encodeRequest(req: Request): Buffer {
@@ -33,12 +33,13 @@ export class Protocol {
       throw new ProtocolError(`Value too large: ${valByteLen} bytes (max ${MaxValueSize})`);
     }
 
-    const buffer = Buffer.allocUnsafe(1 + 4 + 2 + keyByteLen + 4 + valByteLen);
+    const buffer = Buffer.allocUnsafe(1 + 4 + 1 + 2 + keyByteLen + 4 + valByteLen);
 
     let offset = 0;
     buffer.writeUInt8(req.command, offset++);
     buffer.writeUInt32BE(req.seq, offset);
     offset += 4;
+    buffer.writeUInt8(0, offset++); // flags - always 0 for now
     buffer.writeUInt16BE(keyByteLen, offset);
     offset += 2;
     // Use latin1 encoding to preserve binary data
@@ -52,11 +53,11 @@ export class Protocol {
   }
 
   /**
-   * Decode a request from binary format
+   * Decode a request from binary format (v1.1)
    */
   static decodeRequest(data: Buffer): Request {
-    if (data.length < 11) {
-      throw new ProtocolError(`Request too short: ${data.length} bytes (min 11)`);
+    if (data.length < 12) {
+      throw new ProtocolError(`Request too short: ${data.length} bytes (min 12)`);
     }
 
     let offset = 0;
@@ -66,6 +67,8 @@ export class Protocol {
 
     const seq = data.readUInt32BE(offset);
     offset += 4;
+
+    const flags = data.readUInt8(offset++); // flags - not stored
 
     const keyLen = data.readUInt16BE(offset);
     offset += 2;
