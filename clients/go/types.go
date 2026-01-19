@@ -141,3 +141,11 @@ func DefaultHistoryRequest() HistoryRequest {
 		SinceSeq: 0,
 	}
 }
+
+// ServerInfo represents server information from the binary handshake
+type ServerInfo struct {
+	VersionMajor uint8
+	VersionMinor uint8
+	ServerID     string
+	Plugins      []string
+}

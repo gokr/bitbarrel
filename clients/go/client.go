@@ -22,6 +22,10 @@ type Client struct {
 	requestTimeout time.Duration
 	token        string  // JWT authorization token
 
+	// Server info from handshake
+	serverInfo    *ServerInfo
+	handshakeReceived bool
+
 	// Pub/Sub support
 	subscriptions sync.Map    // map[string]SubscriptionInfo
 	onMessage     func(PubSubEvent)
@@ -56,6 +60,64 @@ func NewClientWithConfig(config ClientConfig) *Client {
 		requestTimeout: config.RequestTimeout,
 		token:          config.Token,
 	}
+}
+
+// parseHandshake parses the binary handshake from the server
+func parseHandshake(data []byte) (*ServerInfo, error) {
+	if len(data) < 2 {
+		return nil, errors.New("handshake too short")
+	}
+
+	info := &ServerInfo{}
+	offset := 0
+
+	// Parse version
+	info.VersionMajor = data[offset]
+	offset++
+	info.VersionMinor = data[offset]
+	offset++
+
+	// Parse server ID length (2 bytes, big-endian)
+	if len(data) < offset+2 {
+		return nil, errors.New("handshake truncated at server ID length")
+	}
+	serverIDLen := int(data[offset])<<8 | int(data[offset+1])
+	offset += 2
+
+	// Parse server ID
+	if len(data) < offset+serverIDLen {
+		return nil, errors.New("handshake truncated at server ID")
+	}
+	info.ServerID = string(data[offset : offset+serverIDLen])
+	offset += serverIDLen
+
+	// Parse plugin count
+	if len(data) < offset+1 {
+		return nil, errors.New("handshake truncated at plugin count")
+	}
+	pluginCount := int(data[offset])
+	offset++
+
+	// Parse plugins
+	info.Plugins = make([]string, 0, pluginCount)
+	for i := 0; i < pluginCount; i++ {
+		// Parse plugin name length (2 bytes, big-endian)
+		if len(data) < offset+2 {
+			return nil, errors.New("handshake truncated at plugin name length")
+		}
+		pluginNameLen := int(data[offset])<<8 | int(data[offset+1])
+		offset += 2
+
+		// Parse plugin name
+		if len(data) < offset+pluginNameLen {
+			return nil, errors.New("handshake truncated at plugin name")
+		}
+		pluginName := string(data[offset : offset+pluginNameLen])
+		info.Plugins = append(info.Plugins, pluginName)
+		offset += pluginNameLen
+	}
+
+	return info, nil
 }
 
 // Connect establishes a connection to the BitBarrel server
@@ -93,19 +155,24 @@ func (c *Client) Connect() error {
 
 	c.ws = ws
 
-	// Read welcome message
-	_, msg, err := ws.ReadMessage()
+	// Read binary handshake
+	_, handshakeData, err := ws.ReadMessage()
 	if err != nil {
 		ws.Close()
 		c.ws = nil
-		return NewError("connect", fmt.Errorf("failed to read welcome: %w", err))
+		return NewError("connect", fmt.Errorf("failed to read handshake: %w", err))
 	}
 
-	if !contains(string(msg), "Connected to BitBarrel") {
+	// Parse handshake
+	serverInfo, err := parseHandshake(handshakeData)
+	if err != nil {
 		ws.Close()
 		c.ws = nil
-		return NewError("connect", errors.New("invalid welcome from server"))
+		return NewError("connect", fmt.Errorf("failed to parse handshake: %w", err))
 	}
+
+	c.serverInfo = serverInfo
+	c.handshakeReceived = true
 
 	return nil
 }
@@ -126,7 +193,26 @@ func (c *Client) closeUnlocked() error {
 
 	err := c.ws.Close()
 	c.ws = nil
+	c.serverInfo = nil
+	c.handshakeReceived = false
 	return err
+}
+
+// GetServerInfo returns server information from the handshake
+// Returns an error if not connected or handshake not received
+func (c *Client) GetServerInfo() (*ServerInfo, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.ws == nil {
+		return nil, errors.New("not connected")
+	}
+
+	if !c.handshakeReceived {
+		return nil, errors.New("handshake not received")
+	}
+
+	return c.serverInfo, nil
 }
 
 // ensureConnected ensures the client is connected to the server
