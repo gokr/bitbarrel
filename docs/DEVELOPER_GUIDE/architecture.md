@@ -501,7 +501,7 @@ config.addTopicOverride("user:*:notifications", userConfig)
 
 ## Query Result Plugin System
 
-BitBarrel provides an extensible plugin system for transforming query results dynamically.
+BitBarrel provides an extensible hook system for transforming query results dynamically.
 
 ### Plugin Architecture
 
@@ -512,8 +512,8 @@ Client Query → Barrel API → Storage Layer → Query Results
                                       ↓
                           ┌──────────▼──────────┐
                           │  Plugin Registry    │
-                          │  - Range plugins    │
-                          │  - Prefix plugins   │
+                          │  - Range hooks    │
+                          │  - Prefix hooks   │
                           └──────────┬──────────┘
                                      │
                  ┌───────────────────┼───────────────────┐
@@ -555,15 +555,15 @@ let (items, cursor, hasMore) = barrel.itemsInRange(
   endKey = "user:2000",
   limit = 100,
   cursor = "",
-  plugins = @["activeOnly"]  // Apply plugin
+  hooks = @["activeOnly"]  // Apply hook
 )
 
-// Multiple plugins
-let plugins = @["filter1", "transform", "limit"]
+// Multiple hooks
+let hooks = @["filter1", "transform", "limit"]
 ```
 
 **See full documentation:**
-- [Query Plugins Feature Guide](../FEATURES/plugins.md)
+- [Query Plugins Feature Guide](../FEATURES/hooks.md)
 - [Plugin Tests](../../tests/plugins/test_query_result_hooks.nim)
 
 ## Network Protocol & Server
@@ -726,7 +726,7 @@ Detailed documentation for individual features:
 - [Compression](../FEATURES/compression.md) - LZ4 and Snappy compression support
 - [Data Integrity](../FEATURES/data-integrity.md) - CRC32 validation
 - [Networking](../FEATURES/networking.md) - Network protocol and API
-- [Query Plugins](../FEATURES/plugins.md) - Transform query results
+- [Query Plugins](../FEATURES/hooks.md) - Transform query results
 - [Pub/Sub Storage](../FEATURES/pubsub-storage.md) - Pluggable storage backends
 
 ## References

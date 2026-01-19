@@ -9,7 +9,7 @@ This document provides a comprehensive reference for the BitBarrel API. For tuto
 3. [Query API](#query-api)
 4. [Network Client API](#network-client-api)
 5. [Pub/Sub API](#pubsub-api)
-6. [Plugin API](#plugin-api)
+6. [Hook API](#plugin-api)
 
 ## Core Barrel API
 
@@ -228,8 +228,8 @@ let (items, cursor, hasMore) = client.rangeQuery("start", "end", limit=100)
 # Prefix query
 let (items, cursor, hasMore) = client.prefixQuery("prefix", limit=100)
 
-# With plugins
-let plugins = @["activeOnly", "addMetadata"]
+# With hooks
+let hooks = @["activeOnly", "addMetadata"]
 let (items, cursor, hasMore) = client.rangeQuery("start", "end", 100, cursor, plugins)
 ```
 
@@ -290,7 +290,7 @@ let (messages, nextCursor, hasMore) = client.history("chat:general", limit=100)
 let (messages, nextCursor, hasMore) = client.history("chat:general", limit=100, sinceSeq=1000)
 ```
 
-## Plugin API
+## Hook API
 
 ### Creating a Plugin
 
@@ -303,7 +303,7 @@ proc myFilter(metadata: HookMetadata,
               hasMore: var bool) =
   items.keepItIf(it[1].contains("active"))
 
-let pluginId = registerPlugin(
+let pluginId = registerHook(
   "activeOnly",
   myFilter,
   hkRangeQuery,

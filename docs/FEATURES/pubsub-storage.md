@@ -733,6 +733,6 @@ suite "Storage Manager Integration":
 ## Related Documentation
 
 - [Pub/Sub User Guide](../USER_GUIDE/pubsub.md) - User-facing documentation
-- [Query Plugins](./plugins.md) - Transform query results
+- [Query Hooks](./hooks.md) - Transform query results
 - [Storage Backend Tests](../../tests/system/pubsub/test_storage_backends.nim) - Test examples
 - [Examples](../../examples/pubsub/) - Complete working examples

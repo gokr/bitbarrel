@@ -22,9 +22,9 @@ Transform results from range and prefix queries before returning to clients.
 **Supported Commands:**
 - `cmdRangeQuery` (0x21) - Range queries with key-value pairs ✅
 - `cmdPrefixQuery` (0x22) - Prefix queries with key-value pairs ✅
-- `cmdRangeKeys` (0x24) - Keys-only range queries ❌ (no plugin support)
-- `cmdPrefixKeys` (0x25) - Keys-only prefix queries ❌ (no plugin support)
-- `cmdRangeCount` (0x23) - Range count queries ❌ (no plugin support)
+- `cmdRangeKeys` (0x24) - Keys-only range queries ❌ (no hook support)
+- `cmdPrefixKeys` (0x25) - Keys-only prefix queries ❌ (no hook support)
+- `cmdRangeCount` (0x23) - Range count queries ❌ (no hook support)
 
 **Protocol Support:** RangeRequest and PrefixRequest have `hooks: seq[string]` fields.
 
@@ -78,7 +78,7 @@ proc myFilterPlugin(metadata: HookMetadata,
   items.keepItIf(it[1].contains("active"))
 
 # Register the hook
-let pluginId = registerHook(
+let hookId = registerHook(
   "activeItemsOnly",     # Unique hook name
   myFilterHook,        # Plugin procedure
   hkRangeQuery,          # Hook type
@@ -93,7 +93,7 @@ Hooks receive four parameters:
 1. **metadata** - HookMetadata containing:
    - `hookType` - Type of query (range or prefix)
    - `queryParams` - Original query parameters (startKey, endKey, prefix, etc.)
-   - `pluginParams` - Additional parameters from query (if any)
+   - `hookParams` - Additional parameters from query (if any)
 
 2. **items** - Sequence of (key, value) tuples to transform
    - Modify in-place to filter or transform results
@@ -118,7 +118,7 @@ proc filterByKeyword(metadata: HookMetadata,
                      hasMore: var bool) =
   items.keepItIf(it[1].contains("premium"))
 
-let pluginId = registerHook(
+let hookId = registerHook(
   "premiumOnly",
   filterByKeyword,
   hkRangeQuery,
@@ -139,7 +139,7 @@ proc enforceMaxLimit(metadata: HookMetadata,
     items.setLen(100)
     hasMore = true  # Indicate more results available
 
-let pluginId = registerHook(
+let hookId = registerHook(
   "max100Results",
   enforceMaxLimit,
   hkRangeQuery,
@@ -160,7 +160,7 @@ proc addTimestamp(metadata: HookMetadata,
   for item in items.mitems:
     item[1] = fmt"{item[1]}|retrieved_at={timestamp}"
 
-let pluginId = registerHook(
+let hookId = registerHook(
   "addTimestamp",
   addTimestamp,
   hkPrefixQuery,
@@ -180,7 +180,7 @@ proc userAccessFilter(metadata: HookMetadata,
   # Assume we have currentUserId available
   items.keepItIf(it[0].startsWith(fmt"user:{currentUserId}:"))
 
-let pluginId = registerHook(
+let hookId = registerHook(
   "userAccessOnly",
   userAccessFilter,
   hkRangeQuery,
@@ -197,7 +197,7 @@ import bitbarrel
 import hooks/query_result_hooks
 
 # Register hook first
-let pluginId = registerHook("myPlugin", myPluginProc, hkRangeQuery, "Description")
+let hookId = registerHook("myPlugin", myHookProc, hkRangeQuery, "Description")
 
 # Open barrel in bmCritBit mode for range queries
 var barrel = openBarrel("data.db", bmCritBit)
@@ -290,11 +290,11 @@ unregisterHook("myPlugin")
 
 ✅ **Register hooks at startup** - Register all hooks during application initialization
 
-✅ **Use descriptive names** - Choose clear, unique plugin names
+✅ **Use descriptive names** - Choose clear, unique hook names
 
 ✅ **Handle empty results** - Hooks should work correctly with empty item lists
 
-✅ **Document plugin behavior** - Provide clear descriptions for each plugin
+✅ **Document hook behavior** - Provide clear descriptions for each plugin
 
 ✅ **Test with pagination** - Ensure hooks work correctly with cursor-based pagination
 
@@ -308,7 +308,7 @@ unregisterHook("myPlugin")
 
 ❌ **Don't perform I/O in hooks** - Keep hooks fast and in-memory only
 
-❌ **Don't depend on plugin order** - Design hooks to be composable in any order
+❌ **Don.t depend on hook order** - Design hooks to be composable in any order
 
 ❌ **Don't throw exceptions** - Handle errors gracefully within hooks
 
@@ -318,8 +318,8 @@ unregisterHook("myPlugin")
 
 - Hooks execute with server privileges
 - Only register hooks from trusted sources
-- Review plugin code before registration
-- Consider plugin behavior in multi-tenant scenarios
+- Review hook code before registration
+- Consider hook behavior in multi-tenant scenarios
 
 ### Client-Specified Hooks
 
@@ -327,9 +327,9 @@ When clients can specify hooks (network API):
 
 ```nim
 // Server can restrict which hooks clients can use
-proc validateClientPlugin(pluginName: string): bool =
+proc validateClientHook(hookName: string): bool =
   # Only allow safe, audited hooks
-  result = pluginName in ["safeFilter1", "safeFilter2"]
+  result = hookName in ["safeFilter1", "safeFilter2"]
 ```
 
 ## Performance Considerations
@@ -388,7 +388,7 @@ proc debugPlugin(metadata: HookMetadata,
 import unittest
 
 suite "Plugin Tests":
-  test "filter plugin removes inactive items":
+  test "filter hook removes inactive items":
     var items = @[(
       "user:1", "active"
     ), (
@@ -595,7 +595,7 @@ Future enhancements to the plugin/hook system could include:
 
 ### 3. Plugin Parameter Enhancement
 - Allow clients to pass custom parameters to hooks
-- Extend protocol with `pluginParams: Table[string, string]`
+- Extend protocol with `hookParams: Table[string, string]`
 
 ### 4. Batch Operation Plugin Support
 - New hook types: `hkBatchGet`, `hkBatchSet`, `hkBatchDelete`
@@ -622,7 +622,7 @@ proc registerPlugin*(name: string,
 Register a new query result hook.
 
 **Parameters:**
-- `name`: Unique plugin identifier
+- `name`: Unique hook identifier
 - `hookProc`: Plugin procedure to execute
 - `hookType`: Hook kind (`hkRangeQuery` or `hkPrefixQuery`)
 - `description`: Human-readable description
@@ -637,12 +637,12 @@ Register a new query result hook.
 proc unregisterPlugin*(name: string)
 ```
 
-Remove a plugin from the registry.
+Remove a hook from the registry.
 
 **Parameters:**
 - `name`: Hook name to unregister
 
-**Raises:** `PluginNotFoundError` if plugin doesn't exist
+**Raises:** `HookNotFoundError` if plugin doesn't exist
 
 ### getRegisteredHooks
 
@@ -652,7 +652,7 @@ proc getRegisteredHooks*(): Table[string, HookKind]
 
 Get all currently registered hooks.
 
-**Returns:** Table mapping plugin names to hook types
+**Returns:** Table mapping hook names to hook types
 
 ### applyHooks (Internal)
 
@@ -661,7 +661,7 @@ proc applyHooks*(hookType: HookKind,
                    items: var seq[(string, string)],
                    nextCursor: var string,
                    hasMore: var bool,
-                   pluginNames: seq[string],
+                   hookNames: seq[string],
                    queryParams: string)
 ```
 
@@ -671,7 +671,7 @@ Apply multiple hooks to query results (called internally).
 
 ### Plugin Not Found Error
 
-**Problem:** `PluginNotFoundError: Plugin 'myPlugin' not found`
+**Problem:** `HookNotFoundError: Plugin 'myPlugin' not found`
 
 **Cause:** Plugin not registered or misspelled name
 

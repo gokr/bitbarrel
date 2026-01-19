@@ -941,7 +941,7 @@ After the WebSocket upgrade completes, the server immediately sends a binary han
 
 **Handshake Format:**
 ```
-[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][hookCount:1][hookNameLen1:2][hookName1]...
 ```
 
 **Field Descriptions:**
@@ -952,13 +952,13 @@ After the WebSocket upgrade completes, the server immediately sends a binary han
 | versionMinor | 1 byte | Protocol minor version |
 | serverIdLen | 2 bytes | Length of server ID string |
 | serverId | N bytes | Unique server identifier (UUID string) |
-| pluginCount | 1 byte | Number of plugins available |
-| pluginNameLen | 2 bytes | Length of each plugin name |
-| pluginName | N bytes | Plugin name string |
+| hookCount | 1 byte | Number of hooks available |
+| hookNameLen | 2 bytes | Length of each hook name |
+| hookName | N bytes | Hook name string |
 
 **Client Handshake Handling:**
 - Clients must expect and parse the binary handshake immediately after WebSocket upgrade
-- Parse handshake fields in order: version, server ID, and available plugins
+- Parse handshake fields in order: version, server ID, and available hooks
 - Store server information for client functionality (e.g., display server version)
 - The handshake must be received within the connection timeout period (5 seconds)
 

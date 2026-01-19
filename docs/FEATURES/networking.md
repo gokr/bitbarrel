@@ -20,7 +20,7 @@ The network protocol layer for BitBarrel provides remote access via WebSocket bi
 - Big-endian encoding for cross-platform compatibility
 - Size limits: 64KB max key, 32MB max value
 - Protocol v1.1 features:
-  - Binary handshake with version negotiation, serverId (UUID), and plugin discovery
+  - Binary handshake with version negotiation, serverId (UUID), and hook discovery
   - Request flags byte (rfNone, rfHasTtl) for protocol extensions
   - Per-key TTL support in SET command
   - Client-side request pipelining for reduced latency
@@ -121,7 +121,7 @@ Response: [status:1][seq:4][valLen:4][value:M]
 **Binary Handshake (v1.1):**
 Server sends immediately after WebSocket connection:
 ```
-[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][hookCount:1][hookNameLen1:2][hookName1]...
 ```
 
 **Watch Key Request (0x60):**

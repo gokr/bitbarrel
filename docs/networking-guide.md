@@ -637,32 +637,32 @@ if hasMore:
   let (nextPage, _, _) = client.rangeQuery("user:100", "user:200", limit=50, cursor=nextCursor)
 ```
 
-### Range Queries with Plugins
+### Range Queries with Hooks
 
 Plugins can transform query results dynamically:
 
 ```nim
-// Apply plugin to filter or transform results
+// Apply hook to filter or transform results
 let (items, cursor, hasMore) = client.rangeQuery(
   startKey = "user:1000",
   endKey = "user:2000",
   limit = 100,
   cursor = "",
-  plugins = @["activeOnly"]  // Apply plugin
+  hooks = @["activeOnly"]  // Apply hook
 )
 
-// Multiple plugins execute in order
-let plugins = @["filterPremium", "addMetadata", "limitResults"]
+// Multiple hooks execute in order
+let hooks = @["filterPremium", "addMetadata", "limitResults"]
 let (items, cursor, hasMore) = client.rangeQuery(
   "user:0000", "user:9999", 100, "", plugins
 )
 ```
 
-**Available plugin types:**
-- Range query plugins (applied to `rangeQuery` and `itemsInRange`)
-- Prefix query plugins (applied to `prefixQuery` and `itemsWithPrefix`)
+**Available hook types:**
+- Range query hooks (applied to `rangeQuery` and `itemsInRange`)
+- Prefix query hooks (applied to `prefixQuery` and `itemsWithPrefix`)
 
-**See:** [Query Plugins Feature Guide](../FEATURES/plugins.md)
+**See:** [Query Hooks Feature Guide](../FEATURES/hooks.md)
 
 ### Prefix Queries
 
@@ -674,15 +674,15 @@ for (key, value) in items:
   echo "Order: " & key
 ```
 
-### Prefix Queries with Plugins
+### Prefix Queries with Hooks
 
 ```nim
-// Use plugins with prefix queries
+// Use hooks with prefix queries
 let (items, cursor, hasMore) = client.prefixQuery(
   prefix = "order:2024-",
   limit = 100,
   cursor = "",
-  plugins = @["filterByStatus"]  // Apply plugin
+  hooks = @["filterByStatus"]  // Apply hook
 )
 
 // Transform values before returning
@@ -690,7 +690,7 @@ let (items, cursor, hasMore) = client.prefixQuery(
   prefix = "product:",
   limit = 50,
   cursor = "",
-  plugins = @["addTimestamp", "enrichData"]
+  hooks = @["addTimestamp", "enrichData"]
 )
 ```
 

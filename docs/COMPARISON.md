@@ -611,7 +611,7 @@ BitBarrel offers pluggable storage backends for message history:
 | **Chat Applications** | Pub/Sub | Message history, presence awareness |
 | **Live Updates** | Pub/Sub + Key Watch | KV change events, pattern watching |
 | **Data Pipelines** | Batch + Hooks | 10K ops/batch, barrel hooks for transforms |
-| **Custom Query Logic** | Plugins | Query result transformation plugins |
+| **Custom Query Logic** | Hooks | Query result transformation hooks |
 
 ### When NOT to Use BitBarrel
 
@@ -668,7 +668,7 @@ BitBarrel occupies a unique niche: an embedded, high-performance key-value store
 - Key watching with pattern matching
 - Graph traversal with automatic cycle detection
 - HugeBarrel for billions of keys with predictable memory
-- Query result plugins and barrel hooks for extensibility
+- Query result hooks and barrel hooks for extensibility
 - Native Nim implementation with type safety
 - Client libraries: Nim, Python, Go, Dart, TypeScript, **C, Zig**
 

@@ -63,7 +63,7 @@ BitBarrel provides client libraries for multiple programming languages and a web
 | Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Query plugins** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - |
+| **Query hooks** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - |
 | Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | ✅ |
@@ -129,7 +129,7 @@ BitBarrel implements the **Bitcask** storage model with these key concepts:
 - **Multiple index modes** - Hash, CritBit, HugeCritBit
 - **Pub/Sub messaging** - Real-time topic-based messaging with pattern matching
 - **Pluggable storage backends** - Choose between memory, persistent, or hybrid storage
-- **Query result plugins** - Transform queries dynamically with custom plugins
+- **Query result hooks** - Transform queries dynamically with custom plugins
 - **Network protocol** - Full network API with multiple client libraries
 
 ### Index Modes
