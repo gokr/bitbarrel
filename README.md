@@ -8,6 +8,7 @@ BitBarrel is a high-performance key/value storage engine built in Nim, using the
 - **Non-blocking compaction** — writes continue uninterrupted during background compaction.
 - **Graph traversal** with built-in reference model for modeling relationships and detecting cycles.
 - **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, and Python.
+- **WebSocket protocol v1.1** with binary handshake, per-key TTL, key watching with pattern matching, and client-side request pipelining for reduced latency.
 - **JWT authentication** with role-based access control (admin, readwrite, readonly) for secure network access.
 - **LZ4 compression by default** (with Snappy as alternative), TTL, CRC32 checksums, and fast hint-file recovery.
 
@@ -295,7 +296,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (28 commands), REST API, JWT authentication, session management, Pub/Sub messaging, presence, message history |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
-| Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection |
+| Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection, query result plugins |
 
 **Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
 
