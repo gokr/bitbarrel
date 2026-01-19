@@ -302,6 +302,21 @@ pub const Client = struct {
         return Message{ .handle = msg };
     }
 
+    pub fn getServerInfo(self: *Client) Error!ServerInfo {
+        const handle = self.handle orelse return Error.UnknownError;
+
+        var c_info: c.BBServerInfo = undefined;
+        const result = c.bb_get_server_info(handle, &c_info);
+        if (result != c.BB_OK) {
+            return translateError(result);
+        }
+
+        return ServerInfo{
+            .allocator = self.allocator,
+            .info = c_info,
+        };
+    }
+
     pub fn setMessageCallback(self: *Client, callback: c.BBMessageCallback, userdata: ?*anyopaque) Error!void {
         const handle = self.handle orelse return Error.UnknownError;
         const result = c.bb_set_message_callback(handle, callback, userdata);

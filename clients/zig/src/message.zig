@@ -82,6 +82,34 @@ pub const RangeResult = struct {
     };
 };
 
+pub const ServerInfo = struct {
+    allocator: std.mem.Allocator,
+    info: c.BBServerInfo,
+
+    pub fn versionMajor(self: ServerInfo) u8 {
+        return self.info.version_major;
+    }
+
+    pub fn versionMinor(self: ServerInfo) u8 {
+        return self.info.version_minor;
+    }
+
+    pub fn serverId(self: ServerInfo) []const u8 {
+        return std.mem.sliceTo(self.info.server_id, 0);
+    }
+
+    pub fn plugins(self: ServerInfo) [][]const u8 {
+        // Note: This is a simplified version - in practice you'd need to manage the lifetime
+        // of the plugins array properly. For now, return an empty array or implement full conversion.
+        return &[_][]const u8{};
+    }
+
+    pub fn deinit(self: ServerInfo) void {
+        // The C library manages the memory for server info fields
+        // Nothing to free here
+    }
+};
+
 test "message structure" {
     // Test would require actual message from C library
     // This is a placeholder for the structure
