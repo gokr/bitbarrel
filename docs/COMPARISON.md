@@ -20,6 +20,10 @@ A comparison of BitBarrel with popular database systems to help you choose the r
 | **Deployment** | Embedded + Server | Server | Server | Server | Embedded |
 | **Graph Traversal** | Yes (cycle detection) | No | Yes (WITH RECURSIVE) | No | No |
 | **Huge Datasets** | HugeBarrel (two-tier) | RedisJSON | Partitioning | Sharding | No |
+| **Pub/Sub** | Yes (topics + patterns) | Yes | LISTEN/NOTIFY | Change Streams | No |
+| **TTL/Expiration** | Yes (per-key) | Yes | Manual | Yes (TTL indexes) | Yes (TTL) |
+| **Batch Operations** | Yes (10K ops/batch) | Yes (pipelining) | Yes | Yes (bulk) | Yes (WriteBatch) |
+| **Key Watching** | Yes (patterns) | Yes (keyspace) | Yes (triggers) | Yes (change streams) | No |
 | **Open Source** | MIT | BSD | PostgreSQL | SSPL | Apache 2.0 |
 
 ## BitBarrel Deployment Models
@@ -108,9 +112,9 @@ When running in server mode, BitBarrel uses a compact binary protocol over WebSo
 
 ### Binary Message Format
 
-**Request:**
+**Request (v1.1):**
 ```
-[Command:1][Seq:4][KeyLen:2][Key:N][ValLen:4][Value:M]
+[Command:1][Seq:4][KeyLen:2][Key:N][ValLen:4][Value:M][Flags:1]
 ```
 
 **Response:**
@@ -119,20 +123,26 @@ When running in server mode, BitBarrel uses a compact binary protocol over WebSo
 ```
 
 **Characteristics:**
+- **Protocol v1.1** with handshake negotiation (backward compatible)
 - **Big-endian encoding** for cross-platform compatibility
-- **11-byte minimum overhead** for GET operations
+- **12-byte minimum overhead** for GET operations (v1.1)
 - Max key size: 64KB, max value: 32MB (configurable)
 - Sequence numbers for request/response correlation
 - WebSocket binary frames (opcode 0x02) with masking
+- Request pipelining support for improved throughput
 
 ### Command Types
 
 | Range | Commands |
 |-------|----------|
 | `0x01-0x06` | Data operations: GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS |
-| `0x10-0x15` | Barrel management: CREATE, OPEN, USE, CLOSE, LIST, DROP |
+| `0x10-0x18` | Barrel management: CREATE, OPEN, USE, CLOSE, LIST, DROP, GET/SET_CONFIG, GET_STATS |
 | `0x20` | Reference Traversal: Graph traversal with path expressions |
 | `0x21-0x23` | Range queries: RangeQuery, PrefixQuery, RangeCount |
+| `0x26-0x28` | Batch operations: BATCH_GET, BATCH_SET, BATCH_DELETE (up to 10K ops) |
+| `0x30-0x3F` | Pub/Sub: SUBSCRIBE, UNSUBSCRIBE, PUBLISH, etc. |
+| `0x60-0x61` | Key watching: WATCH_KEY, UNWATCH_KEY (pattern-based) |
+| `0xF0` | Protocol handshake: Version negotiation |
 
 ### Protocol Advantages
 
@@ -141,7 +151,10 @@ When running in server mode, BitBarrel uses a compact binary protocol over WebSo
 | Binary format | Faster parsing than JSON |
 | WebSocket | Persistent connections, bidirectional |
 | Compact encoding | Lower bandwidth than REST APIs |
-| Sequence numbers | Enables pipelining |
+| Sequence numbers | Enables request pipelining |
+| Batch operations | Up to 10K operations per request |
+| Protocol versioning | Backward-compatible feature negotiation |
+| Per-key TTL | Automatic expiration in SET operations |
 
 ## Durability and Recovery Options
 
@@ -285,6 +298,54 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 | Cycle detection | Automatic | Manual | Manual |
 | Performance | O(path length) | O(nodes) | O(nodes) |
 
+## Pub/Sub Messaging System
+
+BitBarrel includes a topic-based publish/subscribe messaging system with features comparable to Redis Pub/Sub.
+
+### Pub/Sub Features
+
+| Feature | BitBarrel | Redis |
+|---------|-----------|-------|
+| **Topic subscriptions** | Yes | Yes (channels) |
+| **Pattern matching** | Yes (glob patterns) | Yes (PSUBSCRIBE) |
+| **Message types** | Data, Presence, KvChange | Single type |
+| **Presence tracking** | Built-in | Manual (via extra channels) |
+| **KV change events** | Built-in | Via keyspace notifications |
+| **Message history** | Pluggable backends | Streams (separate feature) |
+| **Storage backends** | Memory, Barrel, Per-topic, Hybrid | Memory only (Pub/Sub) |
+
+### Message Types
+
+BitBarrel Pub/Sub supports three message types:
+
+1. **Data messages**: Regular application messages published to topics
+2. **Presence messages**: Join/leave notifications when subscribers connect/disconnect
+3. **KvChange messages**: Automatic notifications when key-value data changes
+
+### Storage Backends
+
+BitBarrel offers pluggable storage backends for message history:
+
+| Backend | Description | Use Case |
+|---------|-------------|----------|
+| **Memory-only** | Messages in RAM, no persistence | Real-time only, no history needed |
+| **Shared Barrel** | All topics share one barrel | Small deployments, few topics |
+| **Per-Topic Barrel** | Each topic gets its own barrel | High-volume topics, isolation |
+| **Hybrid** | Pattern-based routing to backends | Mix of use cases |
+
+### Pub/Sub Comparison Summary
+
+**BitBarrel advantages:**
+- Presence tracking built into the protocol
+- KV change events without extra configuration
+- Pluggable storage backends for message history
+- Integrated with key-value storage (same server)
+
+**Redis advantages:**
+- Mature, battle-tested implementation
+- Redis Streams for persistent messaging
+- Larger ecosystem and client support
+
 ## Detailed Database Comparisons
 
 ### BitBarrel vs Redis
@@ -303,7 +364,10 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 | **Data Structures** | Simple key-value | Strings, Lists, Sets, Sorted Sets, Streams, HyperLogLog, Geospatial |
 | **Clustering** | No | Yes (Redis Cluster) |
 | **Graph Support** | Yes (reference traversal) | No |
-| **TTL/Expiration** | Yes | Yes |
+| **TTL/Expiration** | Yes (per-key) | Yes |
+| **Pub/Sub** | Yes (topics + patterns + presence) | Yes (channels + patterns) |
+| **Key Watching** | Yes (pattern-based) | Yes (keyspace notifications) |
+| **Batch Operations** | Yes (10K ops/batch) | Yes (pipelining) |
 
 **When to choose BitBarrel over Redis:**
 - Dataset exceeds available RAM but index fits in memory
@@ -312,11 +376,14 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 - Need configurable durability trade-offs
 - Graph traversal with cycle detection required
 - Running on resource-constrained environments
+- Need Pub/Sub with pluggable message storage backends
+- Need presence tracking for subscribers
+- Need KV change event notifications
 
 **When to choose Redis over BitBarrel:**
 - Need sub-millisecond latency for all operations
 - Working set fits entirely in RAM
-- Need complex data structures (sorted sets, streams, pub/sub)
+- Need complex data structures (sorted sets, streams, lists, hashes)
 - Need horizontal scaling via clustering
 - Use case is pure caching with easy eviction
 
@@ -376,7 +443,7 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 | **Secondary Indexes** | No | No (via application) |
 | **Huge Datasets** | HugeBarrel (two-tier) | No |
 | **Open Source** | MIT | Apache 2.0 |
-| **Language Bindings** | Nim, Python, Go | C++, Java, Python, Go, Rust |
+| **Language Bindings** | Nim, Python, Go, Dart, TypeScript | C++, Java, Python, Go, Rust |
 
 **Similarities:**
 - Both are embedded key-value stores
@@ -428,7 +495,7 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 
 | Database | Embedded | Server | Multi-Language |
 |----------|----------|--------|----------------|
-| **BitBarrel** | Yes (primary) | Yes | Nim, Python, Go |
+| **BitBarrel** | Yes (primary) | Yes | Nim, Python, Go, Dart, TypeScript |
 | **Redis** | No | Yes | Many |
 | **RocksDB** | Yes | No | C++, Java, Python, Go, Rust |
 | **PostgreSQL** | No | Yes | Many |
@@ -475,11 +542,24 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
    - Predictable memory usage
    - Lazy-loaded range partitions
 
+9. **Real-time messaging with persistence**
+   - Pub/Sub with pluggable storage backends
+   - Message history retrieval
+   - Presence tracking for subscribers
+
+10. **Need KV change notifications**
+    - Key watching with pattern matching
+    - Automatic events on set/delete operations
+
+11. **High-throughput batch operations**
+    - Up to 10K operations per batch request
+    - Per-item status codes in responses
+
 ### Choose Redis When:
 
 1. All data fits in memory
 2. Sub-millisecond latency required
-3. Need complex data structures (sorted sets, streams, pub/sub)
+3. Need complex data structures (sorted sets, streams, lists, hashes)
 4. Horizontal scaling needed (Redis Cluster)
 5. Caching is the primary use case
 
@@ -514,8 +594,8 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 
 | Use Case | Recommended Mode | Why BitBarrel Fits |
 |----------|------------------|-------------------|
-| **Session Store** | bmHash | O(1) lookups, configurable durability |
-| **Caching Layer** | bmHash | Fast reads, simple eviction (TTL) |
+| **Session Store** | bmHash | O(1) lookups, configurable durability, TTL |
+| **Caching Layer** | bmHash | Fast reads, per-key TTL expiration |
 | **Configuration Storage** | bmHash | Embedded, simple key-value |
 | **Time-Series Data** | bmCritBit | Range queries by timestamp |
 | **Leaderboards** | bmCritBit | Ordered iteration, range queries |
@@ -527,6 +607,11 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 | **Social Graphs** | bmCritBit + refs | Path traversal, cycle detection |
 | **Massive Datasets** | HugeBarrel | Two-tier, predictable memory |
 | **Microservices** | Both modes | Embedded or server as needed |
+| **Real-time Notifications** | Pub/Sub | Topic subscriptions, presence tracking |
+| **Chat Applications** | Pub/Sub | Message history, presence awareness |
+| **Live Updates** | Pub/Sub + Key Watch | KV change events, pattern watching |
+| **Data Pipelines** | Batch + Hooks | 10K ops/batch, barrel hooks for transforms |
+| **Custom Query Logic** | Plugins | Query result transformation plugins |
 
 ### When NOT to Use BitBarrel
 
@@ -559,10 +644,14 @@ proc detectCycle*(path: seq[string], nextKey: string): bool =
 | Two-tier storage for billions of keys | BitBarrel (HugeBarrel) |
 | Same code embedded or as a server | BitBarrel |
 | Fast crash recovery with hint files | BitBarrel |
+| Pub/Sub with message history persistence | BitBarrel |
+| Pub/Sub with built-in presence tracking | BitBarrel |
+| KV change notifications | BitBarrel (Key Watch) |
+| Batch operations up to 10K per request | BitBarrel |
 
 ## Summary
 
-BitBarrel occupies a unique niche: an embedded, high-performance key-value store with flexible deployment options (embedded + server), graph traversal capabilities, and a two-tier option for massive datasets.
+BitBarrel occupies a unique niche: an embedded, high-performance key-value store with flexible deployment options (embedded + server), graph traversal capabilities, Pub/Sub messaging, and a two-tier option for massive datasets.
 
 **Key differentiators:**
 - Bitcask storage model (append-only, no update-in-place)
@@ -572,16 +661,24 @@ BitBarrel occupies a unique niche: an embedded, high-performance key-value store
 - Configurable durability trade-offs (None/Sync/Fsync)
 - CritBit mode for range queries
 - Dual deployment: embedded library + networked server
-- Binary WebSocket protocol for efficient remote access
+- Binary WebSocket protocol v1.1 with pipelining
+- Pub/Sub messaging with pluggable storage backends
+- Batch operations (up to 10K ops per request)
+- Per-key TTL with automatic expiration
+- Key watching with pattern matching
 - Graph traversal with automatic cycle detection
 - HugeBarrel for billions of keys with predictable memory
+- Query result plugins and barrel hooks for extensibility
 - Native Nim implementation with type safety
+- Client libraries: Nim, Python, Go, Dart, TypeScript
 
 **Comparison with alternatives:**
 - More flexible deployment than RocksDB (server mode available)
 - Better crash recovery than PostgreSQL/MongoDB (hint files)
 - Graph capabilities Redis lacks (path expressions + cycle detection)
 - Two-tier storage RocksDB doesn't have (HugeBarrel)
+- Pub/Sub with pluggable backends (Redis Pub/Sub is memory-only)
+- Presence tracking built-in (Redis requires manual implementation)
 - Faster recovery than most disk-based databases
 
-For projects that fit its strengths, BitBarrel offers excellent performance, flexibility, and simplicity. For projects requiring more general-purpose storage capabilities, traditional databases remain the better choice.
+For projects that fit its strengths, BitBarrel offers good performance, flexibility, and simplicity. For projects requiring more general-purpose storage capabilities, traditional databases remain the better choice.
