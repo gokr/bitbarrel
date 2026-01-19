@@ -935,9 +935,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    - `401 Unauthorized` if auth required but missing/invalid
 4. Connection is established
 
-### Binary Handshake (v1.1)
+### Binary Handshake
 
-After the WebSocket upgrade completes, the server immediately sends a binary handshake message to the client. This handshake provides protocol version information and server capabilities.
+After the WebSocket upgrade completes, the server immediately sends a binary handshake message to the client. This handshake provides protocol version information and server capabilities. **All BitBarrel clients must implement binary handshake handling - no backward compatibility with text-based welcome messages is provided.**
 
 **Handshake Format:**
 ```
@@ -957,9 +957,10 @@ After the WebSocket upgrade completes, the server immediately sends a binary han
 | pluginName | N bytes | Plugin name string |
 
 **Client Handshake Handling:**
-- v1.1 clients expect binary handshake immediately after connection
-- v1.0 clients expected a text "Connected to BitBarrel" message
-- v1.1 clients with fallback will handle both formats
+- Clients must expect and parse the binary handshake immediately after WebSocket upgrade
+- Parse handshake fields in order: version, server ID, and available plugins
+- Store server information for client functionality (e.g., display server version)
+- The handshake must be received within the connection timeout period (5 seconds)
 
 **Example Handshake:**
 ```
@@ -1203,23 +1204,17 @@ except ClientError as e:
 - Current version: 1.1
 - Minor version additions are backward compatible
 - v1.1 protocol includes flags byte for extensions
-- Both v1.0 and v1.1 requests are automatically decoded by servers
 
 ### Version Detection
-- v1.1 servers send binary handshake with version info
-- v1.0 servers send text "Connected to BitBarrel" message
-- v1.1 clients can detect server version from handshake format
+- Servers send binary handshake with version information immediately after WebSocket upgrade
+- Clients should parse binary handshake to determine server version and capabilities
 
 ### Backward Compatibility
-- v1.1 clients connecting to v1.0 servers:
-  - Text welcome message detected as v1.0
-  - Flags byte not sent in requests
-  - TTL, key watching, and pipelining unavailable
+BitBarrel protocol maintains backward compatibility for request/response formats within the same major version:
+- v1.1 clients can communicate with any v1.x server
+- New features (flags byte, TTL support) gracefully degrade when not supported by server
 
-- v1.0 clients connecting to v1.1 servers:
-  - Binary handshake may be ignored
-  - v1.0 format requests work (Flags = 0x00)
-  - Only v1.0 features available
+**Important:** Binary handshake protocol (post-connection) is not backward compatible - all clients must support binary handshake parsing.
 
 ### Platform Support
 - All platforms supporting WebSocket and TCP
@@ -1251,11 +1246,12 @@ except ClientError as e:
 - Use LIST_BARRELS to see all available barrels
 - Create new barrel with CREATE_BARREL if needed
 
-### Handshake Issues (v1.1)
-- v1.1 clients expect binary handshake after WebSocket upgrade
-- v1.0 clients expect text "Connected to BitBarrel" message
+### Handshake Issues
+- All clients must implement binary handshake parsing after WebSocket upgrade
+- Handshake must be received within connection timeout period (5 seconds)
 - Check server logs for connection errors
-- Verify protocol version compatibility
+- Verify client is reading binary frames, not text frames
+- Confirm handshake format matches specification
 
 ## Future Enhancements
 
