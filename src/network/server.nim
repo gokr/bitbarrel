@@ -312,14 +312,17 @@ proc handleWebSocketMessage*(
 ) =
   ## Process a binary WebSocket message from client
   var req: ProtoRequest
-  writeLine(stderr, "[DEBUG] handleWebSocketMessage: entered")
-  flushFile(stderr)
+  when not defined(testing):
+    writeLine(stderr, "[DEBUG] handleWebSocketMessage: entered")
+    flushFile(stderr)
   try:
-    writeLine(stderr, "[DEBUG] handleWebSocketMessage: received data length=" & $data.len)
-    flushFile(stderr)
+    when not defined(testing):
+      writeLine(stderr, "[DEBUG] handleWebSocketMessage: received data length=" & $data.len)
+      flushFile(stderr)
     req = decodeRequest(data)
-    writeLine(stderr, "[DEBUG] handleWebSocketMessage: seq=" & $req.seq & " command=" & $req.command)
-    flushFile(stderr)
+    when not defined(testing):
+      writeLine(stderr, "[DEBUG] handleWebSocketMessage: seq=" & $req.seq & " command=" & $req.command)
+      flushFile(stderr)
   except CatchableError as e:
     # Send error response with seq=0 since we couldn't decode the request
     let errResp = invalidResponse(0, "Invalid binary protocol: " & e.msg)
@@ -349,17 +352,20 @@ proc handleWebSocketMessage*(
       resp.status = statusUnauthorized
       resp.value = "Unauthorized: admin role required"
     else:
-      echo fmt"[DEBUG] cmdCreateBarrel: name='{req.key}', configLen={req.value.len}"
+      when not defined(testing):
+        echo fmt"[DEBUG] cmdCreateBarrel: name='{req.key}', configLen={req.value.len}"
       try:
         let config = if req.value.len > 0:
           parseBarrelConfigJson(req.value)
         else:
           defaultBarrelConfig()
-        echo fmt"[DEBUG] config parsed, dataDir={server.config.dataDir}, calling createBarrel..."
+        when not defined(testing):
+          echo fmt"[DEBUG] config parsed, dataDir={server.config.dataDir}, calling createBarrel..."
 
         if server.registry.createBarrel(req.key, config):
           resp.status = statusOk
-          echo fmt"[DEBUG] createBarrel succeeded for '{req.key}'"
+          when not defined(testing):
+            echo fmt"[DEBUG] createBarrel succeeded for '{req.key}'"
         else:
           # Use detailed error from registry
           let errorMsg = server.registry.lastError
@@ -370,15 +376,18 @@ proc handleWebSocketMessage*(
           else:
             resp.status = statusError
             resp.value = if errorMsg.len > 0: errorMsg else: fmt"Failed to create barrel '{req.key}'"
-          echo fmt"[DEBUG] createBarrel failed for '{req.key}' (status: {resp.status}, msg: {resp.value})"
+          when not defined(testing):
+            echo fmt"[DEBUG] createBarrel failed for '{req.key}' (status: {resp.status}, msg: {resp.value})"
       except ConfigValidationError as e:
         resp.status = statusInvalid
         resp.value = e.msg
-        echo fmt"[DEBUG] ConfigValidationError: {e.msg}"
+        when not defined(testing):
+          echo fmt"[DEBUG] ConfigValidationError: {e.msg}"
       except CatchableError as e:
         resp.status = statusError
         resp.value = fmt"Failed to create barrel: {e.msg}"
-        echo fmt"[DEBUG] createBarrel exception: {e.msg}, {e.repr}"
+        when not defined(testing):
+          echo fmt"[DEBUG] createBarrel exception: {e.msg}, {e.repr}"
 
   of cmdOpenBarrel:
     if not session.authSession.canManageBarrels():
@@ -390,9 +399,10 @@ proc handleWebSocketMessage*(
       resp.status = statusBarrelNotFound
 
   of cmdUseBarrel:
-    echo "cmdUseBarrel: key=" & req.key
-    writeLine(stderr, fmt("[{epochTime():.3f}] cmdUseBarrel: key={req.key}"))
-    flushFile(stderr)
+    when not defined(testing):
+      echo "cmdUseBarrel: key=" & req.key
+      writeLine(stderr, fmt("[{epochTime():.3f}] cmdUseBarrel: key={req.key}"))
+      flushFile(stderr)
     # Check if barrel exists
     let barrel = server.registry.getBarrel(req.key)
     if barrel.isSome():
@@ -861,8 +871,9 @@ proc handleWebSocketMessage*(
               resp.value = "Prefix keys error: " & e.msg
 
   of cmdBatchGet:
-    echo fmt"[DEBUG] cmdBatchGet: seq={req.seq}"
-    flushFile(stdout)
+    when not defined(testing):
+      echo fmt"[DEBUG] cmdBatchGet: seq={req.seq}"
+      flushFile(stdout)
     # Batch get requires a current barrel
     var wrapperOpt: Option[BarrelWrapper]
     var canRead = false
@@ -886,13 +897,15 @@ proc handleWebSocketMessage*(
 
     # Process batch outside lock to avoid blocking other requests
     if resp.status == statusOk and canRead and wrapperOpt.isSome():
-      echo fmt"[DEBUG] cmdBatchGet: starting processing, batch size={req.value.len}"
-      flushFile(stdout)
+      when not defined(testing):
+        echo fmt"[DEBUG] cmdBatchGet: starting processing, batch size={req.value.len}"
+        flushFile(stdout)
       try:
         # Decode batch get request
         let batchReq = decodeBatchGetRequest(req.value)
-        echo fmt"[DEBUG] cmdBatchGet: decoded batch size={batchReq.keys.len}"
-        flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchGet: decoded batch size={batchReq.keys.len}"
+          flushFile(stdout)
         var wrapper = wrapperOpt.get()
 
         # Execute batch get operations
@@ -910,13 +923,15 @@ proc handleWebSocketMessage*(
             results[i] = (uint8(ord(statusNotFound)), "")
 
         # Encode and send response
-        echo fmt"[DEBUG] cmdBatchGet: processing complete, sending response seq={req.seq}"
-        flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchGet: processing complete, sending response seq={req.seq}"
+          flushFile(stdout)
         let batchResp = BatchGetResponse(seq: req.seq, results: results)
         let batchRespData = okResponse(req.seq, encodeBatchGetResponse(batchResp))
         ws.send(encodeResponse(batchRespData), BinaryMessage)
-        echo fmt"[DEBUG] cmdBatchGet: response sent seq={req.seq}"
-        flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchGet: response sent seq={req.seq}"
+          flushFile(stdout)
         return  # Skip normal response sending
 
       except CatchableError as e:
@@ -924,8 +939,9 @@ proc handleWebSocketMessage*(
         resp.value = "Batch get error: " & e.msg
 
   of cmdBatchSet:
-    echo fmt"[DEBUG] cmdBatchSet: seq={req.seq}"
-    # flushFile(stdout)
+    when not defined(testing):
+      echo fmt"[DEBUG] cmdBatchSet: seq={req.seq}"
+      # flushFile(stdout)
     # Batch set requires a current barrel
     var wrapperOpt: Option[BarrelWrapper]
     var canWrite = false
@@ -950,15 +966,18 @@ proc handleWebSocketMessage*(
 
     # Process batch outside lock to avoid blocking other requests
     if resp.status == statusOk and canWrite and wrapperOpt.isSome():
-      echo fmt"[DEBUG] cmdBatchSet: starting processing, batch size={req.value.len}"
-      # flushFile(stdout)
+      when not defined(testing):
+        echo fmt"[DEBUG] cmdBatchSet: starting processing, batch size={req.value.len}"
+        # flushFile(stdout)
       try:
         # Decode batch set request
-        echo fmt"[DEBUG] cmdBatchSet: attempting decode, data len={req.value.len}"
-        # flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchSet: attempting decode, data len={req.value.len}"
+          # flushFile(stdout)
         let batchReq = decodeBatchSetRequest(req.value)
-        echo fmt"[DEBUG] cmdBatchSet: decoded batch size={batchReq.pairs.len}"
-        # flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchSet: decoded batch size={batchReq.pairs.len}"
+          # flushFile(stdout)
         var wrapper = wrapperOpt.get()
 
         # Execute batch set operations
@@ -1149,7 +1168,7 @@ proc handleWebSocketMessage*(
                         nil
 
         let seqNo = server.pubSubManager.publish(pubReq.topic,
-                                                     pubsub.PubSubMessageType(pubReq.messageType),
+                                                     pubsub.PubSubMessageType(ord(pubReq.messageType)),
                                                      pubReq.payload, headers)
 
         resp.status = statusOk
@@ -1351,8 +1370,9 @@ proc handleWebSocketMessage*(
     resp.value = "Unknown command"
 
   # Send response
-  writeLine(stderr, "[DEBUG] Sending response seq=" & $resp.seq & " status=" & $resp.status)
-  flushFile(stderr)
+  when not defined(testing):
+    writeLine(stderr, "[DEBUG] Sending response seq=" & $resp.seq & " status=" & $resp.status)
+    flushFile(stderr)
   ws.send(encodeResponse(resp), BinaryMessage)
 
 proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
@@ -1389,9 +1409,10 @@ proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
     var sId = server.config.serverId
     if sId.len == 0:
       sId = pubsub.generateUuid()
-    echo "[DEBUG] Upgrade: about to send handshake, clientId=" & $ws.clientId
-    writeLine(stderr, "[DEBUG] Upgrade: about to send handshake, clientId=" & $ws.clientId)
-    flushFile(stderr)
+    when not defined(testing):
+      echo "[DEBUG] Upgrade: about to send handshake, clientId=" & $ws.clientId
+      writeLine(stderr, "[DEBUG] Upgrade: about to send handshake, clientId=" & $ws.clientId)
+      flushFile(stderr)
     try:
       # Get list of loaded plugins
       let plugins = if server.pubSubEnabled and server.eventBroker != nil:
@@ -1408,14 +1429,16 @@ proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
 
       let encoded = protocol.encodeHandshake(handshake)
       ws.send(encoded, BinaryMessage)
-      echo "[DEBUG] Sent handshake after upgrade, clientId=" & $ws.clientId
-      writeLine(stderr, "[DEBUG] Sent handshake after upgrade, clientId=" & $ws.clientId)
-      flushFile(stderr)
+      when not defined(testing):
+        echo "[DEBUG] Sent handshake after upgrade, clientId=" & $ws.clientId
+        writeLine(stderr, "[DEBUG] Sent handshake after upgrade, clientId=" & $ws.clientId)
+        flushFile(stderr)
     except CatchableError as e:
-      echo "[DEBUG] Failed to send handshake: " & e.msg
-      echo "Stack trace: ", e.getStackTrace()
-      writeLine(stderr, "[DEBUG] Failed to send handshake: " & e.msg)
-      flushFile(stderr)
+      when not defined(testing):
+        echo "[DEBUG] Failed to send handshake: " & e.msg
+        echo "Stack trace: ", e.getStackTrace()
+        writeLine(stderr, "[DEBUG] Failed to send handshake: " & e.msg)
+        flushFile(stderr)
   except CatchableError:
     request.respond(400, body = "WebSocket upgrade failed")
 
@@ -1426,33 +1449,33 @@ proc websocketHandler*(
   message: mummy.Message
 ) =
   ## Handle WebSocket events
-  echo "WEBSOCKET HANDLER ENTERED: event=" & $event & " clientId=" & $ws.clientId
-  writeLine(stderr, "WEBSOCKET HANDLER ENTERED: event=" & $event & " clientId=" & $ws.clientId)
-  flushFile(stderr)
   {.gcsafe.}:
     case event:
     of OpenEvent:
       # Session created lazily on first message
-      writeLine(stderr, "DEBUG: OpenEvent entered, clientId=" & $ws.clientId)
-      flushFile(stderr)
-      echo "OPEN EVENT TRIGGERED"
-      writeLine(stderr, "STDERR TEST1: OpenEvent")
-      flushFile(stderr)
-      writeLine(stderr, "STDERR TEST2: Time: " & $epochTime())
-      flushFile(stderr)
-      writeLine(stderr, "ZZZ WebSocket connection opened: clientId=" & $ws.clientId)
-      flushFile(stderr)
-      writeLine(stderr, "DEBUG: After ZZZ flush")
+      when not defined(testing):
+        writeLine(stderr, "DEBUG: OpenEvent entered, clientId=" & $ws.clientId)
+        flushFile(stderr)
+        echo "OPEN EVENT TRIGGERED"
+        writeLine(stderr, "STDERR TEST1: OpenEvent")
+        flushFile(stderr)
+        writeLine(stderr, "STDERR TEST2: Time: " & $epochTime())
+        flushFile(stderr)
+        writeLine(stderr, "ZZZ WebSocket connection opened: clientId=" & $ws.clientId)
+        flushFile(stderr)
+        writeLine(stderr, "DEBUG: After ZZZ flush")
 
       # Store WebSocket in table for later use (e.g., pub/sub events)
-      writeLine(stderr, "DEBUG: Before storing websocket")
-      flushFile(stderr)
+      when not defined(testing):
+        writeLine(stderr, "DEBUG: Before storing websocket")
+        flushFile(stderr)
       withLock server.sessionsLock:
         server.webSockets[ws.clientId] = ws
-      writeLine(stderr, "DEBUG: After storing websocket")
-      flushFile(stderr)
-      writeLine(stderr, "WebSocket handler initialized for clientId=" & $ws.clientId)
-      flushFile(stderr)
+      when not defined(testing):
+        writeLine(stderr, "DEBUG: After storing websocket")
+        flushFile(stderr)
+        writeLine(stderr, "WebSocket handler initialized for clientId=" & $ws.clientId)
+        flushFile(stderr)
 
 
       # Register client with event broker for pub/sub (just stores the clientId)
@@ -1460,8 +1483,9 @@ proc websocketHandler*(
         server.eventBroker.addClient(ws.clientId)
 
     of MessageEvent:
-      writeLine(stderr, "[DEBUG] MessageEvent: data length=" & $message.data.len)
-      flushFile(stderr)
+      when not defined(testing):
+        writeLine(stderr, "[DEBUG] MessageEvent: data length=" & $message.data.len)
+        flushFile(stderr)
       if message.kind == BinaryMessage:
         server.handleWebSocketMessage(ws, message.data)
       else:
@@ -1930,7 +1954,7 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
           # Build event message
           let event = PubSubEvent(
             topic: topic,
-            messageType: protocol.PubSubMessageType(messageType),
+            messageType: protocol.PubSubMessageType(ord(messageType)),
             sequence: 0,
             timestamp: int64(epochTime() * 1000),
             headers: headers,
