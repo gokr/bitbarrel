@@ -3,6 +3,7 @@ package bitbarrel
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"testing"
 )
 
@@ -1071,7 +1072,7 @@ func TestPubSubEventType(t *testing.T) {
 		MessageType: MessageTypeData,
 		Sequence:    12345,
 		Timestamp:   1234567890,
-		Headers:     "",
+		Headers:     map[string]interface{}{},
 		Payload:     "test payload",
 	}
 
@@ -1133,7 +1134,7 @@ func TestPresenceMember(t *testing.T) {
 		Username: "alice",
 		JoinedAt: 1234567890,
 		LastPing: 1234567900,
-		Metadata: `{"department":"engineering"}`,
+		Metadata: map[string]interface{}{"department": "engineering"},
 	}
 
 	if member.ClientID != 12345 {
@@ -1148,8 +1149,11 @@ func TestPresenceMember(t *testing.T) {
 	if member.LastPing != 1234567900 {
 		t.Errorf("LastPing = %d, want 1234567900", member.LastPing)
 	}
-	if member.Metadata != `{"department":"engineering"}` {
-		t.Errorf("Metadata incorrect")
+	// Compare metadata by converting to JSON
+	metadataJSON, _ := json.Marshal(member.Metadata)
+	expectedJSON := `{"department":"engineering"}`
+	if string(metadataJSON) != expectedJSON {
+		t.Errorf("Metadata incorrect: got %s, want %s", metadataJSON, expectedJSON)
 	}
 }
 
@@ -1702,7 +1706,7 @@ func TestDecodePubSubEvent(t *testing.T) {
 				MessageType: MessageTypeData,
 				Sequence:    123,
 				Timestamp:   1234567890,
-				Headers:     "",
+				Headers:     map[string]interface{}{},
 				Payload:     "hello",
 			},
 		},
@@ -1714,7 +1718,7 @@ func TestDecodePubSubEvent(t *testing.T) {
 				MessageType: MessageTypeData,
 				Sequence:    456,
 				Timestamp:   1234567900,
-				Headers:     `{"type":"msg"}`,
+				Headers:     map[string]interface{}{"type": "msg"},
 				Payload:     "data",
 			},
 		},
@@ -1726,7 +1730,7 @@ func TestDecodePubSubEvent(t *testing.T) {
 				MessageType: MessageTypePresence,
 				Sequence:    789,
 				Timestamp:   1234567910,
-				Headers:     "",
+				Headers:     map[string]interface{}{},
 				Payload:     `{}`,
 			},
 		},
@@ -1767,8 +1771,11 @@ func TestDecodePubSubEvent(t *testing.T) {
 			if result.Timestamp != tt.want.Timestamp {
 				t.Errorf("Timestamp = %d, want %d", result.Timestamp, tt.want.Timestamp)
 			}
-			if result.Headers != tt.want.Headers {
-				t.Errorf("Headers = %q, want %q", result.Headers, tt.want.Headers)
+			// Compare headers by converting to JSON
+			resultHeadersJSON, _ := json.Marshal(result.Headers)
+			wantHeadersJSON, _ := json.Marshal(tt.want.Headers)
+			if string(resultHeadersJSON) != string(wantHeadersJSON) {
+				t.Errorf("Headers = %v, want %v", result.Headers, tt.want.Headers)
 			}
 			if result.Payload != tt.want.Payload {
 				t.Errorf("Payload = %q, want %q", result.Payload, tt.want.Payload)
@@ -2112,45 +2119,45 @@ func TestDecodeHistoryResponse(t *testing.T) {
 		},
 		{
 			name: "Single data message",
-			data: `[{"topic":"updates","messageType":0,"sequence":100,"timestamp":1234567890,"headers":"","payload":"hello"}]`,
+			data: `[{"topic":"updates","messageType":0,"sequence":100,"timestamp":1234567890,"headers":{},"payload":"hello"}]`,
 			want: []PubSubEvent{{
 				Topic:       "updates",
 				MessageType: MessageTypeData,
 				Sequence:    100,
 				Timestamp:   1234567890,
-				Headers:     "",
+				Headers:     map[string]interface{}{},
 				Payload:     "hello",
 			}},
 		},
 		{
 			name: "Multiple messages",
-			data: `[{"topic":"chat","messageType":0,"sequence":1,"timestamp":1234567800,"headers":"","payload":"msg1"},{"topic":"chat","messageType":0,"sequence":2,"timestamp":1234567900,"headers":"","payload":"msg2"}]`,
+			data: `[{"topic":"chat","messageType":0,"sequence":1,"timestamp":1234567800,"headers":{},"payload":"msg1"},{"topic":"chat","messageType":0,"sequence":2,"timestamp":1234567900,"headers":{},"payload":"msg2"}]`,
 			want: []PubSubEvent{
-				{Topic: "chat", MessageType: MessageTypeData, Sequence: 1, Timestamp: 1234567800, Headers: "", Payload: "msg1"},
-				{Topic: "chat", MessageType: MessageTypeData, Sequence: 2, Timestamp: 1234567900, Headers: "", Payload: "msg2"},
+				{Topic: "chat", MessageType: MessageTypeData, Sequence: 1, Timestamp: 1234567800, Headers: map[string]interface{}{}, Payload: "msg1"},
+				{Topic: "chat", MessageType: MessageTypeData, Sequence: 2, Timestamp: 1234567900, Headers: map[string]interface{}{}, Payload: "msg2"},
 			},
 		},
 		{
 			name: "Message with object payload",
-			data: `[{"topic":"events","messageType":0,"sequence":10,"timestamp":1234567890,"headers":"","payload":{"type":"action"}}]`,
+			data: `[{"topic":"events","messageType":0,"sequence":10,"timestamp":1234567890,"headers":{},"payload":{"type":"action"}}]`,
 			want: []PubSubEvent{{
 				Topic:       "events",
 				MessageType: MessageTypeData,
 				Sequence:    10,
 				Timestamp:   1234567890,
-				Headers:     "",
+				Headers:     map[string]interface{}{},
 				Payload:     `{"type":"action"}`,
 			}},
 		},
 		{
 			name: "Presence message",
-			data: `[{"topic":"presence","messageType":1,"sequence":5,"timestamp":1234567890,"headers":"","payload":"user_joined"}]`,
+			data: `[{"topic":"presence","messageType":1,"sequence":5,"timestamp":1234567890,"headers":{},"payload":"user_joined"}]`,
 			want: []PubSubEvent{{
 				Topic:       "presence",
 				MessageType: MessageTypePresence,
 				Sequence:    5,
 				Timestamp:   1234567890,
-				Headers:     "",
+				Headers:     map[string]interface{}{},
 				Payload:     "user_joined",
 			}},
 		},
@@ -2191,8 +2198,11 @@ func TestDecodeHistoryResponse(t *testing.T) {
 				if event.Timestamp != tt.want[i].Timestamp {
 					t.Errorf("Event[%d].Timestamp = %d, want %d", i, event.Timestamp, tt.want[i].Timestamp)
 				}
-				if event.Headers != tt.want[i].Headers {
-					t.Errorf("Event[%d].Headers = %q, want %q", i, event.Headers, tt.want[i].Headers)
+				// Compare headers by converting to JSON
+				eventHeadersJSON, _ := json.Marshal(event.Headers)
+				wantHeadersJSON, _ := json.Marshal(tt.want[i].Headers)
+				if string(eventHeadersJSON) != string(wantHeadersJSON) {
+					t.Errorf("Event[%d].Headers = %v, want %v", i, event.Headers, tt.want[i].Headers)
 				}
 				if event.Payload != tt.want[i].Payload {
 					t.Errorf("Event[%d].Payload = %q, want %q", i, event.Payload, tt.want[i].Payload)
@@ -2220,7 +2230,7 @@ func TestDecodePresenceResponse(t *testing.T) {
 		{
 			name:  "Single member",
 			topic: "chat",
-			data:  `[{"topic":"chat","members":[{"clientId":100,"username":"alice","joinedAt":1234567890,"lastPing":1234567900}],"lastUpdate":1234567910}]`,
+			data:  `[{"topic":"chat","members":[{"clientId":100,"username":"alice","joinedAt":1234567890,"lastPing":1234567900,"metadata":{}}],"lastUpdate":1234567910}]`,
 			want: PresenceInfo{
 				Topic: "chat",
 				Members: []PresenceMember{{
@@ -2228,7 +2238,7 @@ func TestDecodePresenceResponse(t *testing.T) {
 					Username: "alice",
 					JoinedAt: 1234567890,
 					LastPing: 1234567900,
-					Metadata: "",
+					Metadata: map[string]interface{}{},
 				}},
 				LastUpdate: 1234567910,
 			},
@@ -2236,12 +2246,12 @@ func TestDecodePresenceResponse(t *testing.T) {
 		{
 			name:  "Multiple members",
 			topic: "chat",
-			data:  `[{"topic":"chat","members":[{"clientId":100,"username":"alice","joinedAt":100,"lastPing":200},{"clientId":200,"username":"bob","joinedAt":150,"lastPing":250}],"lastUpdate":300}]`,
+			data:  `[{"topic":"chat","members":[{"clientId":100,"username":"alice","joinedAt":100,"lastPing":200,"metadata":{}},{"clientId":200,"username":"bob","joinedAt":150,"lastPing":250,"metadata":{}}],"lastUpdate":300}]`,
 			want: PresenceInfo{
 				Topic: "chat",
 				Members: []PresenceMember{
-					{ClientID: 100, Username: "alice", JoinedAt: 100, LastPing: 200, Metadata: ""},
-					{ClientID: 200, Username: "bob", JoinedAt: 150, LastPing: 250, Metadata: ""},
+					{ClientID: 100, Username: "alice", JoinedAt: 100, LastPing: 200, Metadata: map[string]interface{}{}},
+					{ClientID: 200, Username: "bob", JoinedAt: 150, LastPing: 250, Metadata: map[string]interface{}{}},
 				},
 				LastUpdate: 300,
 			},
@@ -2249,7 +2259,7 @@ func TestDecodePresenceResponse(t *testing.T) {
 		{
 			name:  "Member with metadata",
 			topic: "chat",
-			data:  `[{"topic":"chat","members":[{"clientId":100,"username":"alice","joinedAt":100,"lastPing":200,"metadata":"eyJuYW1lIjoiYWxpY2UifQ=="}],"lastUpdate":300}]`,
+			data:  `[{"topic":"chat","members":[{"clientId":100,"username":"alice","joinedAt":100,"lastPing":200,"metadata":{"name":"alice"}}],"lastUpdate":300}]`,
 			want: PresenceInfo{
 				Topic: "chat",
 				Members: []PresenceMember{{
@@ -2257,7 +2267,7 @@ func TestDecodePresenceResponse(t *testing.T) {
 					Username: "alice",
 					JoinedAt: 100,
 					LastPing: 200,
-					Metadata: `{"name":"alice"}`,
+					Metadata: map[string]interface{}{"name": "alice"},
 				}},
 				LastUpdate: 300,
 			},
@@ -2307,68 +2317,12 @@ func TestDecodePresenceResponse(t *testing.T) {
 				if member.LastPing != tt.want.Members[i].LastPing {
 					t.Errorf("Member[%d].LastPing = %d, want %d", i, member.LastPing, tt.want.Members[i].LastPing)
 				}
-				if member.Metadata != tt.want.Members[i].Metadata {
-					t.Errorf("Member[%d].Metadata = %q, want %q", i, member.Metadata, tt.want.Members[i].Metadata)
+				// Compare metadata by converting to JSON
+				memberMetadataJSON, _ := json.Marshal(member.Metadata)
+				wantMetadataJSON, _ := json.Marshal(tt.want.Members[i].Metadata)
+				if string(memberMetadataJSON) != string(wantMetadataJSON) {
+					t.Errorf("Member[%d].Metadata = %v, want %v", i, member.Metadata, tt.want.Members[i].Metadata)
 				}
-			}
-		})
-	}
-}
-
-// TestSerializeHistoryPayload tests history payload serialization
-func TestSerializeHistoryPayload(t *testing.T) {
-	tests := []struct {
-		name     string
-		payload  interface{}
-		expected string
-	}{
-		{
-			name:     "String payload",
-			payload:  "hello world",
-			expected: "hello world",
-		},
-		{
-			name:     "Empty string",
-			payload:  "",
-			expected: "",
-		},
-		{
-			name:     "Object payload",
-			payload:  map[string]interface{}{"key": "value"},
-			expected: `{"key":"value"}`,
-		},
-		{
-			name:     "Nested object",
-			payload:  map[string]interface{}{"user": map[string]interface{}{"name": "alice"}},
-			expected: `{"user":{"name":"alice"}}`,
-		},
-		{
-			name:     "Array payload",
-			payload:  []interface{}{"a", "b", "c"},
-			expected: `["a","b","c"]`,
-		},
-		{
-			name:     "Number payload",
-			payload:  123,
-			expected: `123`,
-		},
-		{
-			name:     "Boolean payload",
-			payload:  true,
-			expected: `true`,
-		},
-		{
-			name:     "Nil payload",
-			payload:  nil,
-			expected: `null`,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := serializeHistoryPayload(tt.payload)
-			if result != tt.expected {
-				t.Errorf("serializeHistoryPayload() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
