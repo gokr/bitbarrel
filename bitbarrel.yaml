@@ -69,6 +69,7 @@ webadmin:
   # path: "/opt/bitbarrel/webadmin"
 
 pubsub:
-  max_topics: 0           # 0 = unlimited
-  max_subscriptions_per_client: 0  # 0 = unlimited
+  enabled: true
+  max_topics: 1000           # 0 = unlimited
+  max_subscriptions_per_client: 100  # 0 = unlimited
   heartbeat_timeout_ms: 30000
