@@ -240,6 +240,9 @@ task testDartClient, "Test Dart client library - starts server on port 9876":
 task testTypeScriptClient, "Test TypeScript client library - starts server on port 9876":
   exec "./tools/test_client.sh typescript"
 
+task testCClient, "Test C client library - starts server on port 9876":
+  exec "./tools/test_client.sh c"
+
 task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript) - starts server on port 9876":
   exec """
     # Save root directory
@@ -364,6 +367,38 @@ task testClients, "Test all client libraries (Python, Go, Dart, Nim, TypeScript)
         fi
       else
         echo "⚠ Nim client has no nimble file, skipping"
+      fi
+    fi
+
+    # Test C client
+    if [ -d "clients/c" ]; then
+      echo ""
+      echo "=== Testing C client library ==="
+      if [ -f "clients/c/CMakeLists.txt" ]; then
+        # Build the C library
+        if (cd "$ROOT_DIR/clients/c" && rm -rf build && mkdir build && cd build && cmake .. > /dev/null 2>&1 && make > /dev/null 2>&1); then
+          echo "✓ C client library compiled successfully"
+
+          # Run basic build test
+          if [ -f "./test_basic" ]; then
+            if ./test_basic; then
+              echo "✓ C client basic tests passed"
+            else
+              echo "✗ C client basic tests failed"
+              ALL_PASSED=false
+            fi
+          fi
+
+          # Try to run against server if server is running
+          if ./basic_example 2>/dev/null | grep -q "Failed to connect"; then
+            echo "ℹ C client example requires BitBarrel server on port 7687 (not running in test)"
+          fi
+        else
+          echo "✗ C client failed to compile"
+          ALL_PASSED=false
+        fi
+      else
+        echo "⚠ C client has no CMakeLists.txt, skipping"
       fi
     fi
 

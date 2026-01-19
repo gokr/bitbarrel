@@ -2,7 +2,7 @@
 
 # Helper script to test a specific client library
 # Usage: ./tools/test_client.sh <client_name>
-# Where <client_name> is one of: nim, go, python, dart, typescript
+# Where <client_name> is one of: nim, go, python, dart, typescript, c
 
 set -e
 
@@ -11,7 +11,7 @@ CLIENT_NAME=$1
 if [ -z "$CLIENT_NAME" ]; then
   echo "ERROR: Client name required"
   echo "Usage: $0 <client_name>"
-  echo "Client names: nim, go, python, dart, typescript"
+  echo "Client names: nim, go, python, dart, typescript, c"
   exit 1
 fi
 
@@ -91,6 +91,24 @@ case $CLIENT_NAME in
       exit 0
     fi
     npm test
+    ;;
+  c)
+    if [ ! -f "CMakeLists.txt" ]; then
+      echo "⚠ C client CMakeLists.txt not found, skipping"
+      exit 0
+    fi
+    echo "Building C client library..."
+    rm -rf build && mkdir build && cd build
+    cmake .. > /dev/null 2>&1 && make -j$(nproc) > /dev/null 2>&1
+    echo "✓ C client library compiled successfully"
+
+    # Run basic test
+    if [ -f "./tests/test_basic" ]; then
+      ./tests/test_basic
+    fi
+
+    # Note: We don't run the full example here as it requires manual verification
+    echo "ℹ To test C client against server: cd clients/c/build && ./examples/basic_example"
     ;;
   *)
     echo "ERROR: Unknown client '$CLIENT_NAME'"
