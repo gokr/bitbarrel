@@ -48,8 +48,8 @@ nimble examplePerformance
 # Run advanced features example
 nimble exampleAdvanced
 
-# Run Pub/Sub examples
-nimble examplePlugins
+# Run hook system examples
+nimble exampleHooks
 
 # Run all tests
 nimble test
@@ -298,7 +298,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (28 commands), REST API, JWT authentication, session management, Pub/Sub messaging, presence, message history |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
-| Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection, query result plugins |
+| Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection, query result hooks |
 
 **Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
 

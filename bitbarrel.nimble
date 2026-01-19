@@ -128,7 +128,7 @@ task exampleNetworkBasic, "Run basic network example":
 task exampleNetworkBarrels, "Run network barrels example":
   exec "nim r examples/networking/barrels_example.nim"
 
-task examplePlugins, "Run plugin system examples":
+task exampleHooks, "Run hook system examples":
   exec "nim r examples/plugins/range_query_plugins.nim"
 
 # Backward compatibility aliases
