@@ -36,6 +36,10 @@ class BitBarrelClient {
   final Set<String> _subscriptions = {}; // Active subscription IDs
   void Function(PubSubEvent)? _onMessage; // PubSub event callback
 
+  // Server info from handshake
+  ServerInfo? _serverInfo;
+  bool _handshakeReceived = false;
+
   BitBarrelClient(this._config);
 
   /// Create client with default localhost configuration
@@ -64,6 +68,16 @@ class BitBarrelClient {
         _config.path,
         queryParams,
       );
+
+      // Read and parse binary handshake
+      try {
+        final handshakeData = await _ws!.receive();
+        _serverInfo = _parseHandshake(handshakeData);
+        _handshakeReceived = true;
+      } catch (e) {
+        await close();
+        rethrow;
+      }
     });
   }
 
@@ -73,6 +87,8 @@ class BitBarrelClient {
       _currentBarrel = null;
       _subscriptions.clear();
       _onMessage = null;
+      _serverInfo = null;
+      _handshakeReceived = false;
       if (_ws != null) {
         await _ws!.close();
         _ws = null;
@@ -80,11 +96,84 @@ class BitBarrelClient {
     });
   }
 
+  /// Get server information from the handshake
+  ///
+  /// Throws [ConnectionException] if not connected or handshake not received
+  ServerInfo getServerInfo() {
+    if (_ws == null || !isConnected) {
+      throw ConnectionException('Not connected', operation: 'getServerInfo');
+    }
+    if (!_handshakeReceived) {
+      throw ConnectionException('Handshake not received', operation: 'getServerInfo');
+    }
+    return _serverInfo!;
+  }
+
   /// Check if connected to the server
   bool get isConnected => _ws != null && _ws!.isConnected;
 
   /// Get the current barrel name
   String get currentBarrel => _currentBarrel ?? '';
+
+  /// Parse binary handshake from server
+  ServerInfo _parseHandshake(Uint8List data) {
+    // Format: [versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+    if (data.length < 2) {
+      throw ProtocolException('Handshake too short');
+    }
+
+    var offset = 0;
+
+    // Parse version
+    final versionMajor = data[offset++];
+    final versionMinor = data[offset++];
+
+    // Parse server ID length (2 bytes, big-endian)
+    if (data.length < offset + 2) {
+      throw ProtocolException('Handshake truncated at server ID length');
+    }
+    final serverIdLen = (data[offset] << 8) | data[offset + 1];
+    offset += 2;
+
+    // Parse server ID
+    if (data.length < offset + serverIdLen) {
+      throw ProtocolException('Handshake truncated at server ID');
+    }
+    final serverId = String.fromCharCodes(data, offset, offset + serverIdLen);
+    offset += serverIdLen;
+
+    // Parse plugin count
+    if (data.length < offset + 1) {
+      throw ProtocolException('Handshake truncated at plugin count');
+    }
+    final pluginCount = data[offset++];
+
+    // Parse plugins
+    final plugins = <String>[];
+    for (var i = 0; i < pluginCount; i++) {
+      // Parse plugin name length (2 bytes, big-endian)
+      if (data.length < offset + 2) {
+        throw ProtocolException('Handshake truncated at plugin name length');
+      }
+      final pluginNameLen = (data[offset] << 8) | data[offset + 1];
+      offset += 2;
+
+      // Parse plugin name
+      if (data.length < offset + pluginNameLen) {
+        throw ProtocolException('Handshake truncated at plugin name');
+      }
+      final pluginName = String.fromCharCodes(data, offset, offset + pluginNameLen);
+      plugins.add(pluginName);
+      offset += pluginNameLen;
+    }
+
+    return ServerInfo(
+      versionMajor: versionMajor,
+      versionMinor: versionMinor,
+      serverId: serverId,
+      plugins: plugins,
+    );
+  }
 
   /// Ensure connected (auto-connect if not connected)
   Future<void> _ensureConnected() async {

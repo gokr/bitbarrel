@@ -515,3 +515,29 @@ class HistoryRequest {
   /// Default request
   static const defaults = HistoryRequest();
 }
+
+/// Server information from binary handshake
+class ServerInfo {
+  /// Protocol major version
+  final int versionMajor;
+
+  /// Protocol minor version
+  final int versionMinor;
+
+  /// Unique server identifier (UUID)
+  final String serverId;
+
+  /// Available plugins
+  final List<String> plugins;
+
+  const ServerInfo({
+    required this.versionMajor,
+    required this.versionMinor,
+    required this.serverId,
+    required this.plugins,
+  });
+
+  @override
+  String toString() =>
+      'ServerInfo(version: $versionMajor.$versionMinor, serverId: $serverId, plugins: $plugins)';
+}
