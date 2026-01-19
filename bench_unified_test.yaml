@@ -1,0 +1,20 @@
+# BitBarrel per-barrel configuration
+
+write_buffer_size: 65536
+sync_mode: "none"
+auto_compact: false
+compact_threshold: 0.3
+compact_interval: 60
+validate_crc: true
+default_ttl: 0
+check_expiration_on_read: true
+delete_expired_on_read: false
+mode: "hash"
+
+huge_config:
+  max_entries_per_range: 100000
+  range_cache_size: 10
+  max_data_file_size_mb: 1024
+  auto_split_enabled: true
+  flush_interval_ms: 0
+  enable_barrel2_recovery: true

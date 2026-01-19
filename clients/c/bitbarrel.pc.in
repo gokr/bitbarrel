@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=@CMAKE_INSTALL_PREFIX@
+libdir=@CMAKE_INSTALL_LIBDIR@
+includedir=@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: bitbarrel
+Description: BitBarrel C Client Library
+Version: @PROJECT_VERSION@
+Libs: -L${libdir} -lbitbarrel
+Libs.private: -lssl -lcrypto -lpthread
+Cflags: -I${includedir}
