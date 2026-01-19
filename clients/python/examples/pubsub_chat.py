@@ -37,7 +37,7 @@ def pubsub_chat_example():
         print("3. Subscribing to 'room:general'...")
         from bitbarrel.protocol import SubscriptionOptions
         subscription_options = SubscriptionOptions(replay_history=True, enable_presence=True)
-        client.subscribe("room:general", subscription_options)
+        sub_id_general = client.subscribe("room:general", subscription_options)
         print("✓ Subscribed to 'room:general' with history replay and presence tracking\n")
 
         # Step 4: Publish 5 chat messages from 5 users
@@ -78,7 +78,7 @@ def pubsub_chat_example():
 
         # Step 6: Subscribe to "room:*" pattern
         print("6. Subscribing to 'room:*' pattern...")
-        client.subscribe("room:*")
+        sub_id_pattern = client.subscribe("room:*")
         print("✓ Subscribed to 'room:*' pattern\n")
 
         # Step 7: Publish to different rooms (tech, random)
@@ -148,8 +148,8 @@ def pubsub_chat_example():
 
         # Step 12: Cleanup (unsubscribe, close)
         print("12. Cleaning up...")
-        client.unsubscribe("room:general")
-        client.unsubscribe("room:*")
+        client.unsubscribe(sub_id_general)
+        client.unsubscribe(sub_id_pattern)
         print("✓ Unsubscribed from all topics")
         client.close()
         print("✓ Closed connection\n")
