@@ -115,25 +115,51 @@ class WebSocket:
                         # No data available, nothing to skip
                         return
 
-            # Data available, try to read and skip welcome messages
-            while True:
-                if select_available:
-                    sock = self._ws.sock
-                    if sock:
-                        readable, _, _ = select.select([sock], [], [], 0)
-                        if not readable:
-                            # No more data available to skip
-                            break
+            # Check if we can peek at the message without consuming it
+            # For websocket-client, we can check if data is text or binary via opcode
+            # but we need to be careful not to consume binary data
+            original_timeout = self._ws.timeout
+            try:
+                # Very short timeout to minimize blocking
+                if hasattr(self._ws, 'timeout'):
+                    self._ws.timeout = 0.001
 
-                result = self._ws.recv()
-                if not isinstance(result, str) or "Connected" not in result:
-                    # This is not a welcome message, put it back in the buffer
-                    # Since we can't put it back, just return and set consumed flag
-                    # The next recv_binary call will get this message
-                    break
-            self._welcome_consumed = True
+                # Try to peek at next message to see if it's a welcome text
+                # Only try this if we haven't already marked welcome as consumed
+                if not self._welcome_consumed:
+                    # For websocket-client, we can use the pending() method to check buffered data
+                    if hasattr(self._ws, 'sock') and hasattr(self._ws.sock, 'pending'):
+                        # Check if any data is buffered
+                        if self._ws.sock.pending() > 0:
+                            # Try to read just enough to check message type
+                            # We'll use recv() but with the understanding that
+                            # we might consume data we'll need later
+                            result = self._ws.recv()
+                            if isinstance(result, str) and "Connected" in result:
+                                # It was a welcome message, successfully consumed
+                                self._welcome_consumed = True
+                            else:
+                                # Not a welcome message or already consumed
+                                # We mark as consumed since we consumed something
+                                self._welcome_consumed = True
+                    else:
+                        # Fallback: try recv with very short timeout
+                        result = self._ws.recv()
+                        if isinstance(result, str) and "Connected" in result:
+                            self._welcome_consumed = True
+                        else:
+                            self._welcome_consumed = True
+            except ws_lib.WebSocketTimeoutException:
+                # Timeout is expected if no data is immediately available
+                pass
+            except Exception:
+                # Any other error, mark as consumed
+                self._welcome_consumed = True
+            finally:
+                if hasattr(self._ws, 'timeout'):
+                    self._ws.timeout = original_timeout
         except Exception:
-            # Any error during welcome skip, just mark as consumed
+            # If anything goes wrong, mark as consumed to avoid blocking later
             self._welcome_consumed = True
 
     def send_binary(self, data: bytes) -> None:
@@ -174,10 +200,13 @@ class WebSocket:
             # The BitBarrel server sends "Connected to BitBarrel network server"
             # as a welcome message that we should skip
             while isinstance(result, str) and "Connected" in result:
+                print(f"DEBUG: Skipping welcome message: {result[:50]}...")
                 result = self._ws.recv()
 
             if isinstance(result, str):
+                print(f"DEBUG: Received unexpected text: {result[:50]}...")
                 return result.encode("utf-8")
+            print(f"DEBUG: Received binary data, length={len(result) if result else 0}")
             return result
         except ws_lib.WebSocketTimeoutException:
             raise TimeoutError(f"Operation timeout after {self.request_timeout}s")
