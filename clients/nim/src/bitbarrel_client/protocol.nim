@@ -218,23 +218,25 @@ proc readString(data: string, pos: var int, length: int): string =
 
 
 proc encodeRequest*(req: Request): string =
-  ## Encode a request to binary format.
-  ## Format: ``[type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]``
+  ## Encode a request to binary format (v1.1).
+  ## Format: ``[type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]``
   if req.key.len > MaxKeySize:
     raise newException(ProtocolError, "Key too large: " & $req.key.len)
   if req.value.len > MaxValueSize:
     raise newException(ProtocolError, "Value too large: " & $req.value.len)
 
-  result = newStringOfCap(1 + 4 + 2 + req.key.len + 4 + req.value.len)
+  result = newStringOfCap(1 + 4 + 1 + 2 + req.key.len + 4 + req.value.len)
   result.writeByte(byte(ord(req.command)))
   result.writeUint32BE(req.seq)
+  result.writeByte(0)  # flags - always 0 for now
   result.writeUint16BE(uint16(req.key.len))
   result.add(req.key)
   result.writeUint32BE(uint32(req.value.len))
   result.add(req.value)
 
 proc decodeRequest*(data: string): Request =
-  ## Decode a request from binary format.
+  ## Decode a request from binary format (v1.1).
+  ## Format: ``[type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]``
   var pos = 0
 
   let cmdByte = readByte(data, pos)
@@ -248,6 +250,7 @@ proc decodeRequest*(data: string): Request =
 
   result.command = cast[Command](cmdByte)
   result.seq = readUint32BE(data, pos)
+  discard readByte(data, pos)  # flags - not stored in Request object
 
   let keyLen = readUint16BE(data, pos)
   if keyLen > MaxKeySize:

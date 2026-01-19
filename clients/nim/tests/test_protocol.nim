@@ -121,20 +121,21 @@ suite "Request Binary Format":
     let req = Request(command: cmdGet, seq: 0x01020304'u32, key: "AB", value: "")
     let encoded = encodeRequest(req)
 
-    # [command:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
+    # [command:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
     check encoded[0] == char(0x01)  # cmdGet
     check encoded[1] == char(0x01)  # seq byte 0 (big-endian)
     check encoded[2] == char(0x02)  # seq byte 1
     check encoded[3] == char(0x03)  # seq byte 2
     check encoded[4] == char(0x04)  # seq byte 3
-    check encoded[5] == char(0x00)  # keyLen high byte
-    check encoded[6] == char(0x02)  # keyLen low byte
-    check encoded[7] == 'A'
-    check encoded[8] == 'B'
-    check encoded[9] == char(0x00)  # valLen bytes (0)
-    check encoded[10] == char(0x00)
+    check encoded[5] == char(0x00)  # flags
+    check encoded[6] == char(0x00)  # keyLen high byte
+    check encoded[7] == char(0x02)  # keyLen low byte
+    check encoded[8] == 'A'
+    check encoded[9] == 'B'
+    check encoded[10] == char(0x00)  # valLen bytes (0)
     check encoded[11] == char(0x00)
     check encoded[12] == char(0x00)
+    check encoded[13] == char(0x00)
 
 suite "Response Binary Format":
   test "binary format matches specification":
