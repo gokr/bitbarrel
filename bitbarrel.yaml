@@ -1,42 +1,74 @@
 # BitBarrel Configuration File
 # All values have reasonable defaults
-#
-# Values can be overridden via environment variables:
-# Pattern: BITBARREL_SECTION_SETTING (e.g., BITBARREL_SERVER_PORT=9090)
-# Supported env vars: BITBARREL_SERVER_*, BITBARREL_STORAGE_*, BITBARREL_PERFORMANCE_*,
-#                   BITBARREL_*, BITBARREL_LOGGING_*
 
 server:
   address: "0.0.0.0"
-  port: 8080
+  port: 9876
   max_connections: 10000
-  timeout: 30000  # 30 seconds
+  timeout: 30000
+
+# serverId: ""
 
 storage:
   data_dir: "./data"
-  max_file_size: 1073741824  # 1GB
-  max_key_size: 65536        # 64KB
-  max_value_size: 33554432   # 32MB
-  sync_mode: "immediate"     # immediate, buffered, batched, time_based
-  fsync_interval: 100        # ms
+  max_file_size: 1073741824
+  max_key_size: 65536
+  max_value_size: 33554432
+  sync_mode: "immediate"
+  fsync_interval: 100
+  compression:
+    enabled: false
+    threshold: 256
+    level: "default"
 
 performance:
   worker_threads: 4
   write_buffer_size: 1000
-  write_buffer_timeout: 10    # ms
-  read_ahead_size: 64         # KB
-  cache_size: 256             # MB
+  write_buffer_timeout: 10
+  read_ahead_size: 64
+  cache_size: 256
 
 compact:
   enabled: true
-  trigger_threshold: 0.3      # 30% fragmentation
-  max_compact_threads: 1
-  compact_interval: 60        # minutes
-  min_file_size: 1048576      # 1MB
+  trigger_threshold: 0.3
+  compact_interval: 60
+  compact_interval_bytes: 10485760
+  max_file_size: 1073741824
+
+recovery:
+  enabled: true
+  validate_checksums: true
+  skip_corrupt_records: true
+  auto_recovery: true
 
 logging:
-  level: "info"               # debug, info, warn, error
-  file: "bitbarrel.log"
-  max_size: 104857600         # 100MB
+  level: "info"
+  file: "barrel.log"
+  max_size: 104857600
   max_backups: 5
-  format: "text"              # text or json
+  format: "text"
+
+auth:
+  enabled: false
+  # Uncomment and set a secret for JWT authentication
+  # secret: "your-secret-key-32-characters-minimum"
+  default_token_expiry_hours: 24
+# users:
+#   - username: "admin"
+#     roles:
+#       - "admin"
+#   - username: "readwrite"
+#     roles:
+#       - "readwrite"
+#   - username: "readonly"
+#     roles:
+#       - "readonly"
+
+webadmin:
+  enabled: false
+  # path: "/opt/bitbarrel/webadmin"
+
+pubsub:
+  max_topics: 0           # 0 = unlimited
+  max_subscriptions_per_client: 0  # 0 = unlimited
+  heartbeat_timeout_ms: 30000

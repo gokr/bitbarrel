@@ -994,19 +994,22 @@ proc handleWebSocketMessage*(
             statuses[i] = uint8(ord(statusError))
 
         # Encode and send response
-        echo fmt"[DEBUG] cmdBatchSet: processing complete, sending response seq={req.seq}"
-        # flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchSet: processing complete, sending response seq={req.seq}"
+          # flushFile(stdout)
         let batchResp = BatchSetResponse(seq: req.seq, statuses: statuses)
         let batchRespData = okResponse(req.seq, encodeBatchSetResponse(batchResp))
         ws.send(encodeResponse(batchRespData), BinaryMessage)
-        echo fmt"[DEBUG] cmdBatchSet: response sent seq={req.seq}"
-        # flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchSet: response sent seq={req.seq}"
+          # flushFile(stdout)
         return
 
       except CatchableError as e:
-        echo fmt"[DEBUG] cmdBatchSet: exception caught: {e.msg}"
-        echo "Stack trace: ", e.getStackTrace()
-        # flushFile(stdout)
+        when not defined(testing):
+          echo fmt"[DEBUG] cmdBatchSet: exception caught: {e.msg}"
+          echo "Stack trace: ", e.getStackTrace()
+          # flushFile(stdout)
         resp.status = statusError
         resp.value = "Batch set error: " & e.msg
 
@@ -1092,37 +1095,43 @@ proc handleWebSocketMessage*(
 
   of cmdSubscribe:
     ## Subscribe to a topic or pattern
-    writeLine(stderr, "[DEBUG] SUBSCRIBE: Entered handler")
-    flushFile(stderr)
+    when not defined(testing):
+      writeLine(stderr, "[DEBUG] SUBSCRIBE: Entered handler")
+      flushFile(stderr)
     if not server.pubSubEnabled or server.pubSubManager == nil:
       resp.status = statusError
       resp.value = "Pub/sub not enabled"
     else:
       try:
-        writeLine(stderr, "[DEBUG] SUBSCRIBE: About to decode request")
-        flushFile(stderr)
+        when not defined(testing):
+          writeLine(stderr, "[DEBUG] SUBSCRIBE: About to decode request")
+          flushFile(stderr)
         let subReq = protocol.decodeSubscribeRequest(req.value)
-        writeLine(stderr, "[DEBUG] SUBSCRIBE: Decoded, topic=" & subReq.topic & " pattern=" & subReq.pattern)
-        flushFile(stderr)
+        when not defined(testing):
+          writeLine(stderr, "[DEBUG] SUBSCRIBE: Decoded, topic=" & subReq.topic & " pattern=" & subReq.pattern)
+          flushFile(stderr)
         let subOptions = pubsub.SubscriptionOptions(
           enableKvEvents: subReq.options.enableKvEvents,
           enablePresence: subReq.options.enablePresence,
           replayHistory: subReq.options.replayHistory
         )
-        writeLine(stderr, "[DEBUG] SUBSCRIBE: About to call subscribe()")
-        flushFile(stderr)
+        when not defined(testing):
+          writeLine(stderr, "[DEBUG] SUBSCRIBE: About to call subscribe()")
+          flushFile(stderr)
         let subId = server.pubSubManager.subscribe(
           ws.clientId, subReq.topic, subReq.pattern, subOptions
         )
-        writeLine(stderr, "[DEBUG] SUBSCRIBE: subscribe() returned, subId=" & subId)
-        flushFile(stderr)
+        when not defined(testing):
+          writeLine(stderr, "[DEBUG] SUBSCRIBE: subscribe() returned, subId=" & subId)
+          flushFile(stderr)
         resp.status = statusOk
         resp.value = subId
 
         # If presence enabled, join the topic
         if subReq.options.enablePresence and server.presenceManager != nil:
-          writeLine(stderr, "[DEBUG] SUBSCRIBE: Joining presence topic")
-          flushFile(stderr)
+          when not defined(testing):
+            writeLine(stderr, "[DEBUG] SUBSCRIBE: Joining presence topic")
+            flushFile(stderr)
           withLock server.sessionsLock:
             if ws.clientId in server.sessions:
               let username = server.sessions[ws.clientId].authSession.username
@@ -1133,8 +1142,9 @@ proc handleWebSocketMessage*(
                 discard server.presenceManager.joinTopic(subReq.topic, ws.clientId, username)
 
       except CatchableError as e:
-        writeLine(stderr, "[DEBUG] SUBSCRIBE: Exception - " & e.msg)
-        flushFile(stderr)
+        when not defined(testing):
+          writeLine(stderr, "[DEBUG] SUBSCRIBE: Exception - " & e.msg)
+          flushFile(stderr)
         resp.status = statusError
         resp.value = "Subscribe error: " & e.msg
 
