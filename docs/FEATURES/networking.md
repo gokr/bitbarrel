@@ -64,22 +64,23 @@ BitBarrel provides client libraries in multiple languages:
 ### Feature Matrix
 
 | Feature | Nim | Go | Dart/Flutter | Python | TypeScript | **C** | **Zig** |
-|---------|-----|----|--------------|--------|------------|
+|---------|-----|----|--------------|--------|------------|-------|---------|
 | WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | | 
+| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 | Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
 | GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Context manager | ✅ | - | - | ✅ | - | - | - |
-| Thread-safe | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅ |
-| TypeScript types | - | - | - | - | ✅ | | 
-| Mobile support | - | - | ✅ | - | - | | 
-| Web support | - | - | ✅ | - | - | | 
+| Thread-safe | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| TypeScript types | - | - | - | - | ✅ | - | - |
+| Memory-safe bindings | - | - | - | - | - | - | ✅ |
+| Mobile support | - | - | ✅ | - | - | - | - |
+| Web support | - | - | ✅ | - | ✅ | - | - |
 | Build system | nimble | go mod | pub | pip/setuptools | npm | CMake | zig build |
 
 **Dart/Flutter Client**: Uses web_socket_channel for cross-platform compatibility. Includes comprehensive API for all 19 protocol commands, cursor-based pagination for efficient large dataset operations, and works on both mobile (iOS/Android) and Flutter Web.
