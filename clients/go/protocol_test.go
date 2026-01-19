@@ -136,7 +136,7 @@ func TestRequestEncodeDecode(t *testing.T) {
 	}
 }
 
-// TestRequestEncodeBinaryFormat tests the binary format of encoded requests
+// TestRequestEncodeBinaryFormat tests the binary format of encoded requests (v1.1)
 func TestRequestEncodeBinaryFormat(t *testing.T) {
 	req := NewRequest(CmdGet, "key", "value")
 	req.Seq = 42
@@ -146,9 +146,9 @@ func TestRequestEncodeBinaryFormat(t *testing.T) {
 		t.Fatalf("Encode() error = %v", err)
 	}
 
-	// Expected format: [cmd:1][seq:4][keyLen:2][key][valLen:4][value]
-	// CmdGet = 0x01, seq = 42, key = "key" (3 bytes), value = "value" (5 bytes)
-	expectedLen := 1 + 4 + 2 + 3 + 4 + 5
+	// Expected format: [cmd:1][seq:4][flags:1][keyLen:2][key][valLen:4][value]
+	// CmdGet = 0x01, seq = 42, flags = 0, key = "key" (3 bytes), value = "value" (5 bytes)
+	expectedLen := 1 + 4 + 1 + 2 + 3 + 4 + 5
 	if len(encoded) != expectedLen {
 		t.Errorf("Encoded length = %d, want %d", len(encoded), expectedLen)
 	}
@@ -164,26 +164,31 @@ func TestRequestEncodeBinaryFormat(t *testing.T) {
 		t.Errorf("Sequence = %d, want 42", seq)
 	}
 
-	// Check key length (bytes 5-6)
-	keyLen := binary.BigEndian.Uint16(encoded[5:7])
+	// Check flags (byte 5)
+	if encoded[5] != 0 {
+		t.Errorf("Flags = 0x%02x, want 0x00", encoded[5])
+	}
+
+	// Check key length (bytes 6-7)
+	keyLen := binary.BigEndian.Uint16(encoded[6:8])
 	if keyLen != 3 {
 		t.Errorf("Key length = %d, want 3", keyLen)
 	}
 
-	// Check key (bytes 7-9)
-	key := string(encoded[7:10])
+	// Check key (bytes 8-10)
+	key := string(encoded[8:11])
 	if key != "key" {
 		t.Errorf("Key = %q, want 'key'", key)
 	}
 
-	// Check value length (bytes 10-13)
-	valLen := binary.BigEndian.Uint32(encoded[10:14])
+	// Check value length (bytes 11-14)
+	valLen := binary.BigEndian.Uint32(encoded[11:15])
 	if valLen != 5 {
 		t.Errorf("Value length = %d, want 5", valLen)
 	}
 
-	// Check value (bytes 14-18)
-	value := string(encoded[14:19])
+	// Check value (bytes 15-19)
+	value := string(encoded[15:20])
 	if value != "value" {
 		t.Errorf("Value = %q, want 'value'", value)
 	}

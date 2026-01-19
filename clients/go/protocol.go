@@ -182,7 +182,7 @@ func (r *Request) Encode() ([]byte, error) {
 
 // Decode deserializes a request from binary format
 func DecodeRequest(data []byte) (*Request, error) {
-	if len(data) < 11 { // Minimum size: 1+4+2+0+4+0
+	if len(data) < 12 { // Minimum size: 1+4+1+2+0+4+0 (v1.1)
 		return nil, errors.New("request too short")
 	}
 
@@ -199,6 +199,10 @@ func DecodeRequest(data []byte) (*Request, error) {
 	// Sequence number (4 bytes, big-endian)
 	seq := binary.BigEndian.Uint32(data[offset:])
 	offset += 4
+
+	// Flags (1 byte) - skip for now
+	// flags := data[offset]
+	offset += 1
 
 	// Key length (2 bytes, big-endian)
 	keyLen := binary.BigEndian.Uint16(data[offset:])
