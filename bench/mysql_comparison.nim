@@ -350,9 +350,9 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
 
     # Write benchmark (batch in chunks of 1000)
     echo ""
-    echo "  Running writes (batch, 10 items per request)..."
+    echo "  Running writes (batch, 1000 items per request)..."
 
-    const batchSize = 10
+    const batchSize = 1000
     var totalWritten = 0
 
     let writeStart = epochTime()
@@ -365,11 +365,9 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
         let value = &"value_{i:08}_" & repeat('x', 40)
         pairs.add((key, value))
 
-      echo &"  [DEBUG] Calling setMany for batch {batchStart}..{batchEnd-1} (size: {pairs.len})"
       let batchStartTime = epochTime()
       totalWritten += client.setMany(pairs)
       let batchElapsed = epochTime() - batchStartTime
-      echo &"  [DEBUG] setMany completed in {batchElapsed:.3f}s"
       # Drain server output to prevent pipe blocking
       # drainProcessOutput(serverProcess)  # Output redirected to file
 
@@ -387,7 +385,7 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
 
     # Read benchmark (batch in chunks of 1000)
     echo ""
-    echo "  Running reads (batch, 10 keys per request)..."
+    echo "  Running reads (batch, 1000 keys per request)..."
 
     var totalRead = 0
     let readStart = epochTime()
@@ -399,11 +397,7 @@ proc benchmarkBitBarrelServer(numOps: int, port: int): tuple[writes, reads: Benc
       for i in batchStart..<batchEnd:
         keys.add(&"key_{i:08}")
 
-      echo &"  [DEBUG] Calling getMany for batch {batchStart}..{batchEnd-1} (size: {keys.len})"
-      let batchStartTime = epochTime()
       let results = client.getMany(keys)
-      let batchElapsed = epochTime() - batchStartTime
-      echo &"  [DEBUG] getMany completed in {batchElapsed:.3f}s, got {results.len} results"
       # Drain server output to prevent pipe blocking
       # drainProcessOutput(serverProcess)  # Output redirected to file
       allResults.add(results)
