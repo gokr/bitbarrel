@@ -15,7 +15,7 @@ int main(void) {
     printf("BitBarrel C Client PubSub Chat Example (12-step pattern)\n");
     printf("========================================================\n\n");
 
-    // Step 1: Connect to BitBarrel server (localhost:1337)
+    // Step 1: Connect to BitBarrel server (localhost:9876)
     print_time();
     printf("1. Connecting to BitBarrel server...\n");
 
@@ -27,7 +27,7 @@ int main(void) {
 
     // Create configuration
     BBConfig config = bb_config_default();
-    config.url = "ws://localhost:1337";
+    config.url = "ws://localhost:9876";
     config.timeout_ms = 10000;
 
     // Create client

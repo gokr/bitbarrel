@@ -9,10 +9,10 @@ pub fn main() !void {
 
     std.debug.print("=== BitBarrel Zig PubSub Chat Example (12-step pattern) ===\n\n", .{});
 
-    // Step 1: Connect to BitBarrel server (localhost:1337)
+    // Step 1: Connect to BitBarrel server (localhost:9876)
     std.debug.print("1. Connecting to BitBarrel server...\n", .{});
     const config = bitbarrel.Config{
-        .url = "ws://localhost:1337",
+        .url = "ws://localhost:9876",
         .timeout_ms = 10000,
         .max_retries = 3,
         .enable_auto_reconnect = true,

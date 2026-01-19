@@ -11,11 +11,11 @@ import type { PubSubEvent, SubscriptionOptions, SubscriptionInfo } from '../src/
 async function pubsubChatExample() {
   console.log('=== BitBarrel PubSub Chat Room Example (12-step pattern) ===\n');
 
-  // Step 1: Connect to BitBarrel server (localhost:1337)
+  // Step 1: Connect to BitBarrel server (localhost:9876)
   console.log('1. Connecting to BitBarrel server...');
   const client = new BitBarrelClient({
     host: 'localhost',
-    port: 1337,
+    port: 9876,
     autoConnect: true,
   });
 
