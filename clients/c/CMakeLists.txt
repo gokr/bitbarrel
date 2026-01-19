@@ -13,12 +13,29 @@ option(BUILD_EXAMPLES "Build examples" ON)
 # Find required packages
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(PkgConfig)
+
+# Try to find libwebsockets
+pkg_check_modules(LIBWEBSOCKETS libwebsockets)
+
+set(USE_LIBWEBSOCKETS FALSE)
+if(LIBWEBSOCKETS_FOUND)
+    set(USE_LIBWEBSOCKETS TRUE)
+    message(STATUS "Found libwebsockets: ${LIBWEBSOCKETS_VERSION}")
+else()
+    message(STATUS "libwebsockets not found - using built-in WebSocket implementation")
+    message(STATUS "  Install with: sudo apt-get install libwebsockets-dev")
+endif()
 
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+
+if(USE_LIBWEBSOCKETS)
+    include_directories(${LIBWEBSOCKETS_INCLUDE_DIRS})
+endif()
 
 # Source files
 set(SOURCES
@@ -31,6 +48,11 @@ set(SOURCES
 
 # Create library
 add_library(bitbarrel ${SOURCES})
+
+if(USE_LIBWEBSOCKETS)
+    target_link_libraries(bitbarrel PRIVATE ${LIBWEBSOCKETS_LIBRARIES})
+    target_compile_options(bitbarrel PRIVATE ${LIBWEBSOCKETS_CFLAGS})
+endif()
 
 # Set library properties
 set_target_properties(bitbarrel PROPERTIES
@@ -46,6 +68,11 @@ target_link_libraries(bitbarrel
         OpenSSL::SSL
         OpenSSL::Crypto
 )
+
+# Define which WebSocket backend to use
+if(USE_LIBWEBSOCKETS)
+    target_compile_definitions(bitbarrel PRIVATE USE_LIBWEBSOCKETS=1)
+endif()
 
 # Installation
 include(GNUInstallDirs)
@@ -92,4 +119,5 @@ message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Shared libs: ${BUILD_SHARED_LIBS}")
 message(STATUS "  Build tests: ${BUILD_TESTS}")
 message(STATUS "  Build examples: ${BUILD_EXAMPLES}")
+message(STATUS "  WebSocket backend: ${USE_LIBWEBSOCKETS}")
 message(STATUS "")
