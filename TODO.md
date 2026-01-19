@@ -6,7 +6,7 @@ BitBarrel is a production-ready Bitcask-style key-value storage engine with comp
 - Three indexing modes (bmHash, bmCritBit, bmHugeCritBit)
 - Full network protocol with WebSocket and REST APIs
 - Pub/Sub messaging system with history storage
-- Multiple client libraries (Nim, Go, Python, Dart, TypeScript)
+- Multiple client libraries (Nim, Go, Python, Dart, TypeScript, C, Zig)
 - Web admin console
 - Comprehensive test suite
 
