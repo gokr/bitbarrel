@@ -126,7 +126,7 @@ func TestListTopics(t *testing.T) {
 
 	// Create a test barrel (topics are created when publishing)
 	testBarrel := uniqueTopicName("test_barrel")
-	err = client.CreateBarrel(testBarrel, "memory")
+	err = client.CreateBarrel(testBarrel, "")
 	if err != nil {
 		t.Fatalf("CreateBarrel() error = %v", err)
 	}
@@ -183,7 +183,7 @@ func TestListTopicsEmpty(t *testing.T) {
 
 	// Create a new test barrel with no topics
 	testBarrel := uniqueTopicName("empty_test_barrel")
-	err = client.CreateBarrel(testBarrel, "memory")
+	err = client.CreateBarrel(testBarrel, "")
 	if err != nil {
 		t.Fatalf("CreateBarrel() error = %v", err)
 	}
