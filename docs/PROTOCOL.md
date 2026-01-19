@@ -8,13 +8,17 @@ The BitBarrel network protocol is a binary protocol designed for efficient key-v
 - Binary protocol over WebSocket (RFC 6455 compliant)
 - Big-endian encoding for cross-platform compatibility
 - Request/response pattern with sequence numbers for correlation
-- 11-byte minimum overhead for GET operations
+- 12-byte minimum overhead for GET operations (v1.1)
+- Protocol versioning with handshake negotiation
 - Support for binary data and UTF-8 strings
 - Configurable timeouts and connection management
+- Request pipelining for improved throughput
+- Per-key TTL support in SET operations
+- Key watching with pattern matching
 
 ## Wire Format
 
-### Request Format
+### Request Format (v1.1)
 
 ```
  0                   1                   2                   3
@@ -24,7 +28,9 @@ The BitBarrel network protocol is a binary protocol designed for efficient key-v
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                      Sequence (continued)                     |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-|     Key Length (2 bytes)      |          Key Data...          |
+|     Flags (1 byte)    |     Key Length (2 bytes)            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|        Key Length (continued)       |          Key Data...    |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                         Key Data...                           |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -34,6 +40,8 @@ The BitBarrel network protocol is a binary protocol designed for efficient key-v
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |                          Value Data...                        |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                   TTL (4 bytes, optional)                     |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 ```
 
 **Field Descriptions:**
@@ -42,12 +50,30 @@ The BitBarrel network protocol is a binary protocol designed for efficient key-v
 |-------|------|-------------|
 | Command Type | 1 byte | Operation command (see Command Reference) |
 | Sequence | 4 bytes | Monotonically increasing sequence number for request correlation |
+| Flags | 1 byte | Request flags for v1.1 extensions (0x00 = none, 0x01 = has TTL) |
 | Key Length | 2 bytes | Length of key field in bytes (big-endian uint16) |
 | Key | N bytes | Key data (UTF-8 string or binary data) |
 | Value Length | 4 bytes | Length of value field in bytes (big-endian uint32) |
 | Value | M bytes | Value data (UTF-8 string or binary data) |
+| TTL | 4 bytes | Optional TTL in seconds (only present if Flags & 0x01 = 1) |
 
-**Total size:** 7 + N + M bytes minimum (11 bytes for GET with no value)
+**Total size:** 8 + N + M bytes minimum (12 bytes for GET with no value)
+
+**Request Flags (v1.1):**
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| rfNone | 0x00 | No flags set (v1.0 compatible) |
+| rfHasTtl | 0x01 | TTL field present after value |
+
+### Request Format (v1.0)
+
+The v1.0 format was the same as v1.1 but without the Flags byte. v1.1 clients send a Flags byte of 0x00 for v1.0 compatibility. Servers decode both formats automatically.
+
+**v1.0 Binary Layout:**
+```
+[Command:1][Sequence:4][KeyLen:2][Key:N][ValLen:4][Value:M]
+```
 
 ### Response Format
 
@@ -124,6 +150,26 @@ Store a key-value pair.
 # Byte representation: [0x00][seq][0x00, 0x00, 0x00, 0x00][]
 ```
 
+### v1.1 Extension: Per-Key TTL
+
+SET command supports per-key TTL using the rfHasTtl flag in v1.1 protocol.
+
+**Request with TTL:**
+- Command: 0x02
+- Flags: 0x01 (rfHasTtl)
+- Key: The key to store
+- Value: The value to store
+- TTL: Time-to-live in seconds (0 = no expiration, >0 = seconds until expiration)
+
+**Example with TTL (60 seconds):**
+```nim
+# Request: SET "temp:123" "value" with TTL=60 seconds
+# Byte representation: [0x02][seq][0x01][0x00, 0x08]["temp:123"][0x00, 0x00, 0x00, 0x05]["value"][0x00, 0x00, 0x3C]
+
+# Response: OK
+# Byte representation: [0x00][seq][0x00, 0x00, 0x00, 0x00][]
+```
+
 #### DELETE (0x03)
 Delete a key (writes a tombstone).
 
@@ -194,7 +240,7 @@ Create a new barrel.
 **Request:**
 - Command: 0x10
 - Key: Barrel name
-- Value: Optional JSON configuration (currently ignored)
+- Value: Optional JSON configuration
 
 **Response:**
 - Status: OK (0x00) on success, BARREL_EXISTS (0x05) if already exists
@@ -726,6 +772,60 @@ Get presence information for a topic (online subscribers).
 }
 ```
 
+### Key Watch Commands (v1.1)
+
+Key watch commands provide a convenient way to watch for changes to keys matching patterns, using Pub/Sub internally.
+
+#### WATCH_KEY (0x60)
+Watch for changes to keys matching a pattern.
+
+**Request:**
+- Command: 0x60
+- Key: Barrel name (empty for current session barrel)
+- Value: Encoded watch request
+
+**Watch Request Format:**
+```
+[barrelNameLen:2][barrelName][patternLen:2][pattern][options:1]
+```
+
+**Options byte:**
+- Bit 0 (0x01): Include values in change events
+- Bits 1-7: Reserved for future use
+
+**Response:**
+- Status: OK (0x00) on success
+- Value: watchId (UUID string for this watch)
+
+**Example:**
+```nim
+# Watch for changes to user:* keys in current barrel
+# Request: [0x60][seq][0x00, 0x00][0x00, 0x07]["user:*"][0x01]
+
+# Response: watchId "550e8400-e29b-41d4-a716-446655440000"
+```
+
+**Pattern Format:**
+- `*` wildcard matches any characters
+- Examples: `user:*`, `temp:*`, `*`, `config:*:enabled`
+
+**Internal Behavior:**
+- Creates a Pub/Sub subscription to topic `kv:{barrelName}:{pattern}`
+- Change events are received as Pub/Sub messages with `mtKvChange` message type
+
+#### UNWATCH_KEY (0x61)
+Stop watching for key changes.
+
+**Request:**
+- Command: 0x61
+- Key: watchId (UUID string returned by WATCH_KEY)
+- Value: Empty
+
+**Response:**
+- Status: OK (0x00) on success
+- Status: ERROR (0x02) if watch not found
+- Value: Empty
+
 ### Reference Traversal
 
 #### TRAVERSE (0x20) - Advanced Feature
@@ -810,7 +910,7 @@ The protocol uses WebSocket binary frames (opcode 0x02) with client-to-server ma
 
 ## Connection Management
 
-### Handshake
+### HTTP Upgrade Handshake
 
 1. Client establishes TCP connection to server
 2. Client sends WebSocket upgrade request with optional JWT authentication:
@@ -835,6 +935,38 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
    - `401 Unauthorized` if auth required but missing/invalid
 4. Connection is established
 
+### Binary Handshake (v1.1)
+
+After the WebSocket upgrade completes, the server immediately sends a binary handshake message to the client. This handshake provides protocol version information and server capabilities.
+
+**Handshake Format:**
+```
+[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+```
+
+**Field Descriptions:**
+
+| Field | Size | Description |
+|-------|------|-------------|
+| versionMajor | 1 byte | Protocol major version |
+| versionMinor | 1 byte | Protocol minor version |
+| serverIdLen | 2 bytes | Length of server ID string |
+| serverId | N bytes | Unique server identifier (UUID string) |
+| pluginCount | 1 byte | Number of plugins available |
+| pluginNameLen | 2 bytes | Length of each plugin name |
+| pluginName | N bytes | Plugin name string |
+
+**Client Handshake Handling:**
+- v1.1 clients expect binary handshake immediately after connection
+- v1.0 clients expected a text "Connected to BitBarrel" message
+- v1.1 clients with fallback will handle both formats
+
+**Example Handshake:**
+```
+# Server sends: [0x01][0x01][0x00, 0x24]["550e8400-e29b-41d4-a716-446655440000"]
+# (version 1.1, serverId "550e8400...", 0 plugins)
+```
+
 ### Session Management
 
 - Each WebSocket connection maintains a session
@@ -848,6 +980,43 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 - **Connection timeout:** 5 seconds (handshake)
 - **Operation timeout:** 3 seconds (30 attempts × 100ms)
 - **No keepalive:** Client should send PING periodically
+
+## Request Pipelining (v1.1)
+
+Pipelining allows clients to send multiple requests without waiting for individual responses, reducing network round-trip latency for batch operations.
+
+### How Pipelining Works
+
+1. Client starts a pipeline session
+2. Client sends multiple requests (encoded immediately)
+3. Server processes requests and sends responses in order
+4. Client collects responses and matches them to requests by sequence number
+
+### Client-Side Implementation
+
+Pipelining is implemented entirely on the client side; no server-side protocol changes are required. The client maintains a queue of pending sequence numbers and matches incoming responses.
+
+**Supported Pipeline Operations:**
+- GET (0x01)
+- SET (0x02)
+- DELETE (0x03)
+- EXISTS (0x04)
+- COUNT (0x05)
+
+**Example:**
+```nim
+let p = client.startPipeline()
+p.set("k1", "v1")
+p.set("k2", "v2")
+p.get("k1")
+let results = p.waitAll()
+```
+
+**Benefits:**
+- Single network round-trip for multiple operations
+- Reduced latency for batch operations
+- Can mix different operation types
+- No server-side protocol changes required
 
 ## REST API Endpoints
 
@@ -909,6 +1078,44 @@ discard client.delete("key1")
 client.close()
 ```
 
+### v1.1: SET with TTL
+
+```nim
+disc ard client.setWithTtl("temp:session", "data", 60)  # Expires in 60 seconds
+```
+
+### v1.1: Key Watching
+
+```nim
+# Watch for changes to user:* keys
+let watchId = client.watchKeys("user:*")
+
+# Set up message handler
+client.onMessage = proc(event: PubSubEvent):
+  if event.messageType == mtKvChange:
+    echo "Key changed: ", event.topic
+
+# Make changes that trigger watch
+discard client.set("user:123", "new data")
+
+# Stop watching
+discard client.unwatchKeys(watchId)
+```
+
+### v1.1: Request Pipelining
+
+```nim
+let p = client.startPipeline()
+p.set("key1", "value1")
+p.set("key2", "value2")
+p.set("key3", "value3")
+p.get("key1")
+p.get("key2")
+
+let results = p.waitAll()
+# results contains responses for all 5 operations
+```
+
 ### Graph Traversal
 
 ```nim
@@ -947,18 +1154,21 @@ except ClientError as e:
 ## Performance Characteristics
 
 ### Overhead
-- GET request: 11 bytes overhead (1+4+2+4)
+- GET request v1.1: 12 bytes overhead (1+4+1+2+4)
+- GET request v1.0: 11 bytes overhead (1+4+2+4)
 - GET response: 9 bytes overhead (1+4+4)
-- SET request with 10-byte key and 100-byte value: 121 bytes total
+- SET request with 10-byte key and 100-byte value: 122 bytes total (v1.1)
+- WebSocket framing adds ~4-10 bytes per message
 
 ### Throughput
 - Single connection: ~50,000 ops/sec (local)
 - Multiple connections: Linear scaling with CPU cores
-- WebSocket framing adds ~4-10 bytes per message
+- Pipelining: 2-5x throughput improvement for batch operations
 
 ### Latency
 - Local operations: < 1ms average
 - Network operations: Dependent on latency
+- Pipeline operations: Reduced latency for batch (fewer round trips)
 - Protocol processing: Negligible (< 0.1ms)
 
 ## Security Considerations
@@ -990,9 +1200,26 @@ except ClientError as e:
 ## Compatibility
 
 ### Protocol Version
-- Current version: 1.0
-- No version negotiation implemented
-- Backward compatibility maintained within major versions
+- Current version: 1.1
+- Minor version additions are backward compatible
+- v1.1 protocol includes flags byte for extensions
+- Both v1.0 and v1.1 requests are automatically decoded by servers
+
+### Version Detection
+- v1.1 servers send binary handshake with version info
+- v1.0 servers send text "Connected to BitBarrel" message
+- v1.1 clients can detect server version from handshake format
+
+### Backward Compatibility
+- v1.1 clients connecting to v1.0 servers:
+  - Text welcome message detected as v1.0
+  - Flags byte not sent in requests
+  - TTL, key watching, and pipelining unavailable
+
+- v1.0 clients connecting to v1.1 servers:
+  - Binary handshake may be ignored
+  - v1.0 format requests work (Flags = 0x00)
+  - Only v1.0 features available
 
 ### Platform Support
 - All platforms supporting WebSocket and TCP
@@ -1002,7 +1229,7 @@ except ClientError as e:
 ## Troubleshooting
 
 ### Connection Refused
-- Check server is running: `nimble server`
+- Check server is running: `nimble serve`
 - Verify port is correct (default: 9876)
 - Check firewall settings
 
@@ -1024,12 +1251,15 @@ except ClientError as e:
 - Use LIST_BARRELS to see all available barrels
 - Create new barrel with CREATE_BARREL if needed
 
+### Handshake Issues (v1.1)
+- v1.1 clients expect binary handshake after WebSocket upgrade
+- v1.0 clients expect text "Connected to BitBarrel" message
+- Check server logs for connection errors
+- Verify protocol version compatibility
+
 ## Future Enhancements
 
-- Protocol versioning for backward compatibility
-- Request pipelining for higher throughput
 - Connection pooling in client
 - Automatic reconnection with backoff
 - Compression for large values
-- Bulk operations (multi-get, multi-set)
 - Streaming responses for large queries
