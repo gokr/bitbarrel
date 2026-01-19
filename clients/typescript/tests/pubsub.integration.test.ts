@@ -328,29 +328,21 @@ describe('Pub/Sub Integration Tests', () => {
 
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Get history - skip test if history not enabled on server
-    try {
-      const history = await client.getHistory(topic, { limit: 10 });
-      expect(history.length).toBeGreaterThanOrEqual(3);
+    // Get history
+    const history = await client.getHistory(topic, { limit: 10 });
+    expect(history.length).toBeGreaterThanOrEqual(3);
 
-      // Verify messages (newest first)
-      expect(history[0].payload).toBe('message 3');
-      expect(history[1].payload).toBe('message 2');
-      expect(history[2].payload).toBe('message 1');
+    // Verify messages (newest first)
+    expect(history[0].payload).toBe('message 3');
+    expect(history[1].payload).toBe('message 2');
+    expect(history[2].payload).toBe('message 1');
 
-      // Verify event properties
-      for (const event of history) {
-        expect(event.topic).toBe(topic);
-        expect(event.messageType).toBe(PubSubMessageType.Data);
-        expect(event.sequence).toBeGreaterThan(0);
-        expect(event.timestamp).toBeGreaterThan(0);
-      }
-    } catch (e) {
-      if (e instanceof Error && (e.message.includes('not enabled') || e.message.includes('failed: 2'))) {
-        console.log('Skipping history test - history not enabled on server');
-        return;
-      }
-      throw e;
+    // Verify event properties
+    for (const event of history) {
+      expect(event.topic).toBe(topic);
+      expect(event.messageType).toBe(PubSubMessageType.Data);
+      expect(event.sequence).toBeGreaterThan(0);
+      expect(event.timestamp).toBeGreaterThan(0);
     }
   });
 
@@ -368,26 +360,18 @@ describe('Pub/Sub Integration Tests', () => {
     }
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    try {
-      // Get only 2 messages
-      const historyLimited = await client.getHistory(topic, { limit: 2 });
-      expect(historyLimited.length).toBeLessThanOrEqual(2);
+    // Get only 2 messages
+    const historyLimited = await client.getHistory(topic, { limit: 2 });
+    expect(historyLimited.length).toBeLessThanOrEqual(2);
 
-      // Get messages since specific sequence
-      const sinceSeq = seqNos[2];
-      const historySince = await client.getHistory(topic, {
-        limit: 10,
-        sinceSeq
-      });
-      expect(historySince.length).toBeGreaterThanOrEqual(3);
-      expect(historySince[0].sequence).toBeGreaterThanOrEqual(sinceSeq);
-    } catch (e) {
-      if (e instanceof Error && (e.message.includes('not enabled') || e.message.includes('failed: 2'))) {
-        console.log('Skipping history limit test - history not enabled on server');
-        return;
-      }
-      throw e;
-    }
+    // Get messages since specific sequence
+    const sinceSeq = seqNos[2];
+    const historySince = await client.getHistory(topic, {
+      limit: 10,
+      sinceSeq
+    });
+    expect(historySince.length).toBeGreaterThanOrEqual(3);
+    expect(historySince[0].sequence).toBeGreaterThanOrEqual(sinceSeq);
   });
 
   it('should get presence for topic', async () => {
