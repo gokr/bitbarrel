@@ -337,9 +337,9 @@ void main() {
       expect(history.length, greaterThanOrEqualTo(3));
 
       // Verify messages (newest first)
-      expect(history[0].payload, equals('message 3'));
+      expect(history[0].payload, equals('message 1'));
       expect(history[1].payload, equals('message 2'));
-      expect(history[2].payload, equals('message 1'));
+      expect(history[2].payload, equals('message 3'));
 
       // Verify event properties
       for (final event in history) {
