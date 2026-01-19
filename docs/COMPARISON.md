@@ -670,7 +670,7 @@ BitBarrel occupies a unique niche: an embedded, high-performance key-value store
 - HugeBarrel for billions of keys with predictable memory
 - Query result plugins and barrel hooks for extensibility
 - Native Nim implementation with type safety
-- Client libraries: Nim, Python, Go, Dart, TypeScript
+- Client libraries: Nim, Python, Go, Dart, TypeScript, **C, Zig**
 
 **Comparison with alternatives:**
 - More flexible deployment than RocksDB (server mode available)

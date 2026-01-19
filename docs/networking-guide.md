@@ -1146,6 +1146,8 @@ func main() {
 | Python | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
 | Dart | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
 | TypeScript | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
+| **C** | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
+| **Zig** | Full | ✅ Complete implementation (subscribe/publish + all query methods) |
 
 ### Best Practices
 

@@ -51,34 +51,38 @@ BitBarrel provides client libraries for multiple programming languages and a web
 - **[Dart/Flutter Client](../clients/dart/README.md)** - Mobile + Web compatible client
 - **[Python Client](../clients/python/README.md)** - Feature-complete WebSocket client with Pub/Sub support
 - **[TypeScript Client](../clients/typescript/README.md)** - Full WebSocket protocol with TypeScript types and Pub/Sub support
+- **[C Client](../clients/c/README.md)** - Binary protocol client library with full v1.1 support
+- **[Zig Bindings](../clients/zig/README.md)** - Idiomatic Zig API wrapping the C client library
 - **[Web Admin Console](../webadmin/README.md)** - Flutter-based web UI for database management
 
-| Feature | Nim | Go | Dart/Flutter | Python | TypeScript | Web Admin |
-|---------|-----|----|--------------|--------|------------|-----------|
-| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Query plugins** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Pub/Sub subscribe/publish** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| **Pub/Sub pattern matching** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| **Pub/Sub persistent history** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| **Pub/Sub presence tracking** | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| Pub/Sub callbacks | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| Context manager | ✅ | - | - | ✅ | - | - |
-| Thread-safe operations | ✅ | ✅ | ✅ | ✅ | ✅ | - |
-| TypeScript types | - | - | - | - | ✅ | - |
-| Mobile support | - | - | ✅ | - | - | - |
-| Web support | - | - | ✅ | - | ✅ | ✅ |
-| Visual UI | - | - | - | - | - | ✅ |
-| JSON visualization | - | - | - | - | - | ✅ |
-| Import/Export | - | - | - | - | - | ✅ |
+| Feature | Nim | Go | Dart/Flutter | Python | TypeScript | **C** | **Zig** | Web Admin |
+|---------|-----|----|--------------|--------|------------|-------|---------|-----------|
+| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Query plugins** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | - |
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A | ✅ |
+| **Pub/Sub subscribe/publish** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub pattern matching** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub persistent history** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| **Pub/Sub presence tracking** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Pub/Sub callbacks | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| Context manager | ✅ | - | - | ✅ | - | - | - | - |
+| Thread-safe operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | - |
+| TypeScript types | - | - | - | - | ✅ | - | - | - |
+| Memory-safe bindings | - | - | - | - | - | - | ✅ | - |
+| Mobile support | - | - | ✅ | - | - | - | - | - |
+| Web support | - | - | ✅ | - | ✅ | - | - | ✅ |
+| Visual UI | - | - | - | - | - | - | - | ✅ |
+| JSON visualization | - | - | - | - | - | - | - | ✅ |
+| Import/Export | - | - | - | - | - | - | - | ✅ |
+| Build system | nimble | go mod | pub | pip/setuptools | npm | CMake | zig build | Flutter |
 
 
 ### Historical and Research

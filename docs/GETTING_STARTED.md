@@ -36,13 +36,15 @@ nimble demoBasic
 
 BitBarrel provides client libraries for multiple languages:
 
-| Language | Location | Status |
-|----------|----------|--------|
-| Nim | `clients/nim/` | Full WebSocket protocol, Pub/Sub (complete, including query methods) |
-| Go | `clients/go/` | Full WebSocket protocol, Pub/Sub (basic subscribe/publish) |
-| Dart/Flutter | `clients/dart/` | Mobile + Web compatible |
-| Python | `clients/python/` | Feature-complete WebSocket client, Pub/Sub (basic subscribe/publish) |
-| TypeScript | `clients/typescript/` | Full WebSocket protocol + types, Pub/Sub (basic subscribe/publish) |
+| Language | Location | Status | Notes |
+|----------|----------|--------|-------|
+| Nim | `clients/nim/` | Full WebSocket protocol, Pub/Sub (complete, including query methods) | Native implementation |
+| Go | `clients/go/` | Full WebSocket protocol, Pub/Sub (basic subscribe/publish) | Native implementation |
+| Dart/Flutter | `clients/dart/` | Mobile + Web compatible | Native implementation |
+| Python | `clients/python/` | Feature-complete WebSocket client, Pub/Sub (basic subscribe/publish) | Native implementation |
+| TypeScript | `clients/typescript/` | Full WebSocket protocol + types, Pub/Sub (basic subscribe/publish) | Native implementation |
+| **C** | `clients/c/` | Full WebSocket protocol (v1.1), Pub/Sub, Range queries | Binary protocol client |
+| **Zig** | `clients/zig/` | Idiomatic Zig API wrapping C library | Memory-safe bindings |
 
 **Pub/Sub Messaging**: BitBarrel includes real-time Pub/Sub messaging with topic-based subscriptions, pattern matching, and presence tracking. See [Pub/Sub Protocol Specification](../PROTOCOL.md#pubsub-messaging) for details.
 
@@ -133,7 +135,16 @@ echo "Available barrels: ", barrels
 
 ```bash
 # Test all client libraries (starts server on port 9876, runs tests, stops server)
+# Includes: Nim, Go, Dart, Python, TypeScript, C clients
 nimble testClients
+
+# Test individual client
+nimble testCClient     # Test C client library
+nimble testNimClient    # Test Nim client library
+nimble testGoClient     # Test Go client library
+nimble testPythonClient # Test Python client library
+nimble testDartClient   # Test Dart client library
+nimble testTypeScriptClient # Test TypeScript client library
 ```
 
 ## Your First BitBarrel
@@ -179,7 +190,7 @@ nimble bench
 - [Configuration](USER_GUIDE/configuration.md) - All options
 - [API Reference](USER_GUIDE/api-reference.md) - Full API
 - [Features](FEATURES/) - Compression, networking, data integrity
-- [Client Libraries](../clients/) - Nim, Go, Dart/Flutter, Python clients
+- [Client Libraries](../clients/) - Nim, Go, Dart/Flutter, Python, TypeScript, C, Zig clients
 
 ## Need Help?
 

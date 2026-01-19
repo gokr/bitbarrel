@@ -58,26 +58,29 @@ BitBarrel provides client libraries in multiple languages:
 | Dart/Flutter | `clients/dart/` | Android, iOS, Web |
 | Python | `clients/python/` | Cross-platform |
 | TypeScript | `clients/typescript/` | Node.js, Browser |
+| **C** | `clients/c/` | Cross-platform |
+| **Zig** | `clients/zig/` | Cross-platform |
 
 ### Feature Matrix
 
-| Feature | Nim | Go | Dart/Flutter | Python | TypeScript |
+| Feature | Nim | Go | Dart/Flutter | Python | TypeScript | **C** | **Zig** |
 |---------|-----|----|--------------|--------|------------|
-| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ |
-| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ |
-| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ |
-| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Context manager | ✅ | - | - | ✅ | - |
-| Thread-safe | ✅ | ✅ | ✅ | ✅ | ✅ |
-| TypeScript types | - | - | - | - | ✅ |
-| Mobile support | - | - | ✅ | - | - |
-| Web support | - | - | ✅ | - | - |
+| WebSocket protocol | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| CRUD operations | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel management | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Barrel config ops | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Range queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Prefix queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Reference traversal | ✅ | ✅ | ✅ | ✅ | ✅ | | 
+| Cursor pagination | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| JWT authentication | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GetOrDefault method | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Context manager | ✅ | - | - | ✅ | - | - | - |
+| Thread-safe | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅ |
+| TypeScript types | - | - | - | - | ✅ | | 
+| Mobile support | - | - | ✅ | - | - | | 
+| Web support | - | - | ✅ | - | - | | 
+| Build system | nimble | go mod | pub | pip/setuptools | npm | CMake | zig build |
 
 **Dart/Flutter Client**: Uses web_socket_channel for cross-platform compatibility. Includes comprehensive API for all 19 protocol commands, cursor-based pagination for efficient large dataset operations, and works on both mobile (iOS/Android) and Flutter Web.
 
@@ -88,6 +91,10 @@ BitBarrel provides client libraries in multiple languages:
 **Python Client**: Feature-complete WebSocket client with support for all protocol commands including barrel config operations, range queries, prefix queries, reference traversal, and context manager support.
 
 **TypeScript Client**: Full WebSocket protocol implementation with complete type safety. Provides TypeScript interfaces for all API methods, automatic connection management with configurable timeouts, EventEmitter-based architecture for connection events, comprehensive error hierarchy, and full support for range queries, barrel management, and JWT authentication. Includes 57 passing tests and extensive documentation.
+
+**C Client**: Full WebSocket protocol (v1.1) implementation with binary protocol encoding/decoding. Provides a C99-compatible API with explicit resource management, thread-safe operations, Pub/Sub support, range queries, and memory management utilities. Native implementation with CMake build system.
+
+**Zig Bindings**: Idiomatic Zig API wrapping the C client library with memory safety features. Provides Zig-style error handling, allocator integration, and comptime configuration. Memory-safe bindings with idiomatic Zig patterns and build.zig build integration.
 
 **Web Admin Console**: Flutter-based web UI for visual database management. Can be served directly from the BitBarrel server at `/admin/` or run separately during development. Provides connection management, barrel operations, data explorer with full CRUD, query interface with JSON visualization, graph traversal for exploring _ref relationships, and barrel configuration editor for runtime tuning. See [webadmin/README.md](../../webadmin/README.md) and [Getting Started](../GETTING_STARTED.md#quick-start---web-admin-console) for details.
 
