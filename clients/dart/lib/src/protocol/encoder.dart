@@ -12,7 +12,7 @@ class ProtocolEncoder {
   ProtocolEncoder._();
 
   /// Encode a standard request to binary format
-  /// Format: [cmd:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
+  /// Format: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
   /// All multi-byte values are big-endian
   ///
   /// For binary protocol data (range query params, etc.), pass [binaryValue].
@@ -23,6 +23,7 @@ class ProtocolEncoder {
     required String key,
     String value = '',
     Uint8List? binaryValue,
+    int flags = 0,
   }) {
     if (!Command.isValid(command)) {
       throw ArgumentError('Invalid command: 0x${command.toRadixString(16)}');
@@ -43,8 +44,8 @@ class ProtocolEncoder {
       );
     }
 
-    // Calculate total size
-    final totalSize = 1 + 4 + 2 + keyBytes.length + 4 + valueBytes.length;
+    // Calculate total size (v1.1 includes flags byte)
+    final totalSize = 1 + 4 + 1 + 2 + keyBytes.length + 4 + valueBytes.length;
     final buffer = ByteData(totalSize);
 
     var offset = 0;
@@ -55,6 +56,9 @@ class ProtocolEncoder {
     // Sequence (4 bytes, big-endian)
     buffer.setUint32(offset, seq, Endian.big);
     offset += 4;
+
+    // Flags (1 byte) - v1.1+ includes flags for TTL support etc.
+    buffer.setUint8(offset++, flags);
 
     // Key length (2 bytes, big-endian)
     buffer.setUint16(offset, keyBytes.length, Endian.big);
