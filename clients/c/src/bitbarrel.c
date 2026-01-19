@@ -22,6 +22,90 @@ static BBResult translate_error(int err) {
     }
 }
 
+static void free_server_info(ServerInfo* info) {
+    if (!info) return;
+
+    free(info->server_id);
+    info->server_id = NULL;
+
+    if (info->plugins) {
+        for (size_t i = 0; i < info->plugin_count; i++) {
+            free(info->plugins[i]);
+        }
+        free(info->plugins);
+        info->plugins = NULL;
+    }
+
+    info->plugin_count = 0;
+}
+
+static BBResult parse_handshake(const uint8_t* data, size_t len, ServerInfo* info) {
+    if (!data || !info) return BB_ERROR;
+
+    // Clear existing info
+    free_server_info(info);
+
+    size_t offset = 0;
+
+    // Parse version
+    if (len < 2) return BB_ERROR;
+    info->version_major = data[offset++];
+    info->version_minor = data[offset++];
+
+    // Parse server ID length (2 bytes, big-endian)
+    if (len < offset + 2) return BB_ERROR;
+    uint16_t server_id_len = (data[offset] << 8) | data[offset + 1];
+    offset += 2;
+
+    // Parse server ID
+    if (len < offset + server_id_len) return BB_ERROR;
+    info->server_id = malloc(server_id_len + 1);
+    if (!info->server_id) return BB_ERROR;
+    memcpy(info->server_id, data + offset, server_id_len);
+    info->server_id[server_id_len] = '\0';
+    offset += server_id_len;
+
+    // Parse plugin count
+    if (len < offset + 1) return BB_ERROR;
+    info->plugin_count = data[offset++];
+
+    // Parse plugins
+    if (info->plugin_count > 0) {
+        info->plugins = calloc(info->plugin_count, sizeof(char*));
+        if (!info->plugins) {
+            free(info->server_id);
+            info->server_id = NULL;
+            return BB_ERROR;
+        }
+
+        for (size_t i = 0; i < info->plugin_count; i++) {
+            // Parse plugin name length (2 bytes, big-endian)
+            if (len < offset + 2) {
+                free_server_info(info);
+                return BB_ERROR;
+            }
+            uint16_t plugin_name_len = (data[offset] << 8) | data[offset + 1];
+            offset += 2;
+
+            // Parse plugin name
+            if (len < offset + plugin_name_len) {
+                free_server_info(info);
+                return BB_ERROR;
+            }
+            info->plugins[i] = malloc(plugin_name_len + 1);
+            if (!info->plugins[i]) {
+                free_server_info(info);
+                return BB_ERROR;
+            }
+            memcpy(info->plugins[i], data + offset, plugin_name_len);
+            info->plugins[i][plugin_name_len] = '\0';
+            offset += plugin_name_len;
+        }
+    }
+
+    return BB_OK;
+}
+
 BBResult bb_init(void) {
     // Initialize SSL if needed
     // For now, return OK
@@ -81,6 +165,7 @@ void bb_client_destroy(BBClient* client) {
 
     // Cleanup
     free(client->current_barrel);
+    free_server_info(&client->server_info);
     ws_destroy(client->ws);
     pthread_mutex_destroy(&client->callback_lock);
     pthread_mutex_destroy(&client->error_lock);
@@ -101,7 +186,28 @@ BBResult bb_connect(BBClient* client) {
         return BB_CONNECTION_ERROR;
     }
 
-    // Wait for welcome message (simple ping to verify connection)
+    // Receive binary handshake
+    uint8_t* handshake_data = NULL;
+    ssize_t handshake_len = ws_recv_binary(client->ws, &handshake_data, client->config.timeout_ms);
+    if (handshake_len <= 0) {
+        strncpy(client->last_error, "Failed to receive server handshake", sizeof(client->last_error) - 1);
+        if (handshake_data) free(handshake_data);
+        ws_disconnect(client->ws);
+        return BB_CONNECTION_ERROR;
+    }
+
+    // Parse handshake
+    if (parse_handshake(handshake_data, handshake_len, &client->server_info) != BB_OK) {
+        strncpy(client->last_error, "Failed to parse server handshake", sizeof(client->last_error) - 1);
+        free(handshake_data);
+        ws_disconnect(client->ws);
+        return BB_PROTOCOL_ERROR;
+    }
+
+    free(handshake_data);
+    client->handshake_received = true;
+
+    // Verify connection with PING
     ProtocolRequest req = {
         .command = CMD_PING,
         .seq = client->next_seq++,
@@ -520,4 +626,17 @@ void bb_free_string_array(char** array, size_t count) {
 
 const char* bb_get_last_error(const BBClient* client) {
     return client ? client->last_error : "Invalid client";
+}
+
+BBResult bb_get_server_info(const BBClient* client, BBServerInfo* info) {
+    if (!client || !info) return BB_ERROR;
+    if (!client->handshake_received) return BB_ERROR;
+
+    info->version_major = client->server_info.version_major;
+    info->version_minor = client->server_info.version_minor;
+    info->server_id = client->server_info.server_id;
+    info->plugins = (const char**)client->server_info.plugins;
+    info->plugin_count = client->server_info.plugin_count;
+
+    return BB_OK;
 }

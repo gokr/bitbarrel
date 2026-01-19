@@ -125,6 +125,18 @@ BBResult bb_items_in_range(BBClient* client, const char* start_key, const char* 
 BBResult bb_items_with_prefix(BBClient* client, const char* prefix,
                              size_t limit, const char* cursor, BBRangeResult** result);
 
+// Server info structure (from handshake)
+typedef struct {
+    uint8_t version_major;
+    uint8_t version_minor;
+    const char* server_id;
+    const char** plugins;
+    size_t plugin_count;
+} BBServerInfo;
+
+// Get server information (valid after successful connect)
+BBResult bb_get_server_info(const BBClient* client, BBServerInfo* info);
+
 // Utility functions
 void bb_free_string(char* str);
 void bb_free_string_array(char** array, size_t count);

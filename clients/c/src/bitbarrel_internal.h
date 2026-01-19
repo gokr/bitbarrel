@@ -7,6 +7,15 @@
 #include "websocket.h"
 #include <pthread.h>
 
+// Server information from handshake
+typedef struct {
+    uint8_t version_major;
+    uint8_t version_minor;
+    char* server_id;
+    char** plugins;
+    size_t plugin_count;
+} ServerInfo;
+
 // Internal structure of BBClient
 struct BitBarrelClient {
     BBWebSocket* ws;
@@ -14,6 +23,10 @@ struct BitBarrelClient {
     BBConfig config;
     char* current_barrel;
     bool closing;
+
+    // Server handshake info
+    ServerInfo server_info;
+    bool handshake_received;
 
     // PubSub state
     BBMessageCallback message_callback;
