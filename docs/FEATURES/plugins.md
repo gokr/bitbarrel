@@ -12,6 +12,44 @@ The query result plugin system provides:
 - **Thread-safe registry** - Safe concurrent plugin management
 - **Client-transparent** - Plugins work seamlessly with network clients
 
+## Current Plugin/Hook Coverage
+
+BitBarrel has two distinct hook/plugin systems:
+
+### 1. Query Result Plugins (`src/plugins/query_result_hooks.nim`)
+Transform results from range and prefix queries before returning to clients.
+
+**Supported Commands:**
+- `cmdRangeQuery` (0x21) - Range queries with key-value pairs ✅
+- `cmdPrefixQuery` (0x22) - Prefix queries with key-value pairs ✅
+- `cmdRangeKeys` (0x24) - Keys-only range queries ❌ (no plugin support)
+- `cmdPrefixKeys` (0x25) - Keys-only prefix queries ❌ (no plugin support)
+- `cmdRangeCount` (0x23) - Range count queries ❌ (no plugin support)
+
+**Protocol Support:** RangeRequest and PrefixRequest have `plugins: seq[string]` fields.
+
+**Client API:** `rangeQuery()` and `prefixQuery()` accept optional `plugins` parameter.
+
+### 2. Barrel Event Hooks (`src/pubsub/barrel_hooks.nim`)
+Trigger callbacks when keys are set or deleted in a barrel.
+
+**Supported Operations:**
+- `set()` - Triggers `kvSet` events ✅
+- `delete()` - Triggers `kvDelete` events ✅
+
+**Event Types:** `kvSet`, `kvDelete`
+
+**Registry:** Thread-safe with priority-based execution.
+
+**Coverage Gaps:** The following operations currently have NO plugin/hook support:
+- `cmdGet` (0x01) - Single key retrieval
+- `cmdListKeys` (0x06) - List all keys
+- All batch operations (`cmdBatchGet`, `cmdBatchSet`, `cmdBatchDelete`)
+- All barrel management commands
+- All pub/sub commands
+
+See the [Extension Proposals](#extension-proposals) section for future enhancements.
+
 ## Plugin Types
 
 ### Range Query Plugins (`hkRangeQuery`)
@@ -422,6 +460,153 @@ let (items, cursor, hasMore) = client.rangeQuery(
   plugins = @["premiumOnly", "addQueryMetadata"]
 )
 ```
+
+## Barrel Event Hooks
+
+Barrel event hooks provide a way to execute callbacks when key-value pairs are set or deleted in a barrel. Unlike query result plugins which transform query results, barrel hooks are triggered by write operations and are useful for:
+
+- Audit logging and change tracking
+- Cache invalidation
+- Data replication
+- Metrics collection
+- Real-time notifications
+
+### Registering Barrel Hooks
+
+```nim
+import pubsub/barrel_hooks
+
+proc auditHook(barrelName: string, key: string,
+               changeType: KvChangeType,
+               value: string) {.gcsafe.} =
+  echo fmt"Change in {barrelName}: {key} -> {changeType} (value length: {value.len})"
+
+let hookId = registerBarrelHook(
+  auditHook,
+  enabled = true,
+  priority = 0  # Higher priority = called earlier
+)
+```
+
+### Hook Parameters
+
+1. **barrelName** - Name/ID of the barrel where change occurred
+2. **key** - The key that was modified
+3. **changeType** - Either `kvSet` (key was set) or `kvDelete` (key was deleted)
+4. **value** - The new value (empty string for delete operations)
+
+### Priority-Based Execution
+
+Hooks are executed in priority order (higher priority first). Use priorities to ensure critical hooks (like audit logging) run before other hooks (like cache invalidation).
+
+```nim
+# Audit hook runs first (priority 100)
+discard registerBarrelHook(auditHook, priority = 100)
+
+# Cache invalidation runs second (priority 50)
+discard registerBarrelHook(cacheHook, priority = 50)
+
+# Metrics collection runs last (priority 0)
+discard registerBarrelHook(metricsHook, priority = 0)
+```
+
+### Managing Hooks
+
+```nim
+# Enable/disable hooks
+disableHook(hookId)  # Temporarily disable
+enableHook(hookId)   # Re-enable
+
+# Unregister hook
+unregisterBarrelHook(hookId)
+
+# List all registered hooks
+let hooks = listHooks()
+for hook in hooks:
+  echo fmt"Hook {hook.id}: priority={hook.priority}, enabled={hook.enabled}"
+```
+
+### Example: Comprehensive Audit System
+
+```nim
+import std/[times, json]
+
+proc comprehensiveAuditHook(barrelName: string, key: string,
+                            changeType: KvChangeType,
+                            value: string) {.gcsafe.} =
+  let timestamp = getTime().format("yyyy-MM-dd HH:mm:ss")
+  let operation = if changeType == kvSet: "SET" else: "DELETE"
+  let auditRecord = %*{
+    "timestamp": timestamp,
+    "barrel": barrelName,
+    "key": key,
+    "operation": operation,
+    "value_length": value.len,
+    "client_ip": "..."  # Would come from session context
+  }
+
+  # Write to audit log, send to SIEM, etc.
+  echo fmt"AUDIT: {auditRecord}"
+
+# Register with high priority
+discard registerBarrelHook(comprehensiveAuditHook, priority = 100)
+```
+
+### Error Handling
+
+Hook exceptions are caught and logged, but don't affect the original operation or other hooks:
+
+```nim
+proc faultyHook(barrelName: string, key: string,
+                changeType: KvChangeType,
+                value: string) {.gcsafe.} =
+  raise newException(Exception, "Hook failure")
+
+# Even if faultyHook throws, other hooks still execute
+discard registerBarrelHook(faultyHook)
+discard registerBarrelHook(workingHook)  # This will still run
+```
+
+### Best Practices
+
+- **Keep hooks fast** - Hooks execute synchronously during write operations
+- **Handle exceptions** - Don't let hook failures affect data integrity
+- **Use priorities wisely** - Critical hooks should have higher priority
+- **Monitor hook performance** - Slow hooks can impact write latency
+- **Consider idempotency** - Hooks may be retried during recovery
+
+### Integration with Pub/Sub
+
+Barrel hooks are integrated with the Pub/Sub system. When hooks are triggered, they can forward events to the Pub/Sub manager for real-time messaging to subscribers.
+
+See the [Pub/Sub documentation](../USER_GUIDE/pubsub.md) for details on integrating hooks with messaging.
+
+## Extension Proposals
+
+Future enhancements to the plugin/hook system could include:
+
+### 1. Plugin Support for Keys-Only Queries
+- New hook types: `hkRangeKeys`, `hkPrefixKeys`
+- Transform sequences of keys (not key-value pairs)
+
+### 2. Single Get Operation Plugin Support
+- New hook type: `hkGet`
+- Transform single values before returning to client
+
+### 3. Plugin Parameter Enhancement
+- Allow clients to pass custom parameters to plugins
+- Extend protocol with `pluginParams: Table[string, string]`
+
+### 4. Batch Operation Plugin Support
+- New hook types: `hkBatchGet`, `hkBatchSet`, `hkBatchDelete`
+- Transform entire batch results
+
+### 5. Barrel Management Hooks
+- Hooks for barrel lifecycle events (create, open, close, drop)
+
+### 6. Unified Plugin Registry
+- Single registry for both query plugins and barrel hooks
+- Consistent API and management
 
 ## API Reference
 
