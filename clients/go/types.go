@@ -76,7 +76,7 @@ type PubSubEvent struct {
 	MessageType PubSubMessageType
 	Sequence    uint64
 	Timestamp   int64
-	Headers     string
+	Headers     map[string]interface{}
 	Payload     string
 }
 
@@ -102,7 +102,7 @@ type PresenceMember struct {
 	Username string
 	JoinedAt int64
 	LastPing int64
-	Metadata string
+	Metadata map[string]interface{}
 }
 
 // PresenceInfo represents presence information for a topic
