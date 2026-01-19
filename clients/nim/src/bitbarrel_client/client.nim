@@ -8,6 +8,13 @@ import whisky
 import protocol
 
 type
+  ServerInfo* = object
+    ## Server information from handshake
+    versionMajor*: int
+    versionMinor*: int
+    serverId*: string
+    availablePlugins*: seq[string]
+
   BitBarrelClient* = object
     ## Client for BitBarrel network operations
     ##
@@ -25,6 +32,7 @@ type
     token*: string             ## JWT authentication token (if any, default: "")
     subscriptions*: Table[string, bool]  ## Track active subscriptions
     onMessage*: proc(event: PubSubEvent) {.closure, gcsafe.}  ## Pub/sub message handler
+    serverInfo*: ServerInfo    ## Server information from handshake
 
   ClientConfig* = object
     ## Configuration for BitBarrel client connections
@@ -85,7 +93,13 @@ proc newClient*(config: ClientConfig): BitBarrelClient =
     currentBarrel: "",
     pending: initTable[uint32, Response](),
     token: config.token,
-    subscriptions: initTable[string, bool]()
+    subscriptions: initTable[string, bool](),
+    serverInfo: ServerInfo(
+      versionMajor: 0,
+      versionMinor: 0,
+      serverId: "",
+      availablePlugins: @[]
+    )
   )
   initLock(result.lock)
 
@@ -143,7 +157,7 @@ proc connect*(client: var BitBarrelClient) =
   try:
     client.ws = newWebSocket(url)
 
-    # Wait for welcome message
+    # Wait for binary handshake message (protocol v1.1+)
     const maxAttempts = 50  # 50 * 100ms = 5 seconds
     var attempts = 0
 
@@ -151,12 +165,33 @@ proc connect*(client: var BitBarrelClient) =
       let msg = client.ws.receiveMessage(timeout = 100)
       if msg.isSome():
         let m = msg.get()
-        if m.kind == TextMessage and m.data.contains("Connected to BitBarrel"):
+        if m.kind == BinaryMessage:
+          try:
+            let handshake = protocol.decodeHandshake(m.data)
+            client.serverInfo = ServerInfo(
+              versionMajor: int(handshake.versionMajor),
+              versionMinor: int(handshake.versionMinor),
+              serverId: handshake.serverId,
+              availablePlugins: handshake.plugins
+            )
+            client.connected = true
+            return
+          except CatchableError:
+            # Not a valid handshake, might be old server
+            discard
+        elif m.kind == TextMessage and m.data.contains("Connected to BitBarrel"):
+          # Fallback for v1.0 servers
+          client.serverInfo = ServerInfo(
+            versionMajor: 1,
+            versionMinor: 0,
+            serverId: "",
+            availablePlugins: @[]
+          )
           client.connected = true
           return
 
       inc attempts
-    raise newException(ClientError, "No welcome message received from server")
+    raise newException(ClientError, "No handshake message received from server")
 
   except CatchableError as e:
     raise newException(ClientError, fmt"Failed to connect: {e.msg}")

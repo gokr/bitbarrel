@@ -975,3 +975,41 @@ proc decodeBatchDeleteResponse*(data: string): BatchDeleteResponse =
   for i in 0..<count:
     result.statuses[i] = readByte(data, pos)
 
+## Handshake encoding/decoding
+
+type
+  ServerHandshake* = object
+    ## Server handshake sent on connection
+    versionMajor*: uint8
+    versionMinor*: uint8
+    serverId*: string          ## Unique server identifier
+    plugins*: seq[string]      ## Available plugins
+
+proc decodeHandshake*(data: string): ServerHandshake =
+  ## Decode a server handshake from binary format.
+  ## Format: ``[versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen:2][pluginName1]...``
+  var pos = 0
+
+  if pos >= data.len:
+    raise newException(ProtocolError, "Unexpected end of data reading versionMajor")
+
+  result.versionMajor = readByte(data, pos)
+  result.versionMinor = readByte(data, pos)
+
+  let serverIdLen = readUint16BE(data, pos)
+  if serverIdLen > MaxKeySize:
+    raise newException(ProtocolError, "Server ID too large: " & $serverIdLen)
+  result.serverId = readString(data, pos, int(serverIdLen))
+
+  let pluginCount = readByte(data, pos)
+  if pluginCount > 0 and pos < data.len:
+    result.plugins = newSeq[string](pluginCount)
+    for i in 0 ..< int(pluginCount):
+      let pluginNameLen = readUint16BE(data, pos)
+      if pluginNameLen > 255:
+        raise newException(ProtocolError, "Plugin name too long: " & $pluginNameLen)
+      result.plugins[i] = readString(data, pos, int(pluginNameLen))
+  else:
+    result.plugins = @[]
+
+
