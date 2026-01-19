@@ -128,7 +128,8 @@ func NotFoundResponse(seq uint32) *Response {
 	return NewResponse(StatusNotFound, seq, "")
 }
 
-// Encode serializes a request to binary format
+// Encode serializes a request to binary format (v1.1)
+// Format: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
 func (r *Request) Encode() ([]byte, error) {
 	if len(r.Key) > MaxKeySize {
 		return nil, fmt.Errorf("key too large: %d bytes (max %d)", len(r.Key), MaxKeySize)
@@ -137,8 +138,8 @@ func (r *Request) Encode() ([]byte, error) {
 		return nil, fmt.Errorf("value too large: %d bytes (max %d)", len(r.Value), MaxValueSize)
 	}
 
-	// Calculate total size: 1 (cmd) + 4 (seq) + 2 (key len) + key + 4 (val len) + value
-	totalSize := 1 + 4 + 2 + len(r.Key) + 4 + len(r.Value)
+	// Calculate total size: 1 (cmd) + 4 (seq) + 1 (flags) + 2 (key len) + key + 4 (val len) + value
+	totalSize := 1 + 4 + 1 + 2 + len(r.Key) + 4 + len(r.Value)
 	buf := make([]byte, totalSize)
 
 	offset := 0
@@ -150,6 +151,10 @@ func (r *Request) Encode() ([]byte, error) {
 	// Sequence number (4 bytes, big-endian)
 	binary.BigEndian.PutUint32(buf[offset:], r.Seq)
 	offset += 4
+
+	// Flags (1 byte) - always 0 for now (no TTL support in Go client yet)
+	buf[offset] = 0
+	offset += 1
 
 	// Key length (2 bytes, big-endian)
 	if len(r.Key) > MaxKeySize {
