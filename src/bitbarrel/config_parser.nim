@@ -263,10 +263,12 @@ proc parseUsersConfig*(yamlNode: YamlNode): seq[UserConfig] =
     result.add(parseUserConfig(yamlNode[int(i)]))
 
 proc parseWebadminConfig*(yamlNode: YamlNode): WebadminConfig =
-  if yamlNode != nil and yamlNode.kind != yMapping:
+  if isNil(yamlNode):
+    raise newException(ValueError, "Webadmin config is nil")
+  if yamlNode.kind != yMapping:
     raise newException(ValueError, "Webadmin config must be a mapping")
 
-  let fields = if yamlNode != nil: yamlNode.fields else: nil
+  let fields = yamlNode.fields
   result.enabled = getYamlBool(fields, "enabled", false)
   result.path = getYamlString(fields, "path", "")
 
