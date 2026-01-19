@@ -11,6 +11,7 @@ export { BitBarrelClient, createClient } from './client';
 // Types and interfaces
 export type {
   ClientConfig,
+  ServerInfo,
   BarrelStats,
   RangeRequest,
   PrefixRequest,

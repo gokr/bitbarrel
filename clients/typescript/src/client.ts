@@ -10,7 +10,7 @@ import type {
   ClientConfig, Request, Response, RangeRequest, PrefixRequest,
   TraverseRequest, TraverseResult, TraverseOptions, BarrelStats,
   PubSubEvent, SubscriptionOptions, SubscriptionInfo,
-  PresenceInfo, HistoryRequest, TopicInfo,
+  PresenceInfo, HistoryRequest, TopicInfo, ServerInfo,
 } from './types';
 import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions, defaultSubscriptionOptions, defaultHistoryRequest as defaultHistoryRequestFn } from './types';
 import { Protocol } from './protocol';
@@ -65,6 +65,9 @@ export class BitBarrelClient extends EventEmitter {
   // Pub/Sub support
   private subscriptions = new Map<string, SubscriptionInfo>();
   private onMessage: ((event: PubSubEvent) => void) | null = null;
+  // Server info from handshake
+  private serverInfo: ServerInfo | null = null;
+  private handshakeReceived = false;
 
   constructor(config: ClientConfig | string = 'localhost', port?: number, token?: string) {
     super();
@@ -149,6 +152,8 @@ export class BitBarrelClient extends EventEmitter {
       this.ws = null;
       this.connected = false;
       this.currentBarrel = '';
+      this.serverInfo = null;
+      this.handshakeReceived = false;
 
       // Reject all pending requests
       for (const [_, pending] of this.pendingRequests) {
@@ -159,7 +164,19 @@ export class BitBarrelClient extends EventEmitter {
       // Clear message buffer
       this.messageBuffer = [];
       this.isProcessing = false;
+
+      this.emit('disconnected');
     }
+  }
+
+  getServerInfo(): ServerInfo {
+    if (!this.connected) {
+      throw new ConnectionError('Not connected');
+    }
+    if (!this.handshakeReceived) {
+      throw new ConnectionError('Handshake not received');
+    }
+    return this.serverInfo!;
   }
 
   isConnected(): boolean {
@@ -203,6 +220,65 @@ export class BitBarrelClient extends EventEmitter {
     }
   }
 
+  private parseHandshake(data: Buffer): ServerInfo {
+    // Format: [versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
+    if (data.length < 2) {
+      throw new ProtocolException('Handshake too short');
+    }
+
+    let offset = 0;
+
+    // Parse version
+    const versionMajor = data[offset++];
+    const versionMinor = data[offset++];
+
+    // Parse server ID length (2 bytes, big-endian)
+    if (data.length < offset + 2) {
+      throw new ProtocolException('Handshake truncated at server ID length');
+    }
+    const serverIdLen = (data[offset] << 8) | data[offset + 1];
+    offset += 2;
+
+    // Parse server ID
+    if (data.length < offset + serverIdLen) {
+      throw new ProtocolException('Handshake truncated at server ID');
+    }
+    const serverId = data.slice(offset, offset + serverIdLen).toString('utf-8');
+    offset += serverIdLen;
+
+    // Parse plugin count
+    if (data.length < offset + 1) {
+      throw new ProtocolException('Handshake truncated at plugin count');
+    }
+    const pluginCount = data[offset++];
+
+    // Parse plugins
+    const plugins: string[] = [];
+    for (let i = 0; i < pluginCount; i++) {
+      // Parse plugin name length (2 bytes, big-endian)
+      if (data.length < offset + 2) {
+        throw new ProtocolException('Handshake truncated at plugin name length');
+      }
+      const pluginNameLen = (data[offset] << 8) | data[offset + 1];
+      offset += 2;
+
+      // Parse plugin name
+      if (data.length < offset + pluginNameLen) {
+        throw new ProtocolException('Handshake truncated at plugin name');
+      }
+      const pluginName = data.slice(offset, offset + pluginNameLen).toString('utf-8');
+      plugins.push(pluginName);
+      offset += pluginNameLen;
+    }
+
+    return {
+      versionMajor,
+      versionMinor,
+      serverId,
+      plugins,
+    };
+  }
+
   private async processMessages(): Promise<void> {
     if (this.isProcessing) return;
     this.isProcessing = true;
@@ -210,6 +286,17 @@ export class BitBarrelClient extends EventEmitter {
     try {
       while (this.messageBuffer.length > 0) {
         const data = this.messageBuffer.shift()!;
+
+        // Check if this is the handshake (first message from server)
+        if (!this.handshakeReceived) {
+          try {
+            this.serverInfo = this.parseHandshake(data);
+            this.handshakeReceived = true;
+          } catch (error) {
+            this.emit('error', new BitBarrelError(`Failed to parse handshake: ${error instanceof Error ? error.message : String(error)}`));
+          }
+          continue;
+        }
 
         // Check if this is a PubSub event (command 0xFF)
         if (Protocol.isPubSubEvent(data)) {
@@ -229,7 +316,7 @@ export class BitBarrelClient extends EventEmitter {
           continue;
         }
 
-        // Skip text messages (e.g., welcome message)
+        // Skip text messages (should not happen with binary handshake)
         const firstByte = data[0];
         if (firstByte >= 0x20 && firstByte <= 0x7E) {
           // This is likely a text message, skip it

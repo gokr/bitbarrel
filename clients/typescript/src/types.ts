@@ -280,3 +280,11 @@ export function encodeSubscriptionOptions(opts: SubscriptionOptions): number {
   if (opts.replayHistory) encoded |= 0x04;
   return encoded;
 }
+
+// Server info from binary handshake
+export interface ServerInfo {
+  versionMajor: number;
+  versionMinor: number;
+  serverId: string;
+  plugins: string[];
+}
