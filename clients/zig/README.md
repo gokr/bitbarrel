@@ -412,6 +412,69 @@ Check that the BitBarrel server is running:
 
 The Zig bindings are part of the main BitBarrel project. See the main README for contribution guidelines.
 
-## License
+## Key Components
 
-Same as BitBarrel (see main project LICENSE file).
+### 1. Client Wrapper (`src/client.zig")
+- Zig wrapper around C client
+- Automatic memory management with allocators
+- Error translation from C to Zig errors
+- Config struct with defaults
+- Idiomatic Zig API
+
+### 2. Error Handling (`src/errors.zig")
+- Zig error types mapping to C error codes
+- Error translation utilities
+- Consistent error handling across the API
+
+### 3. Message Types (`src/message.zig")
+- Zig structs wrapping C message types
+- Proper lifetime management
+- Iterator support for range results
+
+## Protocol Compliance
+
+The Zig bindings implement BitBarrel protocol v1.1:
+- ✅ WebSocket transport
+- ✅ Binary protocol encoding
+- ✅ Big-endian integers
+- ✅ Barrel management commands
+- ✅ Data operations (GET, SET, DELETE, etc.)
+- ✅ Range queries
+- ✅ Pub/Sub (SUBSCRIBE, PUBLISH)
+- ✅ Key watching
+- ✅ Batch operations (encoded but not fully exposed yet)
+
+## Testing
+
+Run the test suite:
+
+```bash
+cd clients/zig
+zig build test
+```
+
+For integration testing with a server:
+```bash
+# Terminal 1: Start server
+./bitbarrel --server --port 9876
+
+# Terminal 2: Run tests
+zig build test
+```
+
+## Performance Considerations
+
+- Allocators allow custom memory management
+- Result type avoids exceptions
+- Iterator pattern for large result sets
+- Proper cleanup with defer
+
+## Future Enhancements
+
+- Async I/O support
+- Additional examples
+- Connection pooling
+- Batch operation helpers
+- Streaming API for large results
+- Additional integration tests
+

@@ -23,6 +23,36 @@ A C client library for BitBarrel that implements the network protocol (v1.1), al
 - C99-compatible compiler
 - OpenSSL (for SSL/TLS support)
 - POSIX threads (pthread)
+- libwebsockets (recommended for production use)
+
+#### Installing libwebsockets
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get install libwebsockets-dev
+```
+
+**Fedora/RHEL:**
+```bash
+sudo dnf install libwebsockets-devel
+```
+
+**macOS (Homebrew):**
+```bash
+brew install libwebsockets
+```
+
+**From source:**
+```bash
+git clone https://github.com/warmcat/libwebsockets.git
+cd libwebsockets
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+```
+
+The library will use libwebsockets if available, falling back to a built-in WebSocket implementation otherwise.
 
 ### Build Instructions
 
@@ -232,6 +262,56 @@ if (result != BB_OK) {
 
 See the `clients/zig/` directory for Zig bindings that provide a safe, idiomatic API on top of this C library.
 
-## License
+## Protocol Compliance
 
-This library follows the same license as BitBarrel (check the main project LICENSE file).
+This implementation follows BitBarrel protocol v1.1:
+- ✅ WebSocket transport
+- ✅ Binary protocol encoding
+- ✅ Big-endian integers
+- ✅ Barrel management commands
+- ✅ Data operations (GET, SET, DELETE, etc.)
+- ✅ Range queries
+- ✅ Pub/Sub (SUBSCRIBE, PUBLISH)
+- ✅ Key watching
+- ✅ Batch operations (encoded but not fully exposed in API yet)
+
+## Performance Considerations
+
+- Fixed buffer sizes (64KB) for most operations
+- No dynamic allocation in hot paths
+- Reused buffers for encoding/decoding
+- Thread-safe with minimal locking
+
+## Testing
+
+Run the test suite:
+
+```bash
+cd clients/c/build
+ctest
+```
+
+For manual testing with a server:
+```bash
+# Terminal 1: Start server
+./bitbarrel --server --port 9876
+
+# Terminal 2: Run tests
+cd clients/c/build
+ctest -V
+```
+
+Test categories:
+1. **Unit Tests**: Test encoding/decoding functions in isolation
+2. **Integration Tests**: Test against a running BitBarrel server
+3. **Compatibility Tests**: Verify against other client implementations
+
+## Future Enhancements
+
+- Full WebSocket handshake implementation
+- SSL/TLS verification
+- Additional examples (Pub/Sub, benchmarks)
+- Async callback API
+- Connection resilience with automatic reconnection
+- Health checking
+
