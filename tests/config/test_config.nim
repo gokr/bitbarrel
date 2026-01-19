@@ -11,7 +11,7 @@ suite "Configuration Tests":
 
     # Test server defaults
     check config.server.address == "0.0.0.0"
-    check config.server.port == 8080
+    check config.server.port == 9876
     check config.server.maxConnections == 10000
 
     # Test storage defaults
@@ -117,7 +117,7 @@ logging:
     check validateConfig(config) == false
 
     # Fix port and test other invalid values
-    config.server.port = 8080
+    config.server.port = 9876
     config.storage.maxKeySize = 0
     check validateConfig(config) == false
 
