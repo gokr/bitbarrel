@@ -667,12 +667,12 @@ proc main() =
   echo ""
   echo "  Notes:"
   echo "  ───────────────────────────────────"
-  echo "  • BitBarrel server uses binary batch protocol (setMany/getMany)"
-  echo "  • MySQL uses multi-row INSERT and WHERE IN for batch operations"
-  echo "  • BitBarrel's advantage is greatest for write-heavy workloads"
-  echo "  • For read workloads, the in-memory index provides significant speedup"
-  echo "  • Server performance includes network overhead"
-  echo "  • Batch size: 1000 operations per request for both systems"
+  echo "  • BitBarrel configured with buffered mode (syncMode: none) to match"
+  echo "    MySQL's transactional batching behavior"
+  echo "  • Both systems use single-batch operations (10,000 ops per request)"
+  echo "  • BitBarrel uses JSON/WebSocket protocol vs MySQL's binary protocol"
+  echo "  • MySQL's highly-optimized C implementation vs BitBarrel's Nim implementation"
+  echo "  • Server performance includes network protocol overhead"
   echo ""
 
 when isMainModule:

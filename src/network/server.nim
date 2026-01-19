@@ -19,7 +19,7 @@ import ../pubsub/presence
 import ../pubsub/barrel_hooks
 import ../pubsub/history_v2
 import ../pubsub/storage_manager
-import ../plugins/query_result_hooks
+import ../hooks/query_result_hooks
 
 # Import protocol module
 import protocol
@@ -699,7 +699,7 @@ proc handleWebSocketMessage*(
                   clientId: $ws.clientId,
                   hookKind: hkRangeQuery
                 )
-                if not applyQueryResultPlugins(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
+                if not applyQueryResultHooks(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
                   resp.status = statusError
                   resp.value = "Plugin not found or incompatible with query type"
                   return
@@ -751,7 +751,7 @@ proc handleWebSocketMessage*(
                   clientId: $ws.clientId,
                   hookKind: hkPrefixQuery
                 )
-                if not applyQueryResultPlugins(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
+                if not applyQueryResultHooks(params.plugins, metadata, mutableItems, mutableCursor, mutableHasMore):
                   resp.status = statusError
                   resp.value = "Plugin not found or incompatible with query type"
                   return
