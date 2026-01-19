@@ -215,13 +215,12 @@ class TestRequestEncoding:
 
     def test_decode_request_key_too_large(self):
         """Test that decoding fails with key length exceeding max."""
-        # Test the actual key length validation
         # Use a key length of 0 which will pass the length check
-        # but we'll test that the decoder properly validates the length field
         key_len = 0
-        # This test verifies that decode_request checks key length
-        # The actual validation happens when trying to extract key bytes
-        data = b"\x01\x00\x00\x00\x01" + struct.pack(">H", key_len) + b"\x00\x00\x00\x00"
+
+        # Build valid v1.1 format request: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+        # cmd=1 (GET), seq=1, flags=0, keyLen=0, valLen=0
+        data = b"\x01\x00\x00\x00\x01\x00" + struct.pack(">H", key_len) + b"\x00\x00\x00\x00"
 
         # Should not raise an error for valid key length
         cmd, seq, key, value = decode_request(data)
@@ -230,16 +229,12 @@ class TestRequestEncoding:
         assert key == ""
         assert value == ""
 
-        # Now test with a key length that's too large
-        # We can't pack > 65535 in an unsigned short, so test the boundary
-        large_key_len = MAX_KEY_SIZE  # 65535 is the max for uint16
-        data = b"\x01\x00\x00\x00\x01" + struct.pack(">H", large_key_len) + b"\x00\x00\x00\x00"
-
-        # This should pass since MAX_KEY_SIZE is exactly 65535
-
     def test_decode_request_invalid_command(self):
         """Test that decoding fails with invalid command."""
-        data = b"\xFF\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"  # Invalid command 0xFF
+        # Build valid length v1.1 format with invalid command
+        # [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+        # cmd=0xFF (invalid), seq=1, flags=0, keyLen=0, valLen=0
+        data = b"\xFF\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00"
 
         with pytest.raises(ProtocolError) as exc:
             decode_request(data)
