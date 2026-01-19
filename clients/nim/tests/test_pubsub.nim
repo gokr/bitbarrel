@@ -475,9 +475,9 @@ suite "Query Methods":
       # Get presence
       let presence = client1.getPresence(topic)
 
-      echo "DEBUG TEST: presence.members.len=", presence.members.len
-      for i, member in presence.members:
-        echo "DEBUG TEST: member[", i, "].clientId=", member.clientId
+      #echo "DEBUG TEST: presence.members.len=", presence.members.len
+      #for i, member in presence.members:
+      #  echo "DEBUG TEST: member[", i, "].clientId=", member.clientId
 
       check presence.topic == topic
       check presence.members.len >= 2
