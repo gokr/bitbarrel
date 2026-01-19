@@ -39,6 +39,7 @@ type
     id*: uint64               ## WebSocket client ID
     currentBarrel*: string    ## Name of current barrel (empty = none)
     authSession*: authjwt.AuthSession  ## Authentication session data
+    watches*: ref Table[string, tuple[subId: string, topic: string]]  ## watchId -> (subId, topicPattern)
 
   BarrelRegistry* = object
     barrels*: Table[string, BarrelWrapper]  ## name -> BarrelWrapper
@@ -298,7 +299,8 @@ proc closeAll*(reg: var BarrelRegistry) =
 
 proc newSession*(id: uint64): Session =
   ## Create a new session with the given ID.
-  Session(id: id, currentBarrel: "", authSession: authjwt.AuthSession(authenticated: false))
+  result = Session(id: id, currentBarrel: "", authSession: authjwt.AuthSession(authenticated: false))
+  result.watches = new(Table[string, tuple[subId: string, topic: string]])
 
 proc setCurrentBarrel*(session: var Session, barrelName: string) =
   ## Set the current barrel for a session.
