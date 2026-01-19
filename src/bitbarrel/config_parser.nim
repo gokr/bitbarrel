@@ -51,8 +51,14 @@ type
     enabled*: bool
     path*: string
 
+  PubSubConfig* = object
+    maxTopics*: int
+    maxSubscriptionsPerClient*: int
+    heartbeatTimeoutMs*: int
+
   BitBarrelConfig* = object
     server*: ServerConfig
+    serverId*: string
     storage*: StorageConfig
     performance*: PerformanceConfig
     compact*: CompactConfig
@@ -61,6 +67,7 @@ type
     auth*: AuthConfig
     users*: seq[UserConfig]
     webadmin*: WebadminConfig
+    pubsub*: PubSubConfig
 
 # YAML field access helpers - works with YamlNode.fields (TableRef[YamlNode, YamlNode])
 proc getYamlString*(fields: TableRef[yaml.YamlNode, yaml.YamlNode], key: string, default: string = ""): string =
@@ -130,7 +137,7 @@ proc parseServerConfig*(yamlNode: YamlNode): ServerConfig =
 
   let fields = yamlNode.fields
   result.address = getYamlString(fields, "address", "0.0.0.0")
-  result.port = getYamlInt(fields, "port", 8080)
+  result.port = getYamlInt(fields, "port", 9876)
   result.maxConnections = getYamlInt(fields, "max_connections", 10000)
   result.timeout = getYamlInt(fields, "timeout", 30000)
 
@@ -263,12 +270,22 @@ proc parseWebadminConfig*(yamlNode: YamlNode): WebadminConfig =
   result.enabled = getYamlBool(fields, "enabled", false)
   result.path = getYamlString(fields, "path", "")
 
+proc parsePubSubConfig*(yamlNode: YamlNode): PubSubConfig =
+  if yamlNode.kind != yMapping:
+    raise newException(ValueError, "PubSub config must be a mapping")
+
+  let fields = yamlNode.fields
+  result.maxTopics = getYamlInt(fields, "max_topics", 0)
+  result.maxSubscriptionsPerClient = getYamlInt(fields, "max_subscriptions_per_client", 0)
+  result.heartbeatTimeoutMs = getYamlInt(fields, "heartbeat_timeout_ms", 30000)
+
 proc getDefaultConfig*(): BitBarrelConfig =
   ## Get default configuration values
   result = BitBarrelConfig(
+    serverId: "",
     server: ServerConfig(
       address: "0.0.0.0",
-      port: 8080,
+      port: 9876,
       maxConnections: 10000,
       timeout: 30000
     ),
@@ -316,6 +333,11 @@ proc getDefaultConfig*(): BitBarrelConfig =
     webadmin: WebadminConfig(
       enabled: false,
       path: ""
+    ),
+    pubsub: PubSubConfig(
+      maxTopics: 0,
+      maxSubscriptionsPerClient: 0,
+      heartbeatTimeoutMs: 30000
     )
   )
 
@@ -343,6 +365,7 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
     for key, value in yamlRoot.fields.pairs:
       case key.content
       of "server": result.server = parseServerConfig(value)
+      of "serverId": result.serverId = value.content
       of "storage": result.storage = parseStorageConfig(value)
       of "performance": result.performance = parsePerformanceConfig(value)
       of "compact": result.compact = parseCompactConfig(value)
@@ -351,6 +374,7 @@ proc loadConfigFromYaml*(filePath: string): BitBarrelConfig =
       of "auth": result.auth = parseAuthConfig(value)
       of "users": result.users = parseUsersConfig(value)
       of "webadmin": result.webadmin = parseWebadminConfig(value)
+      of "pubsub": result.pubsub = parsePubSubConfig(value)
       else: discard
 
   except Exception as e:
@@ -367,9 +391,11 @@ proc saveConfigToYaml*(config: BitBarrelConfig, filePath: string) =
 
 server:
   address: "0.0.0.0"
-  port: 8080
+  port: 9876
   max_connections: 10000
   timeout: 30000
+
+# serverId: ""
 
 storage:
   data_dir: "./data"
@@ -425,5 +451,14 @@ auth:
 #   - username: "readonly"
 #     roles:
 #       - "readonly"
+
+webadmin:
+  enabled: false
+  # path: "/opt/bitbarrel/webadmin"
+
+pubsub:
+  max_topics: 0           # 0 = unlimited
+  max_subscriptions_per_client: 0  # 0 = unlimited
+  heartbeat_timeout_ms: 30000
 """
   writeFile(filePath, yamlContent)

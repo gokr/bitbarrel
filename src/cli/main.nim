@@ -216,7 +216,11 @@ proc runServer*(args: CliArgs) =
       defaultTokenExpiryHours: config.auth.defaultTokenExpiryHours
     ),
     webadminPath: config.webadmin.path,
-    webadminEnabled: config.webadmin.enabled
+    webadminEnabled: config.webadmin.enabled,
+    serverId: config.serverId,
+    maxPubSubTopics: config.pubsub.maxTopics,
+    maxSubscriptionsPerClient: config.pubsub.maxSubscriptionsPerClient,
+    pubSubHeartbeatTimeoutMs: config.pubsub.heartbeatTimeoutMs
   )
 
   # Create and start the server
