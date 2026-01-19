@@ -7,7 +7,7 @@ BitBarrel is a high-performance key/value storage engine built in Nim, using the
 - **Cursor-based pagination** for efficient range queries and prefix searches without offset overhead.
 - **Non-blocking compaction** — writes continue uninterrupted during background compaction.
 - **Graph traversal** with built-in reference model for modeling relationships and detecting cycles.
-- **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, and Python.
+- **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig.
 - **WebSocket protocol v1.1** with binary handshake, per-key TTL, key watching with pattern matching, and client-side request pipelining for reduced latency.
 - **JWT authentication** with role-based access control (admin, readwrite, readonly) for secure network access.
 - **LZ4 compression by default** (with Snappy as alternative), TTL, CRC32 checksums, and fast hint-file recovery.
@@ -85,13 +85,15 @@ nimble buildNoCompression
 
 BitBarrel provides client libraries in multiple languages for remote access via WebSocket, with JWT authentication support:
 
-| Language | Location | Status | Auth Support |
-|----------|----------|--------|--------------|
-| Nim | `clients/nim/` | Full WebSocket protocol | Token in ClientConfig |
-| Go | `clients/go/` | Full WebSocket protocol | Token parameter |
-| Dart/Flutter | `clients/dart/` | Mobile + Web compatible | `authToken` in config |
-| Python | `clients/python/` | Feature-complete WebSocket client | `auth_token` parameter, context manager |
-| TypeScript | `clients/typescript/` | Full WebSocket protocol + types | Token in ClientConfig |
+| Language | Location | Status | Auth Support | Notes |
+|----------|----------|--------|--------------|-------|
+| Nim | `clients/nim/` | Full WebSocket protocol | Token in ClientConfig | Native implementation |
+| Go | `clients/go/` | Full WebSocket protocol | Token parameter | Native implementation |
+| Dart/Flutter | `clients/dart/` | Mobile + Web compatible | `authToken` in config | Native implementation |
+| Python | `clients/python/` | Feature-complete WebSocket client | `auth_token` parameter, context manager | Native implementation |
+| TypeScript | `clients/typescript/` | Full WebSocket protocol + types | Token in ClientConfig | Native implementation |
+| **C** | `clients/c/` | Full WebSocket protocol | N/A | Binary protocol client |
+| **Zig** | `clients/zig/` | Idiomatic Zig API | N/A | Bindings to C library |
 
 ### Dart/Flutter Example
 
@@ -550,6 +552,8 @@ server.start()
 - **[clients/nim/README.md](clients/nim/README.md)** - Nim client documentation
 - **[clients/python/README.md](clients/python/README.md)** - Python client documentation
 - **[clients/typescript/README.md](clients/typescript/README.md)** - TypeScript/Node.js client documentation
+- **[clients/c/README.md](clients/c/README.md)** - C client library (binary protocol)
+- **[clients/zig/README.md](clients/zig/README.md)** - Zig bindings (idiomatic API)
 
 ### Getting Started
 - **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples

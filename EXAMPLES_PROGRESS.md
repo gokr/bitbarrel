@@ -45,19 +45,29 @@ This document tracks the implementation of pubsub history examples across all cl
 ### ⏳ PENDING
 
 #### 3. TypeScript Client Library
-**Status**: Core pubsub implemented, but query methods marked as pending
-**Plan**: Create example similar to Nim once methods are implemented
-**File**: `/home/gokr/tankfeud/bitbarrel/clients/typescript/examples/pubsub.ts` (planned)
+**Status**: ✅ Query methods implemented (listSubscribers, getHistory, getPresence)
+**Plan**: Create chat example following 12-step pattern
+**File**: `/home/gokr/tankfeud/bitbarrel/clients/typescript/examples/pubsub_chat.ts` (planned)
 
 #### 4. Python Client Library
-**Status**: Core pubsub implemented, but query methods marked as pending
-**Plan**: Create example using available features
+**Status**: ✅ Query methods implemented (list_subscribers, get_history, get_presence)
+**Plan**: Create chat example following 12-step pattern
 **File**: `/home/gokr/tankfeud/bitbarrel/clients/python/examples/pubsub_chat.py` (planned)
 
 #### 5. Dart/Flutter Client Library
-**Status**: Basic pubsub methods exist, event handling not fully implemented
-**Plan**: Create example showing available functionality
+**Status**: ✅ Query methods implemented (listSubscribers, getHistory, getPresence)
+**Plan**: Create chat example following 12-step pattern
 **File**: `/home/gokr/tankfeud/bitbarrel/clients/dart/example/pubsub_example.dart` (planned)
+
+#### 6. C Client Library
+**Status**: Core pubsub implemented, query methods missing
+**Plan**: Add query methods then create example
+**File**: `/home/gokr/tankfeud/bitbarrel/clients/c/examples/pubsub_example.c` (planned)
+
+#### 7. Zig Client Library
+**Status**: Wraps C library, inherits C limitations
+**Plan**: Update wrapper for new query methods, create example
+**File**: `/home/gokr/tankfeud/bitbarrel/clients/zig/examples/pubsub_example.zig` (planned)
 
 ## Technical Notes
 
@@ -106,6 +116,36 @@ cd /home/gokr/tankfeud/bitbarrel/clients/go
 go run examples/pubsub/main.go
 ```
 
+### TypeScript Example
+```bash
+cd /home/gokr/tankfeud/bitbarrel/clients/typescript
+npm run build && node examples/pubsub_chat.ts
+```
+
+### Python Example
+```bash
+cd /home/gokr/tankfeud/bitbarrel/clients/python
+python examples/pubsub_chat.py
+```
+
+### Dart Example
+```bash
+cd /home/gokr/tankfeud/bitbarrel/clients/dart
+dart run example/pubsub_example.dart
+```
+
+### C Example
+```bash
+cd /home/gokr/tankfeud/bitbarrel/clients/c
+make && ./examples/pubsub_example
+```
+
+### Zig Example
+```bash
+cd /home/gokr/tankfeud/bitbarrel/clients/zig
+zig build && ./zig-out/bin/pubsub_example
+```
+
 ## Dependencies
 
 - **BitBarrel Server**: Running with pubsub enabled
@@ -114,24 +154,27 @@ go run examples/pubsub/main.go
 
 ## Next Steps
 
-1. Implement query methods in TypeScript client
-2. Implement query methods in Python client
-3. Complete Dart client event handling
-4. Create examples for remaining languages
-5. Add Docker Compose setup for easy testing
-6. Create comprehensive user guide for examples
+1. Implement query methods in C client (bb_list_subscribers, bb_get_history, bb_get_presence)
+2. Update Zig client wrapper for new query methods
+3. Create TypeScript chat example (12-step pattern)
+4. Create Python chat example (12-step pattern)
+5. Create Dart chat example (12-step pattern)
+6. Create C chat example (12-step pattern)
+7. Create Zig chat example (12-step pattern)
+8. Add Docker Compose setup for easy testing
+9. Create comprehensive user guide for examples
 
 ## Client Library Feature Matrix
 
-| Feature | Nim | Go | TypeScript | Python | Dart |
-|---------|-----|-----|------------|--------|------|
-| **Core PubSub** | ✅ | ✅ | ⏳ | ⏳ | ⏳ |
-| **History Retrieval** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **List Subscribers** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **List Topics** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Get Presence** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Event Receiver** | ✅ | ❌ | ⏳ | ⏳ | ⏳ |
-| **Example Created** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Feature | Nim | Go | TypeScript | Python | Dart | C | Zig |
+|---------|-----|-----|------------|--------|------|---|---|
+| **Core PubSub** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **History Retrieval** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **List Subscribers** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **List Topics** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Get Presence** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Event Receiver** | ✅ | ❌ | ⏳ | ⏳ | ⏳ | ⏳ | ⏳ |
+| **Example Created** | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **Legend:**
 - ✅ Complete and tested
