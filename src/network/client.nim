@@ -6,11 +6,18 @@
 ## To use a different WebSocket implementation, modify this file to replace
 ## the whisky dependency with another library.
 
-import std/[locks, tables, strformat, net, strutils, os, httpclient]
+import std/[locks, tables, strformat, net, strutils, os, httpclient, times]
 import whisky
 import protocol
 
 type
+  ServerInfo* = object
+    ## Information received from server during handshake
+    versionMajor*: int
+    versionMinor*: int
+    serverId*: string
+    availablePlugins*: seq[string]
+
   BitBarrelClient* = object
     ## Client for BitBarrel network operations
     ##
@@ -26,6 +33,7 @@ type
     pending*: Table[uint32, protocol.Response]
     lock: Lock
     token*: string            ## JWT authorization token
+    serverInfo*: ServerInfo    ## Server information from handshake
 
   ClientConfig* = object
     ## Configuration for BitBarrel client connections
@@ -42,6 +50,14 @@ type
     includeFullData*: bool    ## Return full values or just paths
     extractArrays*: bool      ## Extract array elements individually
     firstOnly*: bool          ## Stop after first result
+
+  Pipeline* = object
+    ## Pipeline for sending multiple requests without waiting
+    ## Improves throughput by batching operations
+    client*: ptr BitBarrelClient
+    pendingSeqs*: seq[uint32]  ## Sequence numbers of sent requests
+    responses*: seq[protocol.Response]  ## Collected responses
+    lock*: Lock
 
 proc newClient*(config: ClientConfig): BitBarrelClient =
   ## Create a new BitBarrel client
@@ -115,7 +131,7 @@ proc connect*(client: var BitBarrelClient) =
     else:
       client.ws = newWebSocket(url)
 
-    # Wait for welcome message
+    # Wait for binary handshake message (protocol v1.1+)
     const maxAttempts = 50  # 50 * 100ms = 5 seconds
     var attempts = 0
 
@@ -123,15 +139,36 @@ proc connect*(client: var BitBarrelClient) =
       let msg = client.ws.receiveMessage(timeout = 100)
       if msg.isSome():
         let m = msg.get()
-        if m.kind == TextMessage and m.data.contains("Connected to BitBarrel"):
+        if m.kind == BinaryMessage:
+          try:
+            let handshake = protocol.decodeHandshake(m.data)
+            client.serverInfo = ServerInfo(
+              versionMajor: int(handshake.versionMajor),
+              versionMinor: int(handshake.versionMinor),
+              serverId: handshake.serverId,
+              availablePlugins: handshake.plugins
+            )
+            client.connected = true
+            return
+          except CatchableError:
+            # Not a valid handshake, might be old server
+            discard
+        elif m.kind == TextMessage and m.data.contains("Connected to BitBarrel"):
+          # Fallback for v1.0 servers
+          client.serverInfo = ServerInfo(
+            versionMajor: 1,
+            versionMinor: 0,
+            serverId: "",
+            availablePlugins: @[]
+          )
           client.connected = true
           return
 
       inc attempts
-    raise newException(ClientError, "No welcome message received from server")
+    raise newException(ClientError, "No handshake message received from server")
 
   except CatchableError as e:
-    raise newException(ClientError, fmt"Failed to connect: {e.msg}")
+    raise newException(ClientError, fmt("Failed to connect: {e.msg}"))
 
 proc close*(client: var BitBarrelClient) {.raises: [].} =
   ## Close connection
@@ -327,9 +364,98 @@ proc set*(client: var BitBarrelClient, key, value: string): bool =
 
   client.connect()
 
-  let req = Request(command: cmdSet, key: key, value: value)
+  # Use protocol v1.1 format with flags (v1.1 compatible)
+  let req = Request(command: protocol.cmdSet, key: key, value: value,
+                    flags: protocol.rfNone, ttl: -1.int32)
   let resp = client.sendAndWait(req)
   return resp.status == statusOk
+
+proc setWithTtl*(client: var BitBarrelClient, key, value: string, ttlSeconds: int): bool =
+  ## Set key-value pair with TTL
+  ##
+  ## The key will expire after `ttlSeconds` seconds.
+  ## ttlSeconds must be >= 0 for TTL to be applied.
+  ##
+  ## Raises `ClientError` if no barrel is selected
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## client.setWithTtl("temp:session", "Active", 60)  # Expires in 60 seconds
+  ## ```
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  if ttlSeconds < 0:
+    raise newException(ClientError, "TTL must be >= 0")
+
+  client.connect()
+
+  # Use protocol v1.1 format with flags and TTL
+  let req = Request(command: protocol.cmdSet, key: key, value: value,
+                    flags: protocol.rfHasTtl, ttl: int32(ttlSeconds))
+  let resp = client.sendAndWait(req)
+  return resp.status == statusOk
+
+proc watchKeys*(client: var BitBarrelClient, pattern: string): string =
+  ## Watch keys matching pattern for changes
+  ##
+  ## Uses Pub/Sub internally to subscribe to key change events.
+  ## Client will receive async messages when keys matching the pattern change.
+  ##
+  ## Returns a watch ID for later unwatching.
+  ##
+  ## Raises `ClientError` if no barrel is selected
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## let watchId = client.watchKeys("user:*")  # Watch user keys
+  ## # Set a key that will trigger event
+  ## client.set("user:123", "Bob")
+  ## # Later: stop watching
+  ## client.unwatchKeys(watchId)
+  ## ```
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  client.connect()
+
+  let watchReq = protocol.WatchRequest(barrelName: "", pattern: pattern, includeValues: true)
+  let encodedWatch = protocol.encodeWatchRequest(watchReq)
+  let req = Request(command: protocol.cmdWatchKey, key: "", value: encodedWatch)
+  let resp = client.sendAndWait(req)
+
+  if resp.status != protocol.statusOk:
+    raise newException(ClientError, "Watch failed: " & resp.value)
+
+  return resp.value
+
+proc unwatchKeys*(client: var BitBarrelClient, watchId: string): bool =
+  ## Stop watching keys by watch ID
+  ##
+  ## Raises `ClientError` if operation fails
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.useBarrel("mydb")
+  ##
+  ## let watchId = client.watchKeys("user:*")
+  ## # ... do work ...
+  ## client.unwatchKeys(watchId)  # Stop watching
+  ## ```
+  client.connect()
+
+  let req = Request(command: protocol.cmdUnwatchKey, key: watchId, value: "")
+  let resp = client.sendAndWait(req)
+  return resp.status == protocol.statusOk
 
 proc delete*(client: var BitBarrelClient, key: string): bool =
   ## Delete a key (using tombstone)
@@ -401,11 +527,12 @@ proc ping*(client: var BitBarrelClient): bool =
 # Range query operations (require bmCritBit mode barrel)
 
 proc rangeQuery*(client: var BitBarrelClient, startKey: string = "", endKey: string = "",
-                 limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+                 limit: int = 1000, cursor: string = "", plugins: seq[string] = @[]): (seq[(string, string)], string, bool) =
   ## Query key-value pairs in range [startKey, endKey) with cursor-based pagination
   ## Requires barrel opened in bmCritBit mode
   ## Use empty strings for startKey/endKey to query entire barrel
   ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+  ## plugins: Names of query result plugins to apply (optional)
   ##
   ## **Example:**
   ## ```nim
@@ -431,7 +558,8 @@ proc rangeQuery*(client: var BitBarrelClient, startKey: string = "", endKey: str
     startKey: startKey,
     endKey: endKey,
     limit: limit,
-    cursor: cursor
+    cursor: cursor,
+    plugins: plugins
   )
 
   let req = Request(command: cmdRangeQuery, value: protocol.encodeRangeRequest(params))
@@ -444,10 +572,11 @@ proc rangeQuery*(client: var BitBarrelClient, startKey: string = "", endKey: str
   result = (rangeResp.items, rangeResp.nextCursor, rangeResp.hasMore)
 
 proc prefixQuery*(client: var BitBarrelClient, prefix: string,
-                  limit: int = 1000, cursor: string = ""): (seq[(string, string)], string, bool) =
+                  limit: int = 1000, cursor: string = "", plugins: seq[string] = @[]): (seq[(string, string)], string, bool) =
   ## Query key-value pairs with prefix with cursor-based pagination
   ## Requires barrel opened in bmCritBit mode
   ## Returns: ``(items: seq[(string, string)], nextCursor: string, hasMore: bool)``
+  ## plugins: Names of query result plugins to apply (optional)
   ##
   ## **Example:**
   ## ```nim
@@ -474,7 +603,8 @@ proc prefixQuery*(client: var BitBarrelClient, prefix: string,
   let params = protocol.PrefixRequest(
     prefix: prefix,
     limit: limit,
-    cursor: cursor
+    cursor: cursor,
+    plugins: plugins
   )
 
   let req = Request(command: cmdPrefixQuery, value: protocol.encodePrefixRequest(params))
@@ -984,6 +1114,178 @@ proc getMany*(client: var BitBarrelClient, keys: openArray[string]): seq[(string
       raise newException(ClientError, "Barrel not found")
     else:
       raise newException(ClientError, "Batch get failed: " & resp.value)
+
+# ==================== Pipeline Operations ====================
+# Pipelining sends multiple requests without waiting, improving throughput
+
+proc startPipeline*(client: var BitBarrelClient): Pipeline =
+  ## Start a new pipeline for batched operations
+  ##
+  ## Pipelining allows sending multiple requests without waiting for responses,
+  ## significantly reducing network round-trip latency.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.useBarrel("mydb")
+  ##
+  ## var p = client.startPipeline()
+  ## p.pipelineSet("key1", "value1")
+  ## p.pipelineSet("key2", "value2")
+  ## p.pipelineGet("key1")
+  ## let results = p.waitAll()  # Returns all responses
+  ## ```
+  result = Pipeline(
+    client: addr(client),
+    pendingSeqs: @[],
+    responses: @[],
+  )
+  initLock(result.lock)
+
+proc pipelineSend*(pipeline: var Pipeline, req: Request): uint32 =
+  ## Send a request through the pipeline (does not wait)
+  ##
+  ## Returns the sequence number of the sent request
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## let req = newRequest(cmdSet, "key", "value")
+  ## let seqNum = p.pipelineSend(req)
+  ## # ... send more operations ...
+  ## let results = p.waitAll()
+  ## ```
+  let client = pipeline.client
+  client[].connect()
+
+  var mutableReq = req
+  mutableReq.seq = client[].seqCounter
+  client[].seqCounter += 1
+
+  withLock pipeline.lock:
+    pipeline.pendingSeqs.add(mutableReq.seq)
+
+  try:
+    client[].ws.send(encodeRequest(mutableReq), kind = BinaryMessage)
+    return mutableReq.seq
+  except CatchableError as e:
+    raise newException(ClientError, fmt("Pipeline send error: {e.msg}"))
+
+proc pipelineGet*(pipeline: var Pipeline, key: string): uint32 =
+  ## Queue a GET operation in the pipeline
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## let seq1 = p.pipelineGet("user:1")
+  ## let seq2 = p.pipelineGet("user:2")
+  ## let results = p.waitAll()
+  ## ## results[0] is response for seq1, results[1] is response for seq2
+  ## ```
+  let req = Request(command: protocol.cmdGet, key: key)
+  pipeline.pipelineSend(req)
+
+proc pipelineSet*(pipeline: var Pipeline, key, value: string): uint32 =
+  ## Queue a SET operation in the pipeline
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## p.pipelineSet("key1", "value1")
+  ## p.pipelineSet("key2", "value2")
+  ## let results = p.waitAll()
+  ## ```
+  let req = Request(command: protocol.cmdSet, key: key, value: value)
+  pipeline.pipelineSend(req)
+
+proc pipelineDelete*(pipeline: var Pipeline, key: string): uint32 =
+  ## Queue a DELETE operation in the pipeline
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## p.pipelineDelete("old:1")
+  ## p.pipelineDelete("old:2")
+  ## let results = p.waitAll()
+  ## ```
+  let req = Request(command: protocol.cmdDelete, key: key)
+  pipeline.pipelineSend(req)
+
+proc pipelineExists*(pipeline: var Pipeline, key: string): uint32 =
+  ## Queue an EXISTS operation in the pipeline
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## p.pipelineExists("user:1")
+  ## let results = p.waitAll()
+  ## echo results[0].value  ## "true" or "false"
+  ## ```
+  let req = Request(command: protocol.cmdExists, key: key)
+  pipeline.pipelineSend(req)
+
+proc waitAll*(pipeline: var Pipeline, timeoutMs: int = 30000): seq[protocol.Response] =
+  ## Wait for all pipelined requests to complete
+  ##
+  ## Returns responses in the same order as requests were sent
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## p.pipelineSet("k1", "v1")
+  ## p.pipelineGet("k1")
+  ## let results = p.waitAll()
+  ## echo results[0].status  ## status set result
+  ## echo results[1].value   ## "v1"
+  ## ```
+  result = @[]
+  let client = pipeline.client
+
+  # Collect responses for all pending seqs
+  var remaining: Table[uint32, int]  # seq -> index in result
+
+  withLock pipeline.lock:
+    for i, seqNum in pipeline.pendingSeqs:
+      remaining[seqNum] = i
+    result.setLen(pipeline.pendingSeqs.len)
+
+  # Wait for responses
+  let startTime = epochTime()
+  while remaining.len > 0:
+    let elapsed = int((epochTime() - startTime) * 1000)
+    if elapsed >= timeoutMs:
+      raise newException(ClientError, "Pipeline timeout: " & $remaining.len & " requests pending")
+
+    let msg = client[].ws.receiveMessage(timeout = 100)
+    if msg.isSome() and msg.get().kind == BinaryMessage:
+      try:
+        let resp = decodeResponse(msg.get().data)
+        withLock pipeline.lock:
+          if resp.seq in remaining:
+            let idx = remaining[resp.seq]
+            result[idx] = resp
+            remaining.del(resp.seq)
+      except CatchableError:
+        discard  # Ignore decode errors - might be for other concurrent operations
+
+  # Clear pending seqs
+  withLock pipeline.lock:
+    pipeline.pendingSeqs.setLen(0)
+
+proc close*(pipeline: var Pipeline) =
+  ## Close the pipeline and clear pending operations
+  ##
+  ## Any pending requests will not receive responses
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var p = client.startPipeline()
+  ## p.pipelineSet("key", "value")
+  ## p.close()  # Discard pending operations
+  ## ```
+  withLock pipeline.lock:
+    pipeline.pendingSeqs.setLen(0)
+    pipeline.responses.setLen(0)
 
 proc deleteMany*(client: var BitBarrelClient, keys: openArray[string]): int =
   ## Delete multiple keys using batch protocol
