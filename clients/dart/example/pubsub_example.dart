@@ -4,9 +4,9 @@ import 'package:bitbarrel/bitbarrel.dart';
 Future<void> main() async {
   print('=== BitBarrel PubSub Chat Room Example (12-step pattern) ===\n');
 
-  // Step 1: Connect to BitBarrel server (localhost:1337)
+  // Step 1: Connect to BitBarrel server (localhost:9876)
   print('1. Connecting to BitBarrel server...');
-  final client = BitBarrelClient(host: 'localhost', port: 1337);
+  final client = BitBarrelClient.localhost(); // default port 9876
   await client.connect();
   print('✓ Connected to BitBarrel server\n');
 
@@ -14,8 +14,8 @@ Future<void> main() async {
     // Step 2: Setup chat storage barrel
     print('2. Setting up chat storage barrel...');
     try {
-      await client.createBarrel('chat_storage', mode: BBMode.critbit);
-      print('✓ Created chat_storage barrel (bmCritBit mode)');
+      await client.createBarrel('chat_storage');
+      print('✓ Created chat_storage barrel');
     } on BitBarrelException {
       // Barrel might already exist
       print('✓ Using existing chat_storage barrel');
@@ -27,11 +27,10 @@ Future<void> main() async {
     print('3. Subscribing to "room:general"...');
     final subscriptionOptions = SubscriptionOptions(
       replayHistory: true,
-      trackPresence: true,
-      pattern: false, // exact match
+      enablePresence: true,
     );
-    await client.subscribe('room:general', options: subscriptionOptions);
-    print('✓ Subscribed to "room:general" with history replay and presence tracking\n');
+    final subIdGeneral = await client.subscribe('room:general', options: subscriptionOptions);
+    print('✓ Subscribed to "room:general" with history replay and presence tracking (subscription ID: $subIdGeneral)\n');
 
     // Step 4: Publish 5 chat messages from 5 users
     print('4. Publishing 5 chat messages from 5 users...');
@@ -52,7 +51,7 @@ Future<void> main() async {
         'message': message,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
-      await client.publish('room:general', data);
+      await client.publishData('room:general', data);
       print('  $user: $message');
       await Future.delayed(Duration(milliseconds: 100)); // Small delay
     }
@@ -65,18 +64,18 @@ Future<void> main() async {
     for (var i = 0; i < history.length; i++) {
       final msg = history[i];
       try {
-        final data = jsonDecode(msg.data) as Map<String, dynamic>;
+        final data = jsonDecode(msg.payload) as Map<String, dynamic>;
         print('  [${i + 1}] ${data['user']}: ${data['message']}');
       } catch (e) {
-        print('  [${i + 1}] ${msg.data}');
+        print('  [${i + 1}] ${msg.payload}');
       }
     }
-    print();
+    print('');
 
     // Step 6: Subscribe to "room:*" pattern
     print('6. Subscribing to "room:*" pattern...');
-    await client.subscribe('room:*', options: SubscriptionOptions(pattern: true));
-    print('✓ Subscribed to "room:*" pattern\n');
+    final subIdPattern = await client.subscribe('room:*');
+    print('✓ Subscribed to "room:*" pattern (subscription ID: $subIdPattern)\n');
 
     // Step 7: Publish to different rooms (tech, random)
     print('7. Publishing to different rooms...');
@@ -90,28 +89,29 @@ Future<void> main() async {
         'message': rm['message'],
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
-      await client.publish(rm['room'] as String, data);
+      await client.publishData(rm['room'] as String, data);
       print('  Published to ${rm['room']}: ${rm['user']}: ${rm['message']}');
     }
-    print();
+    print('');
 
     // Step 8: Query subscribers in "room:general"
     print('8. Querying subscribers in "room:general"...');
     final subscribers = await client.listSubscribers('room:general');
     print('✓ Subscribers in "room:general": ${subscribers.length} subscribers');
     for (var i = 0; i < subscribers.length; i++) {
-      print('  ${i + 1}. ${subscribers[i]}');
+      final sub = subscribers[i];
+      print('  ${i + 1}. ${sub.id} (topic: ${sub.topic}, pattern: ${sub.pattern})');
     }
-    print();
+    print('');
 
     // Step 9: Check presence information
     print('9. Checking presence information...');
     final presence = await client.getPresence('room:general');
     print('✓ Presence information:');
-    print('  Active subscribers: ${presence.activeSubscribers}');
-    print('  Total messages: ${presence.totalMessages}');
-    print('  Last activity: ${DateTime.fromMillisecondsSinceEpoch(presence.lastActivity).toLocal()}');
-    print();
+    print('  Topic: ${presence.topic}');
+    print('  Members: ${presence.members.length}');
+    print('  Last update: ${DateTime.fromMillisecondsSinceEpoch(presence.lastUpdate * 1000).toLocal()}');
+    print('');
 
     // Step 10: Get history with sequence filtering (sinceSeq=3)
     print('10. Getting history since sequence 3...');
@@ -119,13 +119,13 @@ Future<void> main() async {
     print('✓ Retrieved ${historySince3.length} messages since sequence 3:');
     for (final msg in historySince3) {
       try {
-        final data = jsonDecode(msg.data) as Map<String, dynamic>;
+        final data = jsonDecode(msg.payload) as Map<String, dynamic>;
         print('  [seq ${msg.sequence}] ${data['user']}: ${data['message']}');
       } catch (e) {
-        print('  [seq ${msg.sequence}] ${msg.data}');
+        print('  [seq ${msg.sequence}] ${msg.payload}');
       }
     }
-    print();
+    print('');
 
     // Step 11: Show history per room
     print('11. Showing history per room...');
@@ -137,22 +137,22 @@ Future<void> main() async {
         if (roomHistory.isNotEmpty) {
           final lastMsg = roomHistory.last;
           try {
-            final data = jsonDecode(lastMsg.data) as Map<String, dynamic>;
+            final data = jsonDecode(lastMsg.payload) as Map<String, dynamic>;
             print('    Last: ${data['user']}: ${data['message']}');
           } catch (e) {
-            print('    Last: ${lastMsg.data}');
+            print('    Last: ${lastMsg.payload}');
           }
         }
       } on BitBarrelException {
         print('  $room: No history available');
       }
     }
-    print();
+    print('');
 
     // Step 12: Cleanup (unsubscribe, close)
     print('12. Cleaning up...');
-    await client.unsubscribe('room:general');
-    await client.unsubscribe('room:*');
+    await client.unsubscribe(subIdGeneral);
+    await client.unsubscribe(subIdPattern);
     print('✓ Unsubscribed from all topics');
     await client.close();
     print('✓ Closed connection\n');
