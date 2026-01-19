@@ -34,10 +34,10 @@ proc wrapperGet(wrapper: BarrelWrapper, key: string): string =
   of bkHuge:
     wrapper.hugeBarrel.get(key)
 
-proc wrapperSet(wrapper: var BarrelWrapper, key: string, value: string): bool =
+proc wrapperSet(wrapper: var BarrelWrapper, key: string, value: string, ttl: int = -1): bool =
   case wrapper.kind
   of bkRegular:
-    wrapper.regularBarrel.set(key, value)
+    wrapper.regularBarrel.set(key, value, ttl)
   of bkHuge:
     wrapper.hugeBarrel.set(key, value)
 
@@ -172,6 +172,7 @@ type
     auth*: authjwt.AuthConfig  ## Authentication configuration
     webadminPath*: string ## Path to webadmin build files
     webadminEnabled*: bool ## Enable webadmin UI serving
+    serverId*: string     ## Unique server identifier (auto-generated if empty)
 
     # Pub/Sub configuration
     pubSubEnabled*: bool              ## Enable pub/sub system (default: true)
@@ -518,12 +519,15 @@ proc handleWebSocketMessage*(
             if not authSess.canWriteData():
               resp.status = statusUnauthorized
               resp.value = "Unauthorized: write access required"
-            elif wrapperSet(wrapper, req.key, req.value):
-              server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
-              resp.status = statusOk
             else:
-              server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
-              resp.status = statusError
+              # Extract TTL from v1.1 request (via flags byte)
+              let ttl = if (ord(req.flags) and ord(rfHasTtl)) != 0: req.ttl else: -1
+              if wrapperSet(wrapper, req.key, req.value, ttl):
+                server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
+                resp.status = statusOk
+              else:
+                server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
+                resp.status = statusError
 
           of cmdDelete:
             let start = epochTime()
@@ -571,7 +575,7 @@ proc handleWebSocketMessage*(
             # Batch commands are handled at the outer level
             discard
 
-          of cmdSubscribe, cmdUnsubscribe, cmdPublish, cmdListSubscribers, cmdHistory, cmdListTopics, cmdPresence:
+          of cmdSubscribe, cmdUnsubscribe, cmdPublish, cmdListSubscribers, cmdHistory, cmdListTopics, cmdPresence, cmdWatchKey, cmdUnwatchKey:
             # Pub/sub commands are handled at the outer level
             discard
 
@@ -1256,6 +1260,92 @@ proc handleWebSocketMessage*(
         resp.status = statusError
         resp.value = "Presence error: " & e.msg
 
+  of cmdWatchKey:
+    ## Watch keys matching pattern via Pub/Sub
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        let watchReq = protocol.decodeWatchRequest(req.value)
+        # Determine barrel name (from request or session current barrel)
+        var barrelName = watchReq.barrelName
+        if barrelName.len == 0:
+          withLock server.sessionsLock:
+            if ws.clientId in server.sessions:
+              barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+            else:
+              barrelName = ""
+
+        if barrelName == "":
+          resp.status = statusNoBarrel
+          resp.value = "No barrel selected"
+        else:
+          # Build Pub/Sub topic pattern for key watching
+          # Topic format: kv:{barrelName}:{pattern}
+          const KvTopicPrefix = "kv:"
+          let topicPattern = KvTopicPrefix & barrelName & ":" & watchReq.pattern
+
+          # Create Pub/Sub subscription with KV events enabled
+          let subOptions = pubsub.SubscriptionOptions(
+            enableKvEvents: true,
+            enablePresence: false,
+            replayHistory: false
+          )
+
+          let subId = server.pubSubManager.subscribe(
+            ws.clientId, "", topicPattern, subOptions
+          )
+
+          # Generate watch ID (UUID string)
+          let watchId = pubsub.generateUuid()
+
+          # Store watch mapping in session (for unwatch later)
+          withLock server.sessionsLock:
+            if ws.clientId in server.sessions:
+              # Store watch entry: watchId -> (subscriptionId, topicPattern)
+              if session.watches == nil:
+                session.watches = new(Table[string, tuple[subId: string, topic: string]])
+              session.watches[watchId] = (subId: subId, topic: topicPattern)
+
+          resp.status = statusOk
+          resp.value = watchId
+
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Watch error: " & e.msg
+
+  of cmdUnwatchKey:
+    ## Stop watching keys by watch ID
+    if not server.pubSubEnabled or server.pubSubManager == nil:
+      resp.status = statusError
+      resp.value = "Pub/sub not enabled"
+    else:
+      try:
+        let watchId = req.key  # Watch ID passed as key
+
+        # Find and remove the watch subscription
+        var found = false
+        withLock server.sessionsLock:
+          if ws.clientId in server.sessions and session.watches != nil:
+            if watchId in session.watches:
+              let watchEntry = session.watches[watchId]
+              # Unsubscribe from the Pub/Sub pattern
+              discard server.pubSubManager.unsubscribe(ws.clientId, watchEntry.topic)
+              # Remove from session
+              session.watches.del(watchId)
+              found = true
+
+        if found:
+          resp.status = statusOk
+        else:
+          resp.status = statusInvalid
+          resp.value = "Watch not found"
+
+      except CatchableError as e:
+        resp.status = statusError
+        resp.value = "Unwatch error: " & e.msg
+
   else:
     resp.status = statusInvalid
     resp.value = "Unknown command"
@@ -1295,7 +1385,37 @@ proc websocketUpgradeHandler*(server: BitBarrelServer, request: mummy.Request) =
     session.authSession = authSession
     withLock server.sessionsLock:
       server.sessions[ws.clientId] = session
-    # Don't send text message - client expects only binary messages (after welcome)
+    # Send server handshake (binary protocol v1.1)
+    var sId = server.config.serverId
+    if sId.len == 0:
+      sId = pubsub.generateUuid()
+    echo "[DEBUG] Upgrade: about to send handshake, clientId=" & $ws.clientId
+    writeLine(stderr, "[DEBUG] Upgrade: about to send handshake, clientId=" & $ws.clientId)
+    flushFile(stderr)
+    try:
+      # Get list of loaded plugins
+      let plugins = if server.pubSubEnabled and server.eventBroker != nil:
+        newSeq[string]()  # TODO: Get actual plugin list from query_result_hooks
+      else:
+        newSeq[string]()
+
+      var handshake = ServerHandshake(
+        versionMajor: 1,
+        versionMinor: 1,
+        serverId: sId,
+        plugins: plugins
+      )
+
+      let encoded = protocol.encodeHandshake(handshake)
+      ws.send(encoded, BinaryMessage)
+      echo "[DEBUG] Sent handshake after upgrade, clientId=" & $ws.clientId
+      writeLine(stderr, "[DEBUG] Sent handshake after upgrade, clientId=" & $ws.clientId)
+      flushFile(stderr)
+    except CatchableError as e:
+      echo "[DEBUG] Failed to send handshake: " & e.msg
+      echo "Stack trace: ", e.getStackTrace()
+      writeLine(stderr, "[DEBUG] Failed to send handshake: " & e.msg)
+      flushFile(stderr)
   except CatchableError:
     request.respond(400, body = "WebSocket upgrade failed")
 
@@ -1334,16 +1454,6 @@ proc websocketHandler*(
       writeLine(stderr, "WebSocket handler initialized for clientId=" & $ws.clientId)
       flushFile(stderr)
 
-      # Send welcome message (client expects this)
-      writeLine(stderr, "[DEBUG] Attempting to send welcome message to clientId=" & $ws.clientId)
-      flushFile(stderr)
-      try:
-        ws.send("Connected to BitBarrel network server", TextMessage)
-        writeLine(stderr, "[DEBUG] Sent welcome message to clientId=" & $ws.clientId)
-        flushFile(stderr)
-      except CatchableError as e:
-        writeLine(stderr, "[DEBUG] Failed to send welcome message: " & e.msg)
-        flushFile(stderr)
 
       # Register client with event broker for pub/sub (just stores the clientId)
       if server.pubSubEnabled and server.eventBroker != nil:
