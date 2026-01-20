@@ -266,12 +266,14 @@ ssize_t ws_recv_binary(BBWebSocket* ws, uint8_t** data, int timeout_ms) {
         return -1;
     }
 
-    // Reset receive buffer
-    ws->recv_len = 0;
-    ws->recv_complete = false;
+    // Only reset buffer if no pending data (data may have arrived during connection)
+    if (ws->recv_len == 0) {
+        ws->recv_complete = false;
+    }
 
     time_t start = time(NULL);
     time_t timeout_sec = timeout_ms / 1000;
+    if (timeout_sec < 1) timeout_sec = 1;
 
     while (!ws->recv_complete && (time(NULL) - start) < timeout_sec) {
         lws_service(ws->context, 50);  // 50ms interval
@@ -296,7 +298,13 @@ ssize_t ws_recv_binary(BBWebSocket* ws, uint8_t** data, int timeout_ms) {
     }
 
     memcpy(*data, ws->recv_buffer, ws->recv_len);
-    return (ssize_t)ws->recv_len;
+    size_t result_len = ws->recv_len;
+
+    // Reset buffer after consuming data
+    ws->recv_len = 0;
+    ws->recv_complete = false;
+
+    return (ssize_t)result_len;
 }
 
 int ws_send_text(BBWebSocket* ws, const char* text) {
