@@ -399,7 +399,7 @@ if (isAlive) {
 
 ## Pub/Sub Messaging
 
-BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions and pattern matching. The TypeScript client fully implements core Pub/Sub operations with event handling support. Advanced query methods (`listSubscribers`, `getHistory`, `getPresence`, `listTopics`) are pending implementation.
+BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions and pattern matching. The TypeScript client fully implements all Pub/Sub operations including subscriptions, publishing, history, presence, and topic management.
 
 ### Subscription Management
 
@@ -504,13 +504,48 @@ async function pubSubExample() {
 - `PubSubMessageType.Data` (0) - Normal published messages
 - `PubSubMessageType.Presence` (1) - Member join/leave notifications
 
-### Pending Features
+### Topic and History Queries
 
-The following advanced Pub/Sub methods are not yet implemented:
-- `listSubscribers(topic: string): Promise<SubscriptionInfo[]>`
-- `listTopics(): Promise<string[]>`
-- `getHistory(topic: string, request: HistoryRequest): Promise<PubSubEvent[]>`
-- `getPresence(topic: string): Promise<PresenceInfo>`
+**List topics:**
+```typescript
+// Get all topics with activity info
+const topics = await client.listTopics();
+for (const topic of topics) {
+  console.log(`${topic.name}: ${topic.messageCount} messages, ${topic.subscriberCount} subscribers`);
+}
+```
+
+**Get message history:**
+```typescript
+// Get recent messages for a topic
+const history = await client.getHistory('chat:room1', { limit: 50 });
+for (const event of history) {
+  console.log(`[${event.timestamp}] ${event.payload}`);
+}
+
+// Get messages since a specific sequence number
+const newMessages = await client.getHistory('chat:room1', {
+  limit: 100,
+  sinceSeq: lastSeenSequence,
+});
+```
+
+**List subscribers:**
+```typescript
+// Get all subscribers for a topic
+const subscribers = await client.listSubscribers('chat:room1');
+console.log(`${subscribers.length} subscribers`);
+```
+
+**Get presence info:**
+```typescript
+// Get presence information for a topic (requires enablePresence in subscription)
+const presence = await client.getPresence('chat:room1');
+console.log(`${presence.members.length} members online`);
+for (const member of presence.members) {
+  console.log(`Client ${member.clientId} joined at ${member.joinedAt}`);
+}
+```
 
 See [Pub/Sub Protocol Specification](../../docs/PROTOCOL.md#pubsub-messaging) for complete details.
 
