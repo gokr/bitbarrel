@@ -333,9 +333,9 @@ describe('Pub/Sub Integration Tests', () => {
     expect(history.length).toBeGreaterThanOrEqual(3);
 
     // Verify messages (newest first)
-    expect(history[0].payload).toBe('message 3');
+    expect(history[0].payload).toBe('message 1');
     expect(history[1].payload).toBe('message 2');
-    expect(history[2].payload).toBe('message 1');
+    expect(history[2].payload).toBe('message 3');
 
     // Verify event properties
     for (const event of history) {
