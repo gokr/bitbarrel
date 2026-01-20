@@ -14,7 +14,7 @@ import type {
 } from './types';
 import { Command as Cmd, ResponseStatus as Resp, defaultConfig, normalizeRangeOptions, defaultSubscriptionOptions, defaultHistoryRequest as defaultHistoryRequestFn } from './types';
 import { Protocol } from './protocol';
-import { BitBarrelError, ConnectionError, RequestTimeoutError, BarrelError, NotFoundError } from './errors';
+import { BitBarrelError, ConnectionError, RequestTimeoutError, BarrelError, NotFoundError, ProtocolError } from './errors';
 import type { PubSubMessageType } from './types';
 
 export interface BitBarrelClientEvents {
@@ -223,7 +223,7 @@ export class BitBarrelClient extends EventEmitter {
   private parseHandshake(data: Buffer): ServerInfo {
     // Format: [versionMajor:1][versionMinor:1][serverIdLen:2][serverId:N][pluginCount:1][pluginNameLen1:2][pluginName1]...
     if (data.length < 2) {
-      throw new ProtocolException('Handshake too short');
+      throw new ProtocolError('Handshake too short');
     }
 
     let offset = 0;
@@ -234,21 +234,21 @@ export class BitBarrelClient extends EventEmitter {
 
     // Parse server ID length (2 bytes, big-endian)
     if (data.length < offset + 2) {
-      throw new ProtocolException('Handshake truncated at server ID length');
+      throw new ProtocolError('Handshake truncated at server ID length');
     }
     const serverIdLen = (data[offset] << 8) | data[offset + 1];
     offset += 2;
 
     // Parse server ID
     if (data.length < offset + serverIdLen) {
-      throw new ProtocolException('Handshake truncated at server ID');
+      throw new ProtocolError('Handshake truncated at server ID');
     }
     const serverId = data.slice(offset, offset + serverIdLen).toString('utf-8');
     offset += serverIdLen;
 
     // Parse plugin count
     if (data.length < offset + 1) {
-      throw new ProtocolException('Handshake truncated at plugin count');
+      throw new ProtocolError('Handshake truncated at plugin count');
     }
     const pluginCount = data[offset++];
 
@@ -257,14 +257,14 @@ export class BitBarrelClient extends EventEmitter {
     for (let i = 0; i < pluginCount; i++) {
       // Parse plugin name length (2 bytes, big-endian)
       if (data.length < offset + 2) {
-        throw new ProtocolException('Handshake truncated at plugin name length');
+        throw new ProtocolError('Handshake truncated at plugin name length');
       }
       const pluginNameLen = (data[offset] << 8) | data[offset + 1];
       offset += 2;
 
       // Parse plugin name
       if (data.length < offset + pluginNameLen) {
-        throw new ProtocolException('Handshake truncated at plugin name');
+        throw new ProtocolError('Handshake truncated at plugin name');
       }
       const pluginName = data.slice(offset, offset + pluginNameLen).toString('utf-8');
       plugins.push(pluginName);
@@ -738,7 +738,7 @@ export class BitBarrelClient extends EventEmitter {
       options: optsByte,
     };
 
-    const traverseData = Protocol.encodeTraverseRequest(traversePayload).toString('base64');
+    const traverseData = Protocol.encodeTraverseRequest(traversePayload).toString('latin1');
     const req = Protocol.newRequest(Cmd.Traverse, '', traverseData);
     const resp = await this.sendAndWait(req);
 
@@ -911,7 +911,7 @@ export class BitBarrelClient extends EventEmitter {
    */
   async getHistory(topic: string, request?: HistoryRequest): Promise<PubSubEvent[]> {
     const req = request ?? defaultHistoryRequestFn();
-    const historyData = Protocol.encodeHistoryRequest(topic, req.limit ?? 100, req.sinceSeq ?? 0).toString('base64');
+    const historyData = Protocol.encodeHistoryRequest(topic, req.limit ?? 100, req.sinceSeq ?? 0).toString('latin1');
     const reqPacket = Protocol.newRequest(Cmd.History, '', historyData);
     const resp = await this.sendAndWait(reqPacket);
 
@@ -926,7 +926,7 @@ export class BitBarrelClient extends EventEmitter {
    * Get presence info for topic
    */
   async getPresence(topic: string): Promise<PresenceInfo> {
-    const presenceData = Protocol.encodePresenceRequest(0).toString('base64');
+    const presenceData = Protocol.encodePresenceRequest(0).toString('latin1');
     const req = Protocol.newRequest(Cmd.Presence, topic, presenceData);
     const resp = await this.sendAndWait(req);
 
