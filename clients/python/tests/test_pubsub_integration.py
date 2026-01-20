@@ -334,10 +334,10 @@ class TestPubSub:
 
         assert len(history) >= 3
 
-        # Verify messages (newest first)
-        assert history[0].payload == "message 3"
+        # Verify messages (chronological order - oldest first)
+        assert history[0].payload == "message 1"
         assert history[1].payload == "message 2"
-        assert history[2].payload == "message 1"
+        assert history[2].payload == "message 3"
 
         # Verify event properties
         for event in history:
