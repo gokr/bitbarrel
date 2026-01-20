@@ -87,7 +87,7 @@ suite "Binary Protocol Tests":
       discard decodeRequest(data)
 
   test "decodeRequest handles oversize key length":
-    let data = "\x01\0\0\0\x01\xFF\xFF"  # Key length = 65535 (too large for remaining data)
+    let data = "\x01\0\0\0\x01\x00\xFF\xFF"  # Valid 9-byte header with keyLen=65535
     expect ProtocolError:
       discard decodeRequest(data)
 

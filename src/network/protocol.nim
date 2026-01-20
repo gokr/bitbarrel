@@ -259,6 +259,10 @@ proc decodeRequest*(data: string): Request =
   ## Format: ``[type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]``
   var pos = 0
 
+  # Minimum size: command(1) + seq(4) + flags(1) + keyLen(2) + valLen(4) = 12 bytes
+  if data.len < 12:
+    raise newException(ProtocolError, "Request too short: " & $data.len & " bytes")
+
   let cmdByte = readByte(data, pos)
   # Validate command byte - must include all Command enum values
   if cmdByte notin {0x01'u8, 0x02, 0x03, 0x04, 0x05, 0x06, 0x09,  # Data ops + ping
