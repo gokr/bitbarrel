@@ -68,7 +68,7 @@ export class Protocol {
     const seq = data.readUInt32BE(offset);
     offset += 4;
 
-    const flags = data.readUInt8(offset++); // flags - not stored
+    offset++; // skip flags byte - not stored
 
     const keyLen = data.readUInt16BE(offset);
     offset += 2;
