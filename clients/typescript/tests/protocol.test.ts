@@ -402,12 +402,13 @@ describe('Protocol', () => {
       const req = Protocol.newRequest(Command.Set, 'key', 'value', 1);
       const encoded = Protocol.encodeRequest(req);
 
-      // Key length at offset 5-6 (should be 3)
-      expect(encoded[5]).toBe(0x00);
-      expect(encoded[6]).toBe(0x03);
+      // Protocol v1.1 format: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+      // Key length at offset 6-7 (should be 3)
+      expect(encoded[6]).toBe(0x00);
+      expect(encoded[7]).toBe(0x03);
 
-      // Value length at offset 9-12
-      const valLenOffset = 5 + 2 + 3; // offset + keyLen bytes + key
+      // Value length at offset 10-13
+      const valLenOffset = 6 + 2 + 3; // keyLenOffset + keyLen bytes + key
       expect(encoded[valLenOffset]).toBe(0x00); // 5 = length of 'value'
       expect(encoded[valLenOffset + 1]).toBe(0x00);
       expect(encoded[valLenOffset + 2]).toBe(0x00);
