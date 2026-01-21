@@ -95,48 +95,75 @@ bool is_pubsub_event(const uint8_t* buffer, size_t len) {
     return buffer[0] == CMD_PUBSUB_EVENT;
 }
 
-// Encode range query request
+// Encode range query request (matches Nim protocol)
+// Format: [startKeyLen:2][startKey:N][endKeyLen:2][endKey:N][limit:4][cursorLen:2][cursor:M]
 ssize_t encode_range_request(uint8_t* buffer, const char* start_key,
                              const char* end_key, size_t limit, const char* cursor) {
-    // Format: [startKey][0][endKey][0][limit:8][cursor][0]
     size_t offset = 0;
 
-    // Start key
-    if (start_key) {
-        size_t len = strlen(start_key);
-        memcpy(buffer + offset, start_key, len);
-        offset += len;
+    // Start key length (2 bytes, big-endian) and key
+    uint16_t start_len = start_key ? strlen(start_key) : 0;
+    *(uint16_t*)(buffer + offset) = htobe16(start_len);
+    offset += 2;
+    if (start_len > 0) {
+        memcpy(buffer + offset, start_key, start_len);
+        offset += start_len;
     }
-    buffer[offset++] = 0;  // Null terminator
 
-    // End key
-    if (end_key) {
-        size_t len = strlen(end_key);
-        memcpy(buffer + offset, end_key, len);
-        offset += len;
+    // End key length (2 bytes, big-endian) and key
+    uint16_t end_len = end_key ? strlen(end_key) : 0;
+    *(uint16_t*)(buffer + offset) = htobe16(end_len);
+    offset += 2;
+    if (end_len > 0) {
+        memcpy(buffer + offset, end_key, end_len);
+        offset += end_len;
     }
-    buffer[offset++] = 0;  // Null terminator
 
-    // Limit (8 bytes, big-endian)
-    *(uint64_t*)(buffer + offset) = htobe64(limit);
-    offset += 8;
+    // Limit (4 bytes, big-endian)
+    *(uint32_t*)(buffer + offset) = htobe32((uint32_t)limit);
+    offset += 4;
 
-    // Cursor
-    if (cursor) {
-        size_t len = strlen(cursor);
-        memcpy(buffer + offset, cursor, len);
-        offset += len;
+    // Cursor length (2 bytes, big-endian) and cursor
+    uint16_t cursor_len = cursor ? strlen(cursor) : 0;
+    *(uint16_t*)(buffer + offset) = htobe16(cursor_len);
+    offset += 2;
+    if (cursor_len > 0) {
+        memcpy(buffer + offset, cursor, cursor_len);
+        offset += cursor_len;
     }
-    buffer[offset++] = 0;  // Null terminator
 
     return offset;
 }
 
-// Encode prefix query request
+// Encode prefix query request (matches Nim protocol)
+// Format: [prefixLen:2][prefix:N][limit:4][cursorLen:2][cursor:M]
 ssize_t encode_prefix_request(uint8_t* buffer, const char* prefix,
                               size_t limit, const char* cursor) {
-    // Same format as range request, but with empty start_key
-    return encode_range_request(buffer, prefix ? prefix : "", "", limit, cursor);
+    size_t offset = 0;
+
+    // Prefix length (2 bytes, big-endian) and prefix
+    uint16_t prefix_len = prefix ? strlen(prefix) : 0;
+    *(uint16_t*)(buffer + offset) = htobe16(prefix_len);
+    offset += 2;
+    if (prefix_len > 0) {
+        memcpy(buffer + offset, prefix, prefix_len);
+        offset += prefix_len;
+    }
+
+    // Limit (4 bytes, big-endian)
+    *(uint32_t*)(buffer + offset) = htobe32((uint32_t)limit);
+    offset += 4;
+
+    // Cursor length (2 bytes, big-endian) and cursor
+    uint16_t cursor_len = cursor ? strlen(cursor) : 0;
+    *(uint16_t*)(buffer + offset) = htobe16(cursor_len);
+    offset += 2;
+    if (cursor_len > 0) {
+        memcpy(buffer + offset, cursor, cursor_len);
+        offset += cursor_len;
+    }
+
+    return offset;
 }
 
 // Encode publish request
