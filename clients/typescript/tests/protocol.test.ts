@@ -878,4 +878,292 @@ describe('Protocol', () => {
       expect(result.topic).toBe('different');
     });
   });
+
+  describe('TTL Support', () => {
+    it('should encode and decode request with TTL', () => {
+      const original = {
+        command: Command.Set as Command,
+        seq: 1,
+        key: 'test_key',
+        value: 'test_value',
+        ttl: 3600, // 1 hour
+      };
+
+      const encoded = Protocol.encodeRequest(original);
+      const decoded = Protocol.decodeRequest(encoded);
+
+      expect(decoded.command).toBe(original.command);
+      expect(decoded.seq).toBe(original.seq);
+      expect(decoded.key).toBe(original.key);
+      expect(decoded.value).toBe(original.value);
+      expect(decoded.ttl).toBe(original.ttl);
+    });
+
+    it('should encode request without TTL when ttl is undefined', () => {
+      const original = {
+        command: Command.Set as Command,
+        seq: 1,
+        key: 'test_key',
+        value: 'test_value',
+        ttl: undefined,
+      };
+
+      const encoded = Protocol.encodeRequest(original);
+      const decoded = Protocol.decodeRequest(encoded);
+
+      expect(decoded.command).toBe(original.command);
+      expect(decoded.ttl).toBeUndefined();
+    });
+
+    it('should encode request without TTL when ttl is 0', () => {
+      const original = {
+        command: Command.Set as Command,
+        seq: 1,
+        key: 'test_key',
+        value: 'test_value',
+        ttl: 0,
+      };
+
+      const encoded = Protocol.encodeRequest(original);
+      const decoded = Protocol.decodeRequest(encoded);
+
+      expect(decoded.command).toBe(original.command);
+      expect(decoded.ttl).toBeUndefined();
+    });
+  });
+
+  describe('Batch Operations', () => {
+    describe('encodeBatchSet', () => {
+      it('should encode empty batch', () => {
+        const items: Array<[string, string]> = [];
+        const encoded = Protocol.encodeBatchSet(items);
+
+        expect(encoded.readUInt32BE(0)).toBe(0);
+        expect(encoded.length).toBe(4);
+      });
+
+      it('should encode single item batch', () => {
+        const items: Array<[string, string]> = [['key1', 'value1']];
+        const encoded = Protocol.encodeBatchSet(items);
+
+        let offset = 0;
+        expect(encoded.readUInt32BE(offset)).toBe(1);
+        offset += 4;
+
+        const keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        const key = encoded.toString('utf8', offset, offset + keyLen);
+        offset += keyLen;
+        expect(key).toBe('key1');
+
+        const valLen = encoded.readUInt32BE(offset);
+        offset += 4;
+        const value = encoded.toString('utf8', offset, offset + valLen);
+        expect(value).toBe('value1');
+      });
+
+      it('should encode multiple items', () => {
+        const items: Array<[string, string]> = [
+          ['key1', 'value1'],
+          ['key2', 'value2'],
+          ['key3', 'value3'],
+        ];
+        const encoded = Protocol.encodeBatchSet(items);
+
+        let offset = 0;
+        expect(encoded.readUInt32BE(offset)).toBe(3);
+        offset += 4;
+
+        // Verify first item
+        let keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        let key = encoded.toString('utf8', offset, offset + keyLen);
+        offset += keyLen;
+        expect(key).toBe('key1');
+
+        let valLen = encoded.readUInt32BE(offset);
+        offset += 4;
+        let value = encoded.toString('utf8', offset, offset + valLen);
+        offset += valLen;
+        expect(value).toBe('value1');
+
+        // Verify second item
+        keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        key = encoded.toString('utf8', offset, offset + keyLen);
+        offset += keyLen;
+        expect(key).toBe('key2');
+
+        valLen = encoded.readUInt32BE(offset);
+        offset += 4;
+        value = encoded.toString('utf8', offset, offset + valLen);
+        expect(value).toBe('value2');
+      });
+
+      it('should throw error for oversized key', () => {
+        const largeKey = 'x'.repeat(65536);
+        const items: Array<[string, string]> = [[largeKey, 'value']];
+
+        expect(() => Protocol.encodeBatchSet(items)).toThrow('Key too large');
+      });
+
+      it('should throw error for oversized value', () => {
+        const largeValue = 'x'.repeat(32 * 1024 * 1024 + 1);
+        const items: Array<[string, string]> = [['key', largeValue]];
+
+        expect(() => Protocol.encodeBatchSet(items)).toThrow('Value too large');
+      });
+    });
+
+    describe('encodeBatchGet', () => {
+      it('should encode empty key list', () => {
+        const keys: string[] = [];
+        const encoded = Protocol.encodeBatchGet(keys);
+
+        expect(encoded.readUInt32BE(0)).toBe(0);
+        expect(encoded.length).toBe(4);
+      });
+
+      it('should encode single key', () => {
+        const keys: string[] = ['test_key'];
+        const encoded = Protocol.encodeBatchGet(keys);
+
+        let offset = 0;
+        expect(encoded.readUInt32BE(offset)).toBe(1);
+        offset += 4;
+
+        const keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        const key = encoded.toString('utf8', offset, offset + keyLen);
+        expect(key).toBe('test_key');
+      });
+
+      it('should encode multiple keys', () => {
+        const keys: string[] = ['key1', 'key2', 'key3'];
+        const encoded = Protocol.encodeBatchGet(keys);
+
+        let offset = 0;
+        expect(encoded.readUInt32BE(offset)).toBe(3);
+        offset += 4;
+
+        // Verify first key
+        let keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        let key = encoded.toString('utf8', offset, offset + keyLen);
+        offset += keyLen;
+        expect(key).toBe('key1');
+
+        // Verify second key
+        keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        key = encoded.toString('utf8', offset, offset + keyLen);
+        expect(key).toBe('key2');
+
+        // Verify third key
+        keyLen = encoded.readUInt16BE(offset);
+        offset += 2;
+        key = encoded.toString('utf8', offset, offset + keyLen);
+        expect(key).toBe('key3');
+      });
+    });
+
+    describe('decodeBatchGetResponse', () => {
+      it('should decode empty response', () => {
+        const buffer = Buffer.allocUnsafe(4);
+        buffer.writeUInt32BE(0, 0);
+
+        const result = Protocol.decodeBatchGetResponse(buffer);
+        expect(result).toEqual([]);
+      });
+
+      it('should decode single found item', () => {
+        const key = 'key1';
+        const value = 'value1';
+        const keyBuf = Buffer.from(key, 'utf8');
+        const valBuf = Buffer.from(value, 'utf8');
+
+        const buffer = Buffer.allocUnsafe(4 + 2 + keyBuf.length + 4 + valBuf.length + 1);
+        let offset = 0;
+
+        buffer.writeUInt32BE(1, offset);
+        offset += 4;
+
+        buffer.writeUInt16BE(keyBuf.length, offset);
+        offset += 2;
+        keyBuf.copy(buffer, offset);
+        offset += keyBuf.length;
+
+        buffer.writeUInt32BE(valBuf.length, offset);
+        offset += 4;
+        valBuf.copy(buffer, offset);
+        offset += valBuf.length;
+
+        buffer.writeUInt8(0, offset); // status = OK
+
+        const result = Protocol.decodeBatchGetResponse(buffer);
+        expect(result).toEqual([['key1', 'value1']]);
+      });
+
+      it('should skip not found items', () => {
+        const key1 = 'key1';
+        const value1 = 'value1';
+        const key2 = 'key2';
+        const keyBuf1 = Buffer.from(key1, 'utf8');
+        const valBuf1 = Buffer.from(value1, 'utf8');
+        const keyBuf2 = Buffer.from(key2, 'utf8');
+
+        // Build buffer with 2 items, second one not found
+        const buffer = Buffer.allocUnsafe(
+          4 + // count
+          (2 + keyBuf1.length + 4 + valBuf1.length + 1) + // first item (found)
+          (2 + keyBuf2.length + 4 + 0 + 1) // second item (not found, empty value)
+        );
+        let offset = 0;
+
+        buffer.writeUInt32BE(2, offset);
+        offset += 4;
+
+        // First item - found
+        buffer.writeUInt16BE(keyBuf1.length, offset);
+        offset += 2;
+        keyBuf1.copy(buffer, offset);
+        offset += keyBuf1.length;
+
+        buffer.writeUInt32BE(valBuf1.length, offset);
+        offset += 4;
+        valBuf1.copy(buffer, offset);
+        offset += valBuf1.length;
+
+        buffer.writeUInt8(0, offset); // status = OK
+        offset += 1;
+
+        // Second item - not found
+        buffer.writeUInt16BE(keyBuf2.length, offset);
+        offset += 2;
+        keyBuf2.copy(buffer, offset);
+        offset += keyBuf2.length;
+
+        buffer.writeUInt32BE(0, offset); // value length = 0
+        offset += 4;
+
+        buffer.writeUInt8(1, offset); // status = Not Found
+
+        const result = Protocol.decodeBatchGetResponse(buffer);
+        expect(result).toEqual([['key1', 'value1']]); // Only found items
+      });
+
+      it('should throw error for truncated buffer', () => {
+        const buffer = Buffer.allocUnsafe(3); // Too short
+
+        expect(() => Protocol.decodeBatchGetResponse(buffer)).toThrow('Batch response too short');
+      });
+
+      it('should throw error for missing key length', () => {
+        const buffer = Buffer.allocUnsafe(5); // Only count + 1 byte
+        buffer.writeUInt32BE(1, 0);
+
+        expect(() => Protocol.decodeBatchGetResponse(buffer)).toThrow('Truncated batch response');
+      });
+    });
+  });
 });
