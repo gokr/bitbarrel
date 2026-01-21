@@ -100,10 +100,22 @@ Recent fixes have addressed protocol mismatches and pub/sub storage initializati
 ### Client Library Improvements ✅ VERIFIED
 - **Python client**: Reduced test time from 20s to 2s (websocket timeout optimization)
 - **Go client**: Added comprehensive pubsub tests (15 tests vs 6 before, now at parity)
+- **C client**: Fixed WebSocket fragmented message handling, range query protocol, barrel mode config
 - **All clients**: Protocol fixes applied and verified
 - **Status**: All client libraries at parity for pubsub features
-- **Commits**: 9b0bda3 (Go tests), f11ed08 (Python fixes)
+- **Commits**: 9b0bda3 (Go tests), f11ed08 (Python fixes), f40dbc1-39eafae (C client fixes)
 - **Verification**: `nimble testClients` passes all tests
+
+### C Client Improvements ✅ VERIFIED
+- **WebSocket fragmented messages**: Fixed `lws_is_final_fragment()` check to properly detect complete messages
+- **Range query encoding**: Fixed to use length-prefixed binary format matching Nim protocol
+- **Range response parsing**: Fixed to parse binary format with `keyLen:2[key]valLen:4[value]` structure
+- **Barrel mode config**: Changed from `"bmCritBit"` to `"critbit"` for server compatibility
+- **Missing API**: Added `bb_drop_barrel`, `bb_list_keys`, and batch operations (set/get/delete)
+- **Error handling**: Added `memset(&resp, 0, sizeof(resp))` and server error message capture
+- **Integration tests**: 14 tests all passing (basic operations, list keys, range queries)
+- **Commits**: f40dbc1, 100db0f, 1fafb14, a35c7b1, 39eafae
+- **Status**: C client now fully functional and equivalent to Nim client
 
 ## Known Issues Requiring Attention
 
@@ -163,4 +175,4 @@ For user documentation:
 - [USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md) - Comprehensive tutorial
 - [PROTOCOL.md](docs/PROTOCOL.md) - Network protocol specification
 
-Last updated: 2026-01-19 (verified through commit 9b0bda3, v1.1 protocol documented)
+Last updated: 2026-01-21 (verified through commit 39eafae, v1.1 protocol documented, C client fully functional)
