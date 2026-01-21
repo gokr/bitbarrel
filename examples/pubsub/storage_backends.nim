@@ -9,11 +9,11 @@
 ## Run with: nim c -r --path:clients/nim/src examples/pubsub/storage_backends.nim
 
 import std/[os, strformat, tables]
-import ../../src/pubsub/storage_config
-import ../../src/pubsub/storage_manager
-import ../../src/pubsub/shared_barrel_backend
-import ../../src/pubsub/memory_backend
-import ../../src/bitbarrel/barrel
+import pubsub/storage_config
+import pubsub/storage_manager
+import pubsub/shared_barrel_backend
+import pubsub/memory_backend
+import bitbarrel
 
 proc demonstrateMemoryBackend() =
   echo ""

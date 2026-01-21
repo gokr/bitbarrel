@@ -8,8 +8,8 @@
 ## Run with: nim c -r --path:clients/nim/src examples/pubsub/basic_pubsub.nim
 
 import std/[os, strformat, strutils]
-import ../../clients/nim/src/bitbarrel_client
-import ../../src/bitbarrel/barrel
+import bitbarrel_client
+import bitbarrel
 
 proc main() =
   echo "╔═══════════════════════════════════════════════╗"

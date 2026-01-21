@@ -9,8 +9,8 @@
 ## Run with: nim c -r --path:clients/nim/src examples/pubsub/presence_tracking.nim
 
 import std/[os, strformat, json, times]
-import ../../clients/nim/src/bitbarrel_client
-import ../../src/bitbarrel/barrel
+import bitbarrel_client
+import bitbarrel
 
 type
   UserStatus = enum
