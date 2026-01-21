@@ -17,6 +17,8 @@ from .protocol import (
     encode_history_request, encode_presence_request,
     decode_list_subscribers_response, decode_list_topics_response,
     decode_history_response, decode_presence_response,
+    encode_batch_set, encode_batch_get, encode_batch_delete,
+    decode_batch_get_response,
     SubscriptionOptions, default_subscription_options,
     PresenceMember, PresenceInfo, SubscriptionInfo, HistoryRequest,
 )
@@ -448,12 +450,13 @@ class Client:
         except NotFoundError:
             return default
 
-    def set(self, key: str, value: str) -> bool:
-        """Set key-value pair.
+    def set(self, key: str, value: str, ttl: Optional[int] = None) -> bool:
+        """Set key-value pair with optional TTL.
 
         Args:
             key: Key to set
             value: Value to associate with key
+            ttl: Optional TTL in seconds. If provided, key will expire after this many seconds.
 
         Returns:
             True on success
@@ -463,8 +466,86 @@ class Client:
             ServerError: If server reports an error
         """
         self._ensure_barrel()
-        self._send_request(Command.SET, key, value)
+        self._send_request(Command.SET, key, value, ttl=ttl)
         return True
+
+    def batch_set(self, items: List[Tuple[str, str]]) -> int:
+        """Store multiple key-value pairs in a single request.
+
+        Args:
+            items: List of (key, value) tuples to store
+
+        Returns:
+            Number of items successfully stored
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+
+        if not items:
+            return 0
+
+        batch_data = encode_batch_set(items)
+        result = self._send_request_binary(Command.BATCH_SET, key="", value=batch_data)
+
+        # Parse response - should be count as string
+        try:
+            return int(result) if result else 0
+        except ValueError:
+            return 0
+
+    def batch_get(self, keys: List[str]) -> List[Tuple[str, str]]:
+        """Retrieve multiple values by their keys in a single request.
+
+        Args:
+            keys: List of keys to retrieve
+
+        Returns:
+            List of (key, value) pairs for all found keys
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+
+        if not keys:
+            return []
+
+        batch_data = encode_batch_get(keys)
+        result = self._send_request_binary(Command.BATCH_GET, key="", value=batch_data)
+
+        # Parse response
+        return decode_batch_get_response(result)
+
+    def batch_delete(self, keys: List[str]) -> int:
+        """Delete multiple keys in a single request.
+
+        Args:
+            keys: List of keys to delete
+
+        Returns:
+            Number of keys successfully deleted
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+
+        if not keys:
+            return 0
+
+        batch_data = encode_batch_delete(keys)
+        result = self._send_request_binary(Command.BATCH_DELETE, key="", value=batch_data)
+
+        # Parse response - should be count as string
+        try:
+            return int(result) if result else 0
+        except ValueError:
+            return 0
 
     def delete(self, key: str) -> bool:
         """Delete a key from the current barrel.
