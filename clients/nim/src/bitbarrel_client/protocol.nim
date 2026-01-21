@@ -619,6 +619,8 @@ proc `$`*(cmd: Command): string =
   of cmdHistory: "HISTORY"
   of cmdListTopics: "LIST_TOPICS"
   of cmdPresence: "PRESENCE"
+  of cmdWatchKey: "WATCH_KEY"
+  of cmdUnwatchKey: "UNWATCH_KEY"
 
 proc `$`*(status: ResponseStatus): string =
   ## String representation of status.
