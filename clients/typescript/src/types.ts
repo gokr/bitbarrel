@@ -100,12 +100,13 @@ export const enum ResponseStatus {
 export const MaxKeySize = 65535;     // 64KB
 export const MaxValueSize = 32 * 1024 * 1024; // 32MB
 
-// Request interface: [type:1][seq:4][keyLen:2][key:N][valLen:4][value:M]
+// Request interface: [type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]
 export interface Request {
   command: Command;
   seq: number;
   key: string;
   value: string;
+  ttl?: number;  // Optional TTL in seconds (protocol v1.1+)
 }
 
 // Response interface: [status:1][seq:4][valLen:4][value:M]

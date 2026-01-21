@@ -17,7 +17,7 @@ import type { PubSubMessageType } from './types';
 
 export class Protocol {
   /**
-   * Encode a request (v1.1): [type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+   * Encode a request (v1.1): [type:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]
    * Format: Command (1 byte) | Sequence (4 bytes) | Flags (1 byte) | Key Length (2 bytes) | Key (N bytes) | Value Length (4 bytes) | Value (M bytes)
    * All multi-byte integers are big-endian.
    */
@@ -33,13 +33,14 @@ export class Protocol {
       throw new ProtocolError(`Value too large: ${valByteLen} bytes (max ${MaxValueSize})`);
     }
 
-    const buffer = Buffer.allocUnsafe(1 + 4 + 1 + 2 + keyByteLen + 4 + valByteLen);
+    const hasTtl = req.ttl !== undefined && req.ttl > 0;
+    const buffer = Buffer.allocUnsafe(1 + 4 + 1 + 2 + keyByteLen + 4 + valByteLen + (hasTtl ? 4 : 0));
 
     let offset = 0;
     buffer.writeUInt8(req.command, offset++);
     buffer.writeUInt32BE(req.seq, offset);
     offset += 4;
-    buffer.writeUInt8(0, offset++); // flags - always 0 for now
+    buffer.writeUInt8(hasTtl ? 1 : 0, offset++); // flags - 1 if TTL present
     buffer.writeUInt16BE(keyByteLen, offset);
     offset += 2;
     // Use latin1 encoding to preserve binary data
@@ -48,6 +49,11 @@ export class Protocol {
     buffer.writeUInt32BE(valByteLen, offset);
     offset += 4;
     buffer.write(req.value, offset, 'latin1');
+    offset += valByteLen;
+
+    if (hasTtl) {
+      buffer.writeUInt32BE(req.ttl!, offset);
+    }
 
     return buffer;
   }
@@ -68,7 +74,8 @@ export class Protocol {
     const seq = data.readUInt32BE(offset);
     offset += 4;
 
-    offset++; // skip flags byte - not stored
+    const flags = data.readUInt8(offset++);
+    const hasTtl = (flags & 1) !== 0;
 
     const keyLen = data.readUInt16BE(offset);
     offset += 2;
@@ -93,8 +100,17 @@ export class Protocol {
       throw new ProtocolError('Truncated request: value extends beyond buffer');
     }
     const value = data.toString('utf8', offset, offset + valLen);
+    offset += valLen;
 
-    return { command, seq, key, value };
+    let ttl: number | undefined = undefined;
+    if (hasTtl) {
+      if (offset + 4 > data.length) {
+        throw new ProtocolError('Truncated request: missing TTL');
+      }
+      ttl = data.readUInt32BE(offset);
+    }
+
+    return { command, seq, key, value, ttl };
   }
 
   /**
@@ -966,5 +982,155 @@ export class Protocol {
         };
       }),
     };
+  }
+
+  // Batch operation encoders/decoders
+
+  /**
+   * Encode batch set request: [count:4][key1Len:2][key1][val1Len:4][val1][key2Len:2][key2][val2Len:4][val2]...
+   */
+  static encodeBatchSet(items: Array<[string, string]>): Buffer {
+    if (items.length === 0) {
+      return Buffer.allocUnsafe(4);
+    }
+
+    // Calculate total size first
+    let totalSize = 4; // count (4 bytes)
+    for (const [key, value] of items) {
+      const keyByteLen = Buffer.byteLength(key, 'latin1');
+      const valByteLen = Buffer.byteLength(value, 'latin1');
+
+      if (keyByteLen > MaxKeySize) {
+        throw new ProtocolError(`Key too large: ${keyByteLen} bytes (max ${MaxKeySize})`);
+      }
+      if (valByteLen > MaxValueSize) {
+        throw new ProtocolError(`Value too large: ${valByteLen} bytes (max ${MaxValueSize})`);
+      }
+
+      totalSize += 2 + keyByteLen + 4 + valByteLen; // keyLen + key + valLen + val
+    }
+
+    const buffer = Buffer.allocUnsafe(totalSize);
+    let offset = 0;
+
+    buffer.writeUInt32BE(items.length, offset);
+    offset += 4;
+
+    for (const [key, value] of items) {
+      const keyByteLen = Buffer.byteLength(key, 'latin1');
+      const valByteLen = Buffer.byteLength(value, 'latin1');
+
+      buffer.writeUInt16BE(keyByteLen, offset);
+      offset += 2;
+      buffer.write(key, offset, 'latin1');
+      offset += keyByteLen;
+
+      buffer.writeUInt32BE(valByteLen, offset);
+      offset += 4;
+      buffer.write(value, offset, 'latin1');
+      offset += valByteLen;
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Encode batch get request: [count:4][key1Len:2][key1][key2Len:2][key2]...
+   */
+  static encodeBatchGet(keys: string[]): Buffer {
+    if (keys.length === 0) {
+      return Buffer.allocUnsafe(4);
+    }
+
+    let totalSize = 4; // count (4 bytes)
+    for (const key of keys) {
+      const keyByteLen = Buffer.byteLength(key, 'latin1');
+      if (keyByteLen > MaxKeySize) {
+        throw new ProtocolError(`Key too large: ${keyByteLen} bytes (max ${MaxKeySize})`);
+      }
+      totalSize += 2 + keyByteLen; // keyLen + key
+    }
+
+    const buffer = Buffer.allocUnsafe(totalSize);
+    let offset = 0;
+
+    buffer.writeUInt32BE(keys.length, offset);
+    offset += 4;
+
+    for (const key of keys) {
+      const keyByteLen = Buffer.byteLength(key, 'latin1');
+      buffer.writeUInt16BE(keyByteLen, offset);
+      offset += 2;
+      buffer.write(key, offset, 'latin1');
+      offset += keyByteLen;
+    }
+
+    return buffer;
+  }
+
+  /**
+   * Encode batch delete request (same format as batch get)
+   */
+  static encodeBatchDelete(keys: string[]): Buffer {
+    return this.encodeBatchGet(keys);
+  }
+
+  /**
+   * Decode batch get response: [count:4][key1Len:2][key1][val1Len:4][val1][status1:1][key2Len:2][key2][val2Len:4][val2][status2:1]...
+   * Status: 0 = OK, 1 = Not Found, 2 = Error
+   */
+  static decodeBatchGetResponse(data: Buffer): Array<[string, string]> {
+    if (data.length < 4) {
+      throw new ProtocolError(`Batch response too short: ${data.length} bytes (min 4)`);
+    }
+
+    let offset = 0;
+    const count = data.readUInt32BE(offset);
+    offset += 4;
+
+    const results: Array<[string, string]> = [];
+
+    for (let i = 0; i < count; i++) {
+      if (offset + 2 > data.length) {
+        throw new ProtocolError('Truncated batch response: missing key length');
+      }
+
+      const keyLen = data.readUInt16BE(offset);
+      offset += 2;
+      if (keyLen > MaxKeySize) {
+        throw new ProtocolError(`Key too large: ${keyLen} bytes`);
+      }
+      if (offset + keyLen > data.length) {
+        throw new ProtocolError('Truncated batch response: key extends beyond buffer');
+      }
+      const key = data.toString('utf8', offset, offset + keyLen);
+      offset += keyLen;
+
+      if (offset + 4 > data.length) {
+        throw new ProtocolError('Truncated batch response: missing value length');
+      }
+      const valLen = data.readUInt32BE(offset);
+      offset += 4;
+      if (valLen > MaxValueSize) {
+        throw new ProtocolError(`Value too large: ${valLen} bytes`);
+      }
+      if (offset + valLen > data.length) {
+        throw new ProtocolError('Truncated batch response: value extends beyond buffer');
+      }
+      const value = valLen > 0 ? data.toString('utf8', offset, offset + valLen) : '';
+      offset += valLen;
+
+      if (offset + 1 > data.length) {
+        throw new ProtocolError('Truncated batch response: missing status byte');
+      }
+      const status = data.readUInt8(offset++);
+
+      // Only include items that were found (status == 0)
+      if (status === 0) {
+        results.push([key, value]);
+      }
+    }
+
+    return results;
   }
 }

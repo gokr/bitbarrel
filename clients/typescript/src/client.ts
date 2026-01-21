@@ -518,10 +518,10 @@ export class BitBarrelClient extends EventEmitter {
     }
   }
 
-  async set(key: string, value: string): Promise<boolean> {
+  async set(key: string, value: string, ttl?: number): Promise<boolean> {
     this.checkBarrelSelected();
 
-    const req = Protocol.newRequest(Cmd.Set, key, value);
+    const req = Protocol.newRequest(Cmd.Set, key, value, ttl);
     const resp = await this.sendAndWait(req);
     return resp.status === Resp.Ok;
   }
@@ -532,6 +532,65 @@ export class BitBarrelClient extends EventEmitter {
     const req = Protocol.newRequest(Cmd.Delete, key);
     const resp = await this.sendAndWait(req);
     return resp.status === Resp.Ok;
+  }
+
+  // Batch operations
+
+  async batchSet(items: Array<[string, string]>): Promise<number> {
+    this.checkBarrelSelected();
+
+    if (items.length === 0) {
+      return 0;
+    }
+
+    const batchData = Protocol.encodeBatchSet(items);
+    const req = Protocol.newRequest(Cmd.BatchSet, '', batchData.toString('binary'));
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Batch set failed: ${resp.status}`);
+    }
+
+    const count = parseInt(resp.value, 10);
+    return isNaN(count) ? 0 : count;
+  }
+
+  async batchGet(keys: string[]): Promise<Array<[string, string]>> {
+    this.checkBarrelSelected();
+
+    if (keys.length === 0) {
+      return [];
+    }
+
+    const batchData = Protocol.encodeBatchGet(keys);
+    const req = Protocol.newRequest(Cmd.BatchGet, '', batchData.toString('binary'));
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Batch get failed: ${resp.status}`);
+    }
+
+    const responseData = Buffer.from(resp.value, 'binary');
+    return Protocol.decodeBatchGetResponse(responseData);
+  }
+
+  async batchDelete(keys: string[]): Promise<number> {
+    this.checkBarrelSelected();
+
+    if (keys.length === 0) {
+      return 0;
+    }
+
+    const batchData = Protocol.encodeBatchDelete(keys);
+    const req = Protocol.newRequest(Cmd.BatchDelete, '', batchData.toString('binary'));
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Batch delete failed: ${resp.status}`);
+    }
+
+    const count = parseInt(resp.value, 10);
+    return isNaN(count) ? 0 : count;
   }
 
   async exists(key: string): Promise<boolean> {
