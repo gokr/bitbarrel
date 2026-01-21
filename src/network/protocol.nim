@@ -111,30 +111,30 @@ type
 
   ## Statistics structure for barrel metrics
   BarrelStats* = object
-    totalKeys*: int64          ## Total keys including tombstones
-    activeKeys*: int64         ## Active keys (excluding tombstones)
-    deletedKeys*: int64        ## Tombstone/deleted keys
+    totalKeys* {.json: "totalKeys".}: int64          ## Total keys including tombstones
+    activeKeys* {.json: "activeKeys".}: int64         ## Active keys (excluding tombstones)
+    deletedKeys* {.json: "deletedKeys".}: int64        ## Tombstone/deleted keys
 
-    fileCount*: int            ## Number of data files
-    totalSize*: int64          ## Total bytes on disk for all files
-    activeFileSize*: int64     ## Size of active data file
+    fileCount* {.json: "fileCount".}: int            ## Number of data files
+    totalSize* {.json: "totalSize".}: int64          ## Total bytes on disk for all files
+    activeFileSize* {.json: "activeFileSize".}: int64     ## Size of active data file
 
-    avgKeySize*: float         ## Average key size in bytes
-    avgValueSize*: float       ## Average value size in bytes
-    avgRecordSize*: float      ## Average record size in bytes
+    avgKeySize* {.json: "avgKeySize".}: float         ## Average key size in bytes
+    avgValueSize* {.json: "avgValueSize".}: float       ## Average value size in bytes
+    avgRecordSize* {.json: "avgRecordSize".}: float      ## Average record size in bytes
 
-    fragmentationRatio*: float ## Fragmentation ratio (0.0 to 1.0)
-    isCompacting*: bool        ## Is compaction currently in progress
-    lastCompactTime*: string   ## ISO timestamp of last compaction
-    recordsScanned*: int64     ## Records scanned in last compaction
-    recordsKept*: int64        ## Records kept in last compaction
-    recordsDropped*: int64     ## Records dropped in last compaction
+    fragmentationRatio* {.json: "fragmentationRatio".}: float ## Fragmentation ratio (0.0 to 1.0)
+    isCompacting* {.json: "isCompacting".}: bool        ## Is compaction currently in progress
+    lastCompactTime* {.json: "lastCompactTime".}: string   ## ISO timestamp of last compaction
+    recordsScanned* {.json: "recordsScanned".}: int64     ## Records scanned in last compaction
+    recordsKept* {.json: "recordsKept".}: int64        ## Records kept in last compaction
+    recordsDropped* {.json: "recordsDropped".}: int64     ## Records dropped in last compaction
 
-    indexMode*: string         ## Index mode (hash, critbit, hugecritbit)
-    syncMode*: string          ## Sync mode (none, sync, fsync)
+    indexMode* {.json: "indexMode".}: string         ## Index mode (hash, critbit, hugecritbit)
+    syncMode* {.json: "syncMode".}: string          ## Sync mode (none, sync, fsync)
 
-    dataPath*: string          ## Path to data files
-    lastModified*: string      ## ISO timestamp of last modification
+    dataPath* {.json: "dataPath".}: string          ## Path to data files
+    lastModified* {.json: "lastModified".}: string      ## ISO timestamp of last modification
 
   ProtocolError* = object of CatchableError
 
@@ -1056,73 +1056,15 @@ proc `$`*(resp: Response): string =
 
 ## BarrelStats JSON serialization
 
-import std/json
+import sunny
 
 proc encodeBarrelStats*(stats: BarrelStats): string =
   ## Encode BarrelStats to JSON string
-  var jsonObj = newJObject()
-
-  # Key statistics
-  jsonObj["totalKeys"] = %stats.totalKeys
-  jsonObj["activeKeys"] = %stats.activeKeys
-  jsonObj["deletedKeys"] = %stats.deletedKeys
-
-  # Storage statistics
-  jsonObj["fileCount"] = %stats.fileCount
-  jsonObj["totalSize"] = %stats.totalSize
-  jsonObj["activeFileSize"] = %stats.activeFileSize
-
-  # Performance statistics
-  jsonObj["avgKeySize"] = %stats.avgKeySize
-  jsonObj["avgValueSize"] = %stats.avgValueSize
-  jsonObj["avgRecordSize"] = %stats.avgRecordSize
-
-  # Compaction statistics
-  jsonObj["fragmentationRatio"] = %stats.fragmentationRatio
-  jsonObj["isCompacting"] = %stats.isCompacting
-  jsonObj["lastCompactTime"] = %stats.lastCompactTime
-  jsonObj["recordsScanned"] = %stats.recordsScanned
-  jsonObj["recordsKept"] = %stats.recordsKept
-  jsonObj["recordsDropped"] = %stats.recordsDropped
-
-  # Configuration
-  jsonObj["indexMode"] = %stats.indexMode
-  jsonObj["syncMode"] = %stats.syncMode
-
-  # Additional metadata
-  jsonObj["dataPath"] = %stats.dataPath
-  jsonObj["lastModified"] = %stats.lastModified
-
-  result = $jsonObj
+  result = $toJson(stats)
 
 proc decodeBarrelStats*(jsonStr: string): BarrelStats =
   ## Decode BarrelStats from JSON string
-  let jsonObj = parseJson(jsonStr)
-
-  result.totalKeys = int64(jsonObj["totalKeys"].getInt())
-  result.activeKeys = int64(jsonObj["activeKeys"].getInt())
-  result.deletedKeys = int64(jsonObj["deletedKeys"].getInt())
-
-  result.fileCount = jsonObj["fileCount"].getInt()
-  result.totalSize = int64(jsonObj["totalSize"].getInt())
-  result.activeFileSize = int64(jsonObj["activeFileSize"].getInt())
-
-  result.avgKeySize = jsonObj["avgKeySize"].getFloat()
-  result.avgValueSize = jsonObj["avgValueSize"].getFloat()
-  result.avgRecordSize = jsonObj["avgRecordSize"].getFloat()
-
-  result.fragmentationRatio = jsonObj["fragmentationRatio"].getFloat()
-  result.isCompacting = jsonObj["isCompacting"].getBool()
-  result.lastCompactTime = jsonObj["lastCompactTime"].getStr()
-  result.recordsScanned = int64(jsonObj["recordsScanned"].getInt())
-  result.recordsKept = int64(jsonObj["recordsKept"].getInt())
-  result.recordsDropped = int64(jsonObj["recordsDropped"].getInt())
-
-  result.indexMode = jsonObj["indexMode"].getStr()
-  result.syncMode = jsonObj["syncMode"].getStr()
-
-  result.dataPath = jsonObj["dataPath"].getStr()
-  result.lastModified = jsonObj["lastModified"].getStr()
+  result = fromJson(jsonStr, BarrelStats)
 
 
 ## Pub/Sub protocol extensions
