@@ -50,6 +50,10 @@ class Command(IntEnum):
     PRESENCE = 0x46
     # PubSubEvent is sent as push notification
     PUBSUB_EVENT = 0xFF
+    # Batch operations
+    BATCH_GET = 0x26
+    BATCH_SET = 0x27
+    BATCH_DELETE = 0x28
 
 
 class Status(IntEnum):
@@ -68,16 +72,17 @@ MAX_KEY_SIZE = 65535      # 64KB
 MAX_VALUE_SIZE = 33554432  # 32MB (from updated protocol.go)
 
 
-def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] = "") -> bytes:
+def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] = "", ttl: Optional[int] = None) -> bytes:
     """Encode a request to binary format (v1.1).
 
-    Format: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M]
+    Format: [cmd:1][seq:4][flags:1][keyLen:2][key:N][valLen:4][value:M][ttl:4|0]
 
     Args:
         cmd: Command byte
         seq: Sequence number
         key: Key string
         value: Value as string or bytes (for binary payloads like range queries)
+        ttl: Optional TTL in seconds (protocol v1.1+)
     """
     if len(key) > MAX_KEY_SIZE:
         raise ProtocolError(f"Key too large: {len(key)} bytes")
@@ -88,8 +93,15 @@ def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] =
     value_bytes = value if isinstance(value, bytes) else value.encode("utf-8")
     key_bytes = key.encode("utf-8")
 
-    # Calculate total size: 1 + 4 + 1 + 2 + key + 4 + value
+    # Check if we should include TTL
+    has_ttl = ttl is not None and ttl > 0
+    flags = 1 if has_ttl else 0
+
+    # Calculate total size
     total_size = 1 + 4 + 1 + 2 + len(key_bytes) + 4 + len(value_bytes)
+    if has_ttl:
+        total_size += 4  # Add TTL field (4 bytes)
+
     buf = bytearray(total_size)
 
     offset = 0
@@ -102,8 +114,8 @@ def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] =
     buf[offset:offset+4] = struct.pack(">I", seq)
     offset += 4
 
-    # Flags (1 byte) - always 0 for now (no TTL support)
-    buf[offset] = 0
+    # Flags (1 byte) - 1 if TTL present, 0 otherwise
+    buf[offset] = flags
     offset += 1
 
     # Key length (2 bytes, big-endian)
@@ -120,6 +132,11 @@ def encode_request(cmd: int, seq: int, key: str = "", value: Union[str, bytes] =
 
     # Value
     buf[offset:offset+len(value_bytes)] = value_bytes
+    offset += len(value_bytes)
+
+    # TTL (4 bytes, big-endian) if present
+    if has_ttl:
+        buf[offset:offset+4] = struct.pack(">I", ttl)
 
     return bytes(buf)
 
@@ -904,3 +921,125 @@ def decode_presence_response(topic: str, data: str) -> PresenceInfo:
         )
     except json.JSONDecodeError as e:
         raise ProtocolError(f"Failed to decode presence response: {e}")
+
+
+def encode_batch_set(items: List[Tuple[str, str]]) -> bytes:
+    """Encode batch set request: [count:4][key1Len:2][key1][val1Len:4][val1][key2Len:2][key2][val2Len:4][val2]..."""
+    if not items:
+        return struct.pack(">I", 0)
+
+    # Calculate total size first
+    total_size = 4  # count (4 bytes)
+    for key, value in items:
+        if len(key) > MAX_KEY_SIZE:
+            raise ProtocolError(f"Key too large: {len(key)} bytes (max {MAX_KEY_SIZE})")
+        if len(value) > MAX_VALUE_SIZE:
+            raise ProtocolError(f"Value too large: {len(value)} bytes (max {MAX_VALUE_SIZE})")
+        total_size += 2 + len(key) + 4 + len(value)
+
+    buf = bytearray(total_size)
+    offset = 0
+
+    # Write count
+    buf[offset:offset+4] = struct.pack(">I", len(items))
+    offset += 4
+
+    for key, value in items:
+        key_bytes = key.encode("utf-8")
+        val_bytes = value.encode("utf-8")
+
+        # Key length and key
+        buf[offset:offset+2] = struct.pack(">H", len(key_bytes))
+        offset += 2
+        buf[offset:offset+len(key_bytes)] = key_bytes
+        offset += len(key_bytes)
+
+        # Value length and value
+        buf[offset:offset+4] = struct.pack(">I", len(val_bytes))
+        offset += 4
+        buf[offset:offset+len(val_bytes)] = val_bytes
+        offset += len(val_bytes)
+
+    return bytes(buf)
+
+
+def encode_batch_get(keys: List[str]) -> bytes:
+    """Encode batch get request: [count:4][key1Len:2][key1][key2Len:2][key2]..."""
+    if not keys:
+        return struct.pack(">I", 0)
+
+    # Calculate total size
+    total_size = 4  # count (4 bytes)
+    for key in keys:
+        if len(key) > MAX_KEY_SIZE:
+            raise ProtocolError(f"Key too large: {len(key)} bytes (max {MAX_KEY_SIZE})")
+        total_size += 2 + len(key)
+
+    buf = bytearray(total_size)
+    offset = 0
+
+    # Write count
+    buf[offset:offset+4] = struct.pack(">I", len(keys))
+    offset += 4
+
+    for key in keys:
+        key_bytes = key.encode("utf-8")
+
+        # Key length and key
+        buf[offset:offset+2] = struct.pack(">H", len(key_bytes))
+        offset += 2
+        buf[offset:offset+len(key_bytes)] = key_bytes
+        offset += len(key_bytes)
+
+    return bytes(buf)
+
+
+def encode_batch_delete(keys: List[str]) -> bytes:
+    """Encode batch delete request (same format as batch get)."""
+    return encode_batch_get(keys)
+
+
+def decode_batch_get_response(data: bytes) -> List[Tuple[str, str]]:
+    """Decode batch get response: [count:4][key1Len:2][key1][val1Len:4][val1][status1:1][key2Len:2][key2][val2Len:4][val2][status2:1]..."""
+    if len(data) < 4:
+        raise ProtocolError("Batch response too short")
+
+    offset = 0
+    count = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    results: List[Tuple[str, str]] = []
+
+    for i in range(count):
+        if offset + 2 > len(data):
+            raise ProtocolError("Truncated batch response: missing key length")
+
+        # Key length and key
+        key_len = struct.unpack(">H", data[offset:offset+2])[0]
+        offset += 2
+        if offset + key_len > len(data):
+            raise ProtocolError("Truncated batch response: key extends beyond buffer")
+        key = data[offset:offset+key_len].decode("utf-8")
+        offset += key_len
+
+        # Value length
+        if offset + 4 > len(data):
+            raise ProtocolError("Truncated batch response: missing value length")
+        val_len = struct.unpack(">I", data[offset:offset+4])[0]
+        offset += 4
+        if offset + val_len > len(data):
+            raise ProtocolError("Truncated batch response: value extends beyond buffer")
+        value = data[offset:offset+val_len].decode("utf-8") if val_len > 0 else ""
+        offset += val_len
+
+        # Status byte
+        if offset + 1 > len(data):
+            raise ProtocolError("Truncated batch response: missing status byte")
+        status = data[offset]
+        offset += 1
+
+        # Only include found items (status == 0)
+        if status == 0:
+            results.append((key, value))
+
+    return results
