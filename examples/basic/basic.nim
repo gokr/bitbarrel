@@ -5,7 +5,7 @@
 ## Run with: nim c -r examples/basic/basic.nim
 
 import std/[os, strformat]
-import ../../bitbarrel
+import bitbarrel
 
 proc main() =
   echo "╔════════════════════════════════════════════╗"
@@ -13,7 +13,7 @@ proc main() =
   echo "╚════════════════════════════════════════════╝"
   echo ""
 
-  let dbPath = "demos/data/demo_basic.data"
+  let dbPath = "examples/data/demo_basic.data"
 
   # Clean up any existing file
   if fileExists(dbPath):

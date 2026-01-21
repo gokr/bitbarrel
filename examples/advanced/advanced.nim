@@ -5,11 +5,11 @@
 ## - Compression (LZ4, Snappy)
 ## - Configuration (BarrelConfig, YAML, environment variables)
 ##
-## Run with: nim c -r demos/advanced_demo.nim
+## Run with: nim c -r examples/advanced/advanced.nim
 
 import std/[os, strformat, times, random]
 import std/strutils except formatSize
-import demo_utils
+import ../utils
 import bitbarrel
 from bitbarrel/types import BarrelMode, BarrelConfig, UserSyncMode
 
@@ -45,7 +45,7 @@ proc demoBarrelModes() =
   hashConfig.syncMode = UserSyncMode.Sync
   hashConfig.writeBufferSize = 64 * 1024
 
-  var sessionDb = openBarrel("demos/data/session_store.data", hashConfig)
+  var sessionDb = openBarrel("examples/data/session_store.data", hashConfig)
   defer: sessionDb.close()
 
   # Store session data
@@ -78,7 +78,7 @@ proc demoBarrelModes() =
   critBitConfig.mode = BarrelMode.bmCritBit
   critBitConfig.syncMode = UserSyncMode.Sync
 
-  var timeSeriesDb = openBarrel("demos/data/timeseries.data", critBitConfig)
+  var timeSeriesDb = openBarrel("examples/data/timeseries.data", critBitConfig)
   defer: timeSeriesDb.close()
 
   # Store time-series data
@@ -111,7 +111,7 @@ proc demoBarrelModes() =
   echo ""
 
   # Cleanup
-  for path in ["demos/data/session_store.data", "demos/data/timeseries.data"]:
+  for path in ["examples/data/session_store.data", "examples/data/timeseries.data"]:
     if fileExists(path):
       removeFile(path)
 
@@ -135,7 +135,7 @@ proc demoCompression() =
   echo ""
 
   # Test different data types
-  var db = openBarrel("demos/data/compression_test.data")
+  var db = openBarrel("examples/data/compression_test.data")
   defer: db.close()
 
   echo "Testing compression with different data patterns:"
@@ -167,8 +167,8 @@ proc demoCompression() =
     success("✓ Data integrity verified after compression")
 
   # Cleanup
-  if fileExists("demos/data/compression_test.data"):
-    removeFile("demos/data/compression_test.data")
+  if fileExists("examples/data/compression_test.data"):
+    removeFile("examples/data/compression_test.data")
 
 proc demoConfiguration() =
   ## Demonstrate configuration usage
@@ -184,7 +184,7 @@ proc demoConfiguration() =
 
   # Example 1: Default configuration
   echo "Demo 1: Using default BarrelConfig"
-  var db1 = openBarrel("demos/data/default_test.data")
+  var db1 = openBarrel("examples/data/default_test.data")
   defer: db1.close()
 
   discard db1.set("test", "data")
@@ -202,7 +202,7 @@ proc demoConfiguration() =
   perfConfig.writeBufferSize = 1024 * 1024  # 1MB buffer
   perfConfig.mode = BarrelMode.bmHash
 
-  var db2 = openBarrel("demos/data/fast_test.data", perfConfig)
+  var db2 = openBarrel("examples/data/fast_test.data", perfConfig)
   defer: db2.close()
 
   let config2 = db2.getConfig()
@@ -219,7 +219,7 @@ proc demoConfiguration() =
   durableConfig.writeBufferSize = 32 * 1024  # Smaller buffer
   durableConfig.validateCrc = true
 
-  var db3 = openBarrel("demos/data/safe_test.data", durableConfig)
+  var db3 = openBarrel("examples/data/safe_test.data", durableConfig)
   defer: db3.close()
 
   let config3 = db3.getConfig()
@@ -235,7 +235,7 @@ proc demoConfiguration() =
   rangeConfig.mode = BarrelMode.bmCritBit
   rangeConfig.syncMode = UserSyncMode.Sync
 
-  var db4 = openBarrel("demos/data/range_test.data", rangeConfig)
+  var db4 = openBarrel("examples/data/range_test.data", rangeConfig)
   defer: db4.close()
 
   # Add some data and test range query
@@ -248,8 +248,8 @@ proc demoConfiguration() =
   echo ""
 
   # Cleanup
-  for path in ["demos/data/default_test.data", "demos/data/fast_test.data",
-               "demos/data/safe_test.data", "demos/data/range_test.data"]:
+  for path in ["examples/data/default_test.data", "examples/data/fast_test.data",
+               "examples/data/safe_test.data", "examples/data/range_test.data"]:
     if fileExists(path):
       removeFile(path)
 

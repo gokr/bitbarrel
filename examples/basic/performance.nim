@@ -5,11 +5,11 @@
 ## - Write buffer sizing impact
 ## - Batch operations vs individual writes
 ##
-## Run with: nim c -r demos/performance_demo.nim
+## Run with: nim c -r examples/basic/performance.nim
 
 import std/[os, strformat, times, cpuinfo]
 import std/strutils except formatSize
-import demo_utils
+import ../utils
 import bitbarrel
 
 type
@@ -21,7 +21,7 @@ type
 
 proc cleanupDataFiles() =
   ## Clean up test data files
-  let dataDir = "demos/data"
+  let dataDir = "examples/data"
   if dirExists(dataDir):
     for kind, path in walkDir(dataDir):
       if kind == pcFile and (path.endsWith(".data") or path.endsWith(".db")):
@@ -63,7 +63,7 @@ proc demonstrateSyncModes() =
   fastConfig.syncMode = UserSyncMode.None
   fastConfig.writeBufferSize = 1024 * 1024  # 1MB buffer
 
-  var fastDb = openBarrel("demos/data/fast_sync_test.data", fastConfig)
+  var fastDb = openBarrel("examples/data/fast_sync_test.data", fastConfig)
   defer: fastDb.close()
 
   let fastTime = runPerformanceTest(fastDb, PerformanceTest(
@@ -78,7 +78,7 @@ proc demonstrateSyncModes() =
   normalConfig.syncMode = UserSyncMode.Sync
   normalConfig.writeBufferSize = 256 * 1024  # 256KB buffer
 
-  var normalDb = openBarrel("demos/data/normal_sync_test.data", normalConfig)
+  var normalDb = openBarrel("examples/data/normal_sync_test.data", normalConfig)
   defer: normalDb.close()
 
   let normalTime = runPerformanceTest(normalDb, PerformanceTest(
@@ -93,7 +93,7 @@ proc demonstrateSyncModes() =
   safeConfig.syncMode = UserSyncMode.Fsync
   safeConfig.writeBufferSize = 32 * 1024  # 32KB buffer
 
-  var safeDb = openBarrel("demos/data/safe_sync_test.data", safeConfig)
+  var safeDb = openBarrel("examples/data/safe_sync_test.data", safeConfig)
   defer: safeDb.close()
 
   let safeTime = runPerformanceTest(safeDb, PerformanceTest(
@@ -128,7 +128,7 @@ proc demonstrateBufferSizes() =
     config.syncMode = UserSyncMode.None  # No sync to isolate buffer effect
     config.writeBufferSize = bufSize
 
-    let db = openBarrel(&"demos/data/buf_{bufSize}.data", config)
+    let db = openBarrel(&"examples/data/buf_{bufSize}.data", config)
     defer: db.close()
 
     let time = runPerformanceTest(db, PerformanceTest(
@@ -156,7 +156,7 @@ proc demonstrateBatching() =
     config.syncMode = UserSyncMode.None
     config.writeBufferSize = 512 * 1024
 
-    let db = openBarrel(&"demos/data/batch_{batchSize}.data", config)
+    let db = openBarrel(&"examples/data/batch_{batchSize}.data", config)
     defer: db.close()
 
     var timer = startTimer()
@@ -185,7 +185,7 @@ proc demonstrateDirectVsBuffered() =
   const NUM_OPS = 10000
 
   # Direct writes (default config)
-  let directDb = openBarrel("demos/data/perf_direct.data")
+  let directDb = openBarrel("examples/data/perf_direct.data")
   let start = cpuTime()
   for i in 0..<NUM_OPS:
     discard directDb.set(&"key{i}", &"value{i}")
@@ -199,7 +199,7 @@ proc demonstrateDirectVsBuffered() =
   bufferedConfig.syncMode = UserSyncMode.Sync
   bufferedConfig.writeBufferSize = 64 * 1024
 
-  let bufferedDb = openBarrel("demos/data/perf_buffered.data", bufferedConfig)
+  let bufferedDb = openBarrel("examples/data/perf_buffered.data", bufferedConfig)
   let start2 = cpuTime()
   for i in 0..<NUM_OPS:
     discard bufferedDb.set(&"key{i}", &"value{i}")
@@ -227,7 +227,7 @@ proc demonstrateRealWorldScenario() =
   config.syncMode = UserSyncMode.Sync  # Balanced durability
   config.writeBufferSize = 128 * 1024
 
-  let db = openBarrel("demos/data/realworld.data", config)
+  let db = openBarrel("examples/data/realworld.data", config)
   defer: db.close()
 
   # Pre-populate with data
