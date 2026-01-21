@@ -3,7 +3,8 @@
 ##
 ##  Real-time metrics collection and Prometheus format generation
 ##
-import std/[tables, times, strformat, locks, json]
+import std/[tables, times, strformat, locks]
+import std/json
 
 ## Forward declarations for types not yet imported
 type
@@ -260,46 +261,47 @@ proc cleanupOldMetrics*(collector: MetricsCollector) =
 ## Get all current metrics as JSON
 proc getMetricsJson*(collector: MetricsCollector): JsonNode =
   ## Get current metrics as JSON for API responses
-  result = %*{
-    "timestamp": epochTime(),
-    "operations": {},
-    "storage": {},
-    "server": {},
-    "response_times": {}
-  }
+  var root = newJObject()
+  root["timestamp"] = %epochTime()
 
-  ## Operation counters
+  var operations = newJObject()
   withLock(collector.opsLock):
     for op in [opGet, opSet, opDelete]:
-      result["operations"][($op)] = %*{}
+      var opNode = newTable[string, JsonValue]()
       for status in [stSuccess, stFailure]:
         let key = (op, status)
-        result["operations"][($op)][($status)] = %collector.opsTotal.getOrDefault(key, 0)
+        opNode[$status] = %collector.opsTotal.getOrDefault(key, 0)
+      operations[$op] = %opNode
+  root["operations"] = %operations
 
-  ## Storage metrics
+  var storage = newJObject()
   withLock(collector.storageLock):
-    result["storage"] = %*{
-      "files": collector.storageFiles,
-      "bytes": collector.storageBytes,
-      "fragmentation_ratio": collector.storageFragRatio,
-      "keys_active": collector.keysTotalActive,
-      "keys_deleted": collector.keysTotalDeleted
-    }
+    storage["files"] = %collector.storageFiles
+    storage["bytes"] = %collector.storageBytes
+    storage["fragmentation_ratio"] = %collector.storageFragRatio
+    storage["keys_active"] = %collector.keysTotalActive
+    storage["keys_deleted"] = %collector.keysTotalDeleted
+  root["storage"] = %storage
 
-  ## Server metrics
+  var server = newJObject()
   withLock(collector.serverLock):
-    result["server"] = %*{
-      "sessions_active": collector.sessionsActive,
-      "barrels_open": collector.barrelsOpen,
-      "uptime_seconds": collector.getUptime()
-    }
+    server["sessions_active"] = %collector.sessionsActive
+    server["barrels_open"] = %collector.barrelsOpen
+    server["uptime_seconds"] = %collector.getUptime()
+  root["server"] = %server
 
-  ## Response times
+  var responseTimes = newJObject()
   withLock(collector.responseTimeLock):
     for op in [opGet, opSet, opDelete]:
       let hist = collector.responseTimes[op]
-      result["response_times"][($op)] = %*{
-        "count": hist.count,
-        "sum_ms": hist.sum,
-        "buckets": hist.buckets
-      }
+      var histNode = newJObject()
+      histNode["count"] = %hist.count
+      histNode["sum_ms"] = %hist.sum
+      var buckets = newJArray()
+      for bucket in hist.buckets:
+        buckets.add(%bucket)
+      histNode["buckets"] = %buckets
+      responseTimes[$op] = %histNode
+  root["response_times"] = %responseTimes
+
+  result = root
