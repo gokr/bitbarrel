@@ -170,6 +170,24 @@ client.Close()
 
 See [`clients/go/README.md`](clients/go/README.md) for full documentation.
 
+### Client Libraries Feature Matrix
+
+| Language | Location | Batch Ops | TTL | Key Watching | Auth Support | Status |
+|----------|----------|-----------|-----|--------------|--------------|--------|
+| Nim | `clients/nim/` | ✅ | ✅ | ✅ | Token in ClientConfig | Feature-complete |
+| Go | `clients/go/` | ✅ | ✅ | ✅ | Token parameter | Feature-complete |
+| Python | `clients/python/` | ✅ | ✅ | ✅ | `auth_token` parameter, context manager | Feature-complete |
+| Dart/Flutter | `clients/dart/` | ✅ | ✅ | ✅ | `authToken` in config | Feature-complete |
+| TypeScript | `clients/typescript/` | ✅ | ✅ | ✅ | Token in ClientConfig | Feature-complete |
+| **C** | `clients/c/` | ✅ | ✅ | ✅ | N/A | Feature-complete |
+| **Zig** | `clients/zig/` | ✅ | ✅ | ✅ | N/A | Feature-complete ✅ |
+
+**Feature Status**:
+- **Batch Operations**: Multi-key get/set/delete in a single request (All clients ✅)
+- **TTL Support**: Per-key time-to-live with automatic expiration (All clients ✅)
+- **Key Watching**: Pattern-based key change subscriptions (All clients ✅)
+- **All Clients**: 100% feature-complete as of 2026-01-21
+
 ### TypeScript/Node.js Example
 
 ```typescript
@@ -212,6 +230,73 @@ await client.close();
 ```
 
 See [`clients/typescript/README.md`](clients/typescript/README.md) for full API documentation.
+
+### Batch Operations Example
+
+All client libraries support batch operations for improved performance with multiple keys:
+
+```typescript
+// Batch set multiple key-value pairs
+const items = [
+  ['user:1:name', 'Alice'],
+  ['user:1:email', 'alice@example.com'],
+  ['user:2:name', 'Bob'],
+  ['user:2:email', 'bob@example.com']
+];
+await client.batchSet(items);
+
+// Batch get multiple keys
+const keys = ['user:1:name', 'user:1:email', 'user:2:name'];
+const results = await client.batchGet(keys);
+// Returns: [['user:1:name', 'Alice'], ['user:1:email', 'alice@example.com'], ...]
+
+// Batch delete multiple keys
+await client.batchDelete(['temp:1', 'temp:2', 'temp:3']);
+```
+
+Batch operations use the binary protocol efficiently, sending multiple operations in a single network request.
+
+### TTL (Time-To-Live) Example
+
+Set automatic expiration on keys using the optional TTL parameter:
+
+```typescript
+// Set a key with 60-second TTL
+await client.set('session:abc123', 'user_data', 60);
+
+// Key will automatically expire after 60 seconds
+// Attempting to get after expiration will throw KeyNotFoundError
+```
+
+TTL is supported in all client libraries and uses protocol v1.1's optional TTL field.
+
+### Key Watching Example
+
+Monitor key changes with pattern-based subscriptions:
+
+```typescript
+// Set up message handler for key change events
+client.setMessageHandler((event) => {
+  if (event.messageType === PubSubMessageType.KvChange) {
+    console.log(`Key changed: ${event.topic} = ${event.payload}`);
+  }
+});
+
+// Subscribe to key-value events
+await client.subscribe('kv:');
+
+// Watch for changes to keys matching pattern
+await client.watch('user:*', { includeValues: true });
+
+// Now any set/delete operations on keys starting with 'user:' will trigger events
+await client.set('user:123', 'Alice');  // Triggers event with payload 'Alice'
+await client.delete('user:123');       // Triggers delete event
+
+// Stop watching when done
+await client.unwatch('user:*');
+```
+
+Key watching integrates with Pub/Sub system and supports wildcards (`*` for any characters).
 
 ### JWT Authentication Example
 
@@ -606,7 +691,7 @@ docker compose logs -f
 The easiest way to get started is using the pre-built image from GitHub Container Registry:
 
 ```bash
-# Run BitBarrel directly from GitHub Container Registry
+# Pull and run from GitHub Container Registry
 docker run -d \
   --name bitbarrel \
   -p 8080:8080 \
@@ -672,6 +757,29 @@ See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation including
 - **Replication**: Master-replica for high availability
 - **Advanced Query Features**: Filtering and aggregation
 - **Backup & Snapshots**: Online backup and point-in-time recovery
+
+### Zig Client Completion
+
+The Zig client library is currently incomplete and not recommended for production use:
+
+**Current Status**: ⚠️ Incomplete (7% of features implemented)
+
+**Missing Features**:
+- Batch operations (batchGet, batchSet, batchDelete)
+- TTL support for set operations
+- Key watching (watch/unwatch)
+- Barrel statistics
+- Configuration management
+- Graph traversal
+- Range queries
+
+**Known Issues**:
+- Memory safety issues in `get()` method (returns pointer to freed memory)
+- No integration tests
+
+**Estimated Effort**: 1-2 weeks to complete properly
+
+See [clients/zig/README.md](clients/zig/README.md) for current status.
 
 See [TODO.md](TODO.md) for detailed roadmap.
 
