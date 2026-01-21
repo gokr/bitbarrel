@@ -1,13 +1,13 @@
-# BitBarrel Demos
+# BitBarrel Examples
 
 This directory contains runnable examples demonstrating how to use the BitBarrel key-value store.
 
 ## Quick Start
 
-### Run the Basic Demo
+### Run the Basic Example
 
 ```bash
-nim c -r demos/basic_demo.nim
+nim c -r examples/basic/basic.nim
 ```
 
 This demonstrates CRUD operations using the high-level Barrel API and is the best starting point.
@@ -15,22 +15,22 @@ This demonstrates CRUD operations using the high-level Barrel API and is the bes
 ### Using Nimble
 
 ```bash
-# Run basic CRUD demo
-nimble demoBasic
+# Run basic CRUD example
+nimble exampleBasic
 
-# Run performance demo
-nimble demoPerformance
+# Run performance example
+nimble examplePerformance
 
-# Run graph traversal demo
-nimble demoGraph
+# Run graph traversal example
+nimble exampleGraph
 
-# Run advanced features demo
-nimble demoAdvanced
+# Run advanced features example
+nimble exampleAdvanced
 ```
 
-## Available Demos
+## Available Examples
 
-### 1. Basic Demo (`basic_demo.nim`)
+### 1. Basic Example (`examples/basic/basic.nim`)
 
 **Features demonstrated:**
 - Opening a database with `openBarrel()`
@@ -46,12 +46,12 @@ nimble demoAdvanced
 
 **Run it:**
 ```bash
-nim c -r demos/basic_demo.nim
+nim c -r examples/basic/basic.nim
 # or
-nimble demoBasic
+nimble exampleBasic
 ```
 
-### 2. Performance Demo (`performance_demo.nim`)
+### 2. Performance Example (`examples/basic/performance.nim`)
 
 Demonstrates performance characteristics and tuning options.
 
@@ -65,12 +65,12 @@ Demonstrates performance characteristics and tuning options.
 
 **Run it:**
 ```bash
-nim c -r demos/performance_demo.nim
+nim c -r examples/basic/performance.nim
 # or
-nimble demoPerformance
+nimble examplePerformance
 ```
 
-### 3. Graph Demo (`graph_demo.nim`)
+### 3. Graph Traversal Example (`examples/advanced/graph_traversal.nim`)
 
 Demonstrates graph traversal patterns using the network client API.
 
@@ -85,12 +85,12 @@ Demonstrates graph traversal patterns using the network client API.
 
 **Run it:**
 ```bash
-nim c -r demos/graph_demo.nim
+nim c -r examples/advanced/graph_traversal.nim
 # or
-nimble demoGraph
+nimble exampleGraph
 ```
 
-### 4. Advanced Demo (`advanced_demo.nim`)
+### 4. Advanced Features Example (`examples/advanced/advanced.nim`)
 
 Demonstrates advanced BitBarrel features.
 
@@ -102,9 +102,45 @@ Demonstrates advanced BitBarrel features.
 
 **Run it:**
 ```bash
-nim c -r demos/advanced_demo.nim
+nim c -r examples/advanced/advanced.nim
 # or
-nimble demoAdvanced
+nimble exampleAdvanced
+```
+
+### 5. Pub/Sub KV Events Example (`examples/pubsub/kv_events_pubsub.nim`)
+
+Demonstrates Pub/Sub messaging with key-value change events integration.
+
+**Note:** Requires a running BitBarrel server on port 9876 with Pub/Sub enabled.
+
+**Features:**
+- Basic topic subscription and publishing
+- Pattern matching subscriptions
+- Presence tracking
+- Message history retrieval
+- Key-value event integration (automatic KV change notifications)
+- UnsubscribeAll functionality
+
+**Run it:**
+```bash
+nim c -r --path:clients/nim/src examples/pubsub/kv_events_pubsub.nim
+```
+
+### 6. Network Client Examples
+
+**Basic Client (`examples/networking/basic_client.nim`):**
+- Connect to BitBarrel server via WebSocket
+- Create and use barrels
+- Perform CRUD operations remotely
+
+**Barrel Management (`examples/networking/barrels_example.nim`):**
+- Manage multiple barrels over network
+- Barrel switching and lifecycle management
+
+**Run it:**
+```bash
+nimble exampleNetworkBasic
+nimble exampleNetworkBarrels
 ```
 
 ## Code Examples
@@ -180,7 +216,7 @@ let (keys, _, _) = rangeDb.keysByPrefix("user:")
 
 ## Performance Characteristics
 
-Based on running the demos:
+Based on running the examples:
 
 - **Write latency (None sync)**: ~0.005ms per record (~188K ops/sec)
 - **Write latency (Sync)**: ~0.005ms per record (~186K ops/sec)
@@ -256,7 +292,7 @@ if fileExists("db.data"):
 
 **"Cannot open file" error**
 - Check file permissions
-- Ensure directory exists: `createDir("data")`
+- Ensure directory exists: `createDir("examples/data")`
 
 **Slow performance**
 - Use `-d:release` flag
@@ -267,6 +303,15 @@ if fileExists("db.data"):
 - KeyDir stores all keys in memory
 - Each key uses ~40-60 bytes overhead
 - For 1M keys: ~40-60MB RAM needed
+
+## Example Categories
+
+- `examples/basic/` - Basic CRUD operations and performance testing
+- `examples/advanced/` - Advanced features (modes, compression, range queries)
+- `examples/networking/` - Network client usage examples
+- `examples/pubsub/` - Pub/Sub messaging and KV events
+- `examples/plugins/` - Hook system and query result plugins
+- `examples/utils.nim` - Shared utility functions for examples
 
 ## Next Steps
 

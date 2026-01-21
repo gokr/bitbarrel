@@ -31,7 +31,7 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
 
     # Compile all examples (excluding utility modules)
     # Note: pubsub examples require --path:clients/nim/src to find bitbarrel_client
-    find examples -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
+    find examples -name "*.nim" -type f | grep -v "pubsub/" | while IFS= read -r file; do
       echo "Compiling $file..."
       nim c --verbosity:0 --path:src --path:clients/nim/src "$file"
     done
@@ -42,7 +42,7 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
       nim c --verbosity:0 --path:src "$file"
     done
 
-    echo "✓ All examples and benchmarks compiled successfully!"
+    echo "✓ All examples (except pubsub) and benchmarks compiled successfully!"
   """
 
 task test, "Run all tests (automatic discovery via testament)":

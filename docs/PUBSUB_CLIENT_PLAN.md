@@ -15,7 +15,7 @@ This document outlines the plan for implementing PubSub functionality across all
 ### Documentation Status
 - ✅ All documentation updated with Pub/Sub sections and examples
 - ✅ Comprehensive user guide created at `docs/USER_GUIDE/pubsub.md`
-- ✅ Demo program created at `demos/pubsub_demo.nim`
+- ✅ Demo program created at `examples/pubsub/kv_events_pubsub.nim`
 - ✅ Cross-references added throughout documentation
 
 ## Reference Implementation: Nim Client
@@ -507,7 +507,7 @@ Client                          Server
 - [✅] **Documentation**: All client READMEs updated with Pub/Sub API documentation
 - [✅] **User Guide**: Comprehensive Pub/Sub user guide created at `docs/USER_GUIDE/pubsub.md`
 - [✅] **Examples**: Pub/Sub examples added to main README and client documentation
-- [✅] **Demo**: Pub/Sub demo program created at `demos/pubsub_demo.nim`
+- [✅] **Demo**: Pub/Sub demo program created at `examples/pubsub/kv_events_pubsub.nim`
 - [✅] **Nim client**: Full implementation (subscribe/publish + all query methods with tests)
 - [✅] **Go client**: Full implementation (subscribe/publish + all query methods with tests)
 - [✅] **Python client**: Full implementation (subscribe/publish + all query methods with tests)
@@ -533,7 +533,7 @@ Client                          Server
 ### Documentation
 - **Pub/Sub User Guide**: `docs/USER_GUIDE/pubsub.md` - Comprehensive usage guide with examples
 - **Client Documentation**: All client READMEs updated with Pub/Sub API documentation
-- **Demo Program**: `demos/pubsub_demo.nim` - Reference implementation showing all features
+- **Demo Program**: `examples/pubsub/kv_events_pubsub.nim` - Reference implementation showing all features
 - **Network Documentation**: `docs/network-architecture.md` and `docs/networking-guide.md` updated
 
 ### Implementation Status Tracking

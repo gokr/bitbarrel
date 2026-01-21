@@ -391,7 +391,7 @@ src/
     └── main.nim         # CLI interface
 tests/                   # Test suite (14 files)
 bench/                   # Benchmarks and stress tests
-demos/                   # Demo programs
+examples/                # Example programs
 ```
 
 ## Code Quality and Testing

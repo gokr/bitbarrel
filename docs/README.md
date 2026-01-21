@@ -187,6 +187,6 @@ Documentation is plain Markdown. No special build process required.
 ## Need Help?
 
 - Check the [FAQ](USER_GUIDE/tutorial.md#faq) in the tutorial
-- Look at demos in the `demos/` directory
+- Look at examples in the `examples/` directory
 - Run tests: `nimble test`
 - Review architecture: [DEVELOPER_GUIDE/architecture.md](DEVELOPER_GUIDE/architecture.md)
