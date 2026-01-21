@@ -74,6 +74,11 @@ static int ws_event_callback(struct lws* wsi, enum lws_callback_reasons reason,
                 }
                 memcpy(ws->recv_buffer + ws->recv_len, in, len);
                 ws->recv_len += len;
+
+                // Check if this is the final fragment of the message
+                if (lws_is_final_fragment(wsi)) {
+                    ws->recv_complete = true;
+                }
             }
             break;
 
@@ -266,29 +271,29 @@ ssize_t ws_recv_binary(BBWebSocket* ws, uint8_t** data, int timeout_ms) {
         return -1;
     }
 
-    // Only reset buffer if no pending data (data may have arrived during connection)
-    if (ws->recv_len == 0) {
-        ws->recv_complete = false;
+    // Reset receive state for new message (only if no pending complete message)
+    if (!ws->recv_complete) {
+        ws->recv_len = 0;
     }
 
     time_t start = time(NULL);
     time_t timeout_sec = timeout_ms / 1000;
     if (timeout_sec < 1) timeout_sec = 1;
 
+    // Wait for a complete message (final fragment received)
     while (!ws->recv_complete && (time(NULL) - start) < timeout_sec) {
         lws_service(ws->context, 50);  // 50ms interval
-        if (ws->recv_len > 0) {
-            // Got some data, assume complete message
-            break;
+
+        if (!ws->connected) {
+            snprintf(ws->error_msg, sizeof(ws->error_msg), "Connection closed during receive");
+            return -1;
         }
         usleep(10000);  // 10ms
     }
 
-    if (ws->recv_len == 0) {
-        if (!ws->connected) {
-            snprintf(ws->error_msg, sizeof(ws->error_msg), "Connection closed");
-        }
-        return -1;  // No data received
+    if (!ws->recv_complete || ws->recv_len == 0) {
+        snprintf(ws->error_msg, sizeof(ws->error_msg), "WebSocket receive timeout");
+        return -1;  // No complete message received
     }
 
     *data = malloc(ws->recv_len);
