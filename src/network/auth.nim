@@ -3,8 +3,11 @@
 ## Provides token generation and verification for static-secret JWT authentication.
 ## Uses HS256 algorithm with a configurable secret.
 
-import std/[times, strformat, options, tables, strutils, json]
+import std/[times, strformat, tables, strutils]
+import std/json as stdjson
 import jwt
+import sunny
+
 
 type
   Role* = enum
@@ -29,6 +32,21 @@ type
 
 const
   MinSecretLength = 32
+
+type
+  JwtHeader = object
+    alg {.json: "alg".}: string
+    typ {.json: "typ".}: string
+
+  JwtClaims = object
+    sub {.json: "sub".}: string
+    roles {.json: "roles".}: seq[string]
+    iat {.json: "iat".}: int64
+    exp {.json: "exp".}: int64
+
+  Jwt = object
+    header {.json: "header".}: JwtHeader
+    claims {.json: "claims".}: JwtClaims
 
 proc parseRole*(s: string): Role =
   case s.toLowerAscii()
@@ -56,18 +74,15 @@ proc generateToken*(config: AuthConfig, username: string): string =
   let now = getTime().toUnix()
   let expiresAt = now + (config.defaultTokenExpiryHours * 3600)
 
-  var token = toJWT(%*{
-    "header": {
-      "alg": "HS256",
-      "typ": "JWT"
-    },
-    "claims": {
-      "sub": username,
-      "roles": %*roleStrs,
-      "iat": now,
-      "exp": expiresAt
-    }
-  })
+  # Create JWT structure using Sunny types
+  let header = JwtHeader(alg: "HS256", typ: "JWT")
+  let claims = JwtClaims(sub: username, roles: roleStrs, iat: now, exp: expiresAt)
+  let jwt = Jwt(header: header, claims: claims)
+
+  # Convert to JSON string using Sunny, then parse with std/json for jwt library
+  let jsonString = toJson(jwt)
+  let jsonNode = stdjson.parseJson(jsonString)
+  var token = toJWT(jsonNode)
   token.sign(config.secret)
   result = $token
 
