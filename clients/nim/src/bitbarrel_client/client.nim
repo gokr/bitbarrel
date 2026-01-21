@@ -1485,7 +1485,7 @@ proc watch*(client: var BitBarrelClient, pattern: string, includeValues = false)
   ##
   ## Patterns use * as wildcard (e.g., "user:*" or "cache:*")
   if client.currentBarrel.len == 0:
-    raise NoBarrelError.newException("No barrel selected")
+    raise newException(ClientError, "No barrel selected")
 
   let watchData = encodeWatchRequest("", pattern, includeValues)
   discard client.sendRequest(cmdWatchKey, "", watchData)
@@ -1493,7 +1493,7 @@ proc watch*(client: var BitBarrelClient, pattern: string, includeValues = false)
 proc unwatch*(client: var BitBarrelClient, pattern: string) =
   ## Stop watching a previously registered pattern.
   if client.currentBarrel.len == 0:
-    raise NoBarrelError.newException("No barrel selected")
+    raise newException(ClientError, "No barrel selected")
 
   let watchData = encodeWatchRequest("", pattern, false)
   discard client.sendRequest(cmdUnwatchKey, "", watchData)
