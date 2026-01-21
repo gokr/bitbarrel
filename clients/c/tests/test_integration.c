@@ -235,6 +235,132 @@ static void test_range_queries(BBClient* client) {
     bb_drop_barrel(client, barrel_name);
 }
 
+// Global to capture watch events
+static int watch_event_received = 0;
+static char watch_event_topic[256] = {0};
+
+// Handler for key watch events
+static void watch_event_handler(const char* topic, const char* message, void* userdata) {
+    (void)userdata; // unused
+    watch_event_received = 1;
+    strncpy(watch_event_topic, topic, sizeof(watch_event_topic) - 1);
+    printf("      [Event] Topic: %s\n", topic);
+    fflush(stdout);
+}
+
+// Test suite: Key Watching
+static void test_key_watching(BBClient* client) {
+    printf("\n=== Key Watching Tests ===\n");
+    fflush(stdout);
+
+    char barrel_name[64];
+    generate_unique_barrel_name(barrel_name, sizeof(barrel_name), "watch_test");
+
+    // Create and use barrel
+    TEST_START("create barrel for watch tests");
+    if (bb_create_barrel(client, barrel_name, BM_HASH) == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+        return;
+    }
+
+    TEST_START("use barrel for watch tests");
+    if (bb_use_barrel(client, barrel_name) == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+        bb_drop_barrel(client, barrel_name);
+        return;
+    }
+
+    // Set up Pub/Sub subscription for key events
+    TEST_START("subscribe to key events");
+    if (bb_subscribe(client, "kv:", "", 0) == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+        bb_drop_barrel(client, barrel_name);
+        return;
+    }
+
+    // Set up event handler
+    bb_set_event_handler(client, watch_event_handler, NULL);
+
+    // Test 1: Basic watch without values
+    TEST_START("watch pattern without values");
+    if (bb_watch_key(client, "user:*") == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+        bb_unsubscribe(client, "kv:");
+        bb_drop_barrel(client, barrel_name);
+        return;
+    }
+
+    // Wait a bit and then set a matching key
+    usleep(100000); // 100ms
+    watch_event_received = 0;
+    memset(watch_event_topic, 0, sizeof(watch_event_topic));
+
+    TEST_START("set matching key (user:1)");
+    if (bb_set(client, "user:1", "Alice", -1) == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+    }
+
+    // Wait for potential event
+    usleep(500000); // 500ms
+
+    TEST_START("verify event received");
+    if (watch_event_received) {
+        if (strstr(watch_event_topic, "user:1") != NULL) {
+            TEST_PASS();
+        } else {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "Topic mismatch: %s", watch_event_topic);
+            TEST_FAIL(msg);
+        }
+    } else {
+        TEST_FAIL("No event received within timeout");
+    }
+
+    // Test 2: Unwatch
+    TEST_START("unwatch pattern");
+    if (bb_unwatch_key(client, "user:*") == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+    }
+
+    usleep(100000); // 100ms
+    watch_event_received = 0;
+
+    TEST_START("set key after unwatch");
+    if (bb_set(client, "user:2", "Bob", -1) == BB_OK) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL(bb_get_last_error(client));
+    }
+
+    usleep(500000); // 500ms
+
+    TEST_START("verify no event after unwatch");
+    if (!watch_event_received) {
+        TEST_PASS();
+    } else {
+        TEST_FAIL("Received event after unwatching");
+    }
+
+    // Clean up
+    bb_set_event_handler(client, NULL, NULL);
+    bb_unsubscribe(client, "kv:");
+    bb_drop_barrel(client, barrel_name);
+
+    printf("  All key watching tests passed!\n");
+}
+
 int main(void) {
     printf("BitBarrel C Client Integration Test\n");
     printf("====================================\n");
@@ -282,6 +408,9 @@ int main(void) {
     test_basic_operations(client);
     test_list_keys(client);
     test_range_queries(client);
+
+    // Run key watching tests
+    test_key_watching(client);
 
     // Disconnect
     bb_disconnect(client);
