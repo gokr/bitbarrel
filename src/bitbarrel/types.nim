@@ -1,6 +1,7 @@
 ## Common types and constants for BitBarrel
 
 import times
+import sunny
 
 const
   MAGIC_NUMBER* = "BCKS"
@@ -140,32 +141,32 @@ type
     bmCritBit      # CritBit tree - O(key_len), supports range/prefix queries
     bmHugeCritBit  # Two-tier for massive datasets with range queries
 
-  HugeBarrelConfig* = object
-    maxEntriesPerRange*: int      # Max entries per RangeKeyDir (default: 100_000)
-    rangeCacheSize*: int          # Max RangeKeyDirs in memory (default: 10)
-    rangesPerFile*: int           # Max RangeKeyDirs per Barrel2 file (default: 100)
-    maxDataFileSizeMB*: int       # Deprecated - file size naturally bounded by rangesPerFile
-    autoSplitEnabled*: bool       # Enable automatic range splitting (default: true)
-    flushIntervalMs*: int         # Time-based flush interval in ms (default: 1000, 0 = disabled)
-    enableBarrel2Recovery*: bool  # Enable Barrel2 recovery on startup (default: true)
+  HugeBarrelConfig* {.json: "", extraFields: {}.} = object
+    maxEntriesPerRange* {.json: "maxEntriesPerRange".}: int      # Max entries per RangeKeyDir (default: 100_000)
+    rangeCacheSize* {.json: "rangeCacheSize".}: int          # Max RangeKeyDirs in memory (default: 10)
+    rangesPerFile* {.json: "rangesPerFile".}: int           # Max RangeKeyDirs per Barrel2 file (default: 100)
+    maxDataFileSizeMB* {.json: "maxDataFileSizeMB".}: int       # Deprecated - file size naturally bounded by rangesPerFile
+    autoSplitEnabled* {.json: "autoSplitEnabled".}: bool       # Enable automatic range splitting (default: true)
+    flushIntervalMs* {.json: "flushIntervalMs".}: int         # Time-based flush interval in ms (default: 1000, 0 = disabled)
+    enableBarrel2Recovery* {.json: "enableBarrel2Recovery".}: bool  # Enable Barrel2 recovery on startup (default: true)
 
-  BarrelConfig* = object
+  BarrelConfig* {.json: "", extraFields: {}.} = object
     # Storage config
-    writeBufferSize*: int
-    syncMode*: UserSyncMode
-    autoCompact*: bool
-    compactThreshold*: float
-    compactInterval*: int   # Seconds between compaction checks (default: 60)
-    validateCrc*: bool  # Validate CRC32 on reads (default: true)
-    compressionConfig*: ptr CompressionConfig  # Compression settings (nil = use defaults)
+    writeBufferSize* {.json: "writeBufferSize".}: int
+    syncMode* {.json: "syncMode".}: UserSyncMode
+    autoCompact* {.json: "autoCompact".}: bool
+    compactThreshold* {.json: "compactThreshold".}: float
+    compactInterval* {.json: "compactInterval".}: int   # Seconds between compaction checks (default: 60)
+    validateCrc* {.json: "validateCrc".}: bool  # Validate CRC32 on reads (default: true)
+    compressionConfig* {.json: "compressionConfig".}: ptr CompressionConfig  # Compression settings (nil = use defaults)
     # TTL configuration
-    defaultTtl*: int        # Default TTL in seconds (0 = no expiration)
-    checkExpirationOnRead*: bool  # Check expiration during get() calls
-    deleteExpiredOnRead*: bool   # Write tombstone when expired record is read
+    defaultTtl* {.json: "defaultTtl".}: int        # Default TTL in seconds (0 = no expiration)
+    checkExpirationOnRead* {.json: "checkExpirationOnRead".}: bool  # Check expiration during get() calls
+    deleteExpiredOnRead* {.json: "deleteExpiredOnRead".}: bool   # Write tombstone when expired record is read
     # Index mode
-    mode*: BarrelMode
+    mode* {.json: "mode".}: BarrelMode
     # HugeBarrel configuration (only used when mode = bmHugeCritBit)
-    hugeConfig*: HugeBarrelConfig
+    hugeConfig* {.json: "hugeConfig".}: HugeBarrelConfig
 
   # Range partition types (used by bmHugeCritBit)
   RangeId* = uint32
