@@ -45,6 +45,7 @@ pub const Mode = enum(i32) {
 pub const Client = struct {
     handle: ?*c.BBClient,
     allocator: std.mem.Allocator,
+    currentBarrel: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator, config: Config) Error!Client {
         // Initialize C library
@@ -108,13 +109,27 @@ pub const Client = struct {
         if (result != c.BB_OK) {
             return translateError(result);
         }
+
+        // Store current barrel name
+        if (self.currentBarrel) |old| {
+            self.allocator.free(old);
+        }
+        self.currentBarrel = try self.allocator.dupe(u8, name);
     }
 
-    pub fn closeBarrel(self: *Client) Error!void {
+    pub fn dropBarrel(self: *Client, name: []const u8) Error!void {
         const handle = self.handle orelse return Error.UnknownError;
-        const result = c.bb_close_barrel(handle);
+        const result = c.bb_drop_barrel(handle, name.ptr);
         if (result != c.BB_OK) {
             return translateError(result);
+        }
+
+        // Clear current barrel if it matches
+        if (self.currentBarrel) |current| {
+            if (std.mem.eql(u8, current, name)) {
+                self.allocator.free(current);
+                self.currentBarrel = null;
+            }
         }
     }
 
@@ -164,9 +179,14 @@ pub const Client = struct {
             // Check if it's a "not found" or an error
             return null;
         }
-        errdefer c.bb_free_string(value);
-        // Note: In a real implementation, we'd need to manage the lifetime better
-        return std.mem.sliceTo(value, 0);
+        // Make a copy of the string that we can manage
+        // The original must be freed by the C library
+        const len = std.mem.len(value);
+        const copy = try self.allocator.alloc(u8, len + 1);
+        @memcpy(copy[0..len], value[0..len]);
+        copy[len] = 0;
+        c.bb_free_string(value);
+        return copy[0..len];
     }
 
     pub fn delete(self: *Client, key: []const u8) Error!void {
@@ -341,8 +361,107 @@ pub const Client = struct {
         }
     }
 
+    // Batch operations
+    pub fn batchSet(self: *Client, items: []const BatchItem) Error!usize {
+        const handle = self.handle orelse return Error.UnknownError;
+
+        if (items.len == 0) return 0;
+
+        // Allocate arrays for C API
+        const keys = try self.allocator.alloc([*c]const u8, items.len);
+        defer self.allocator.free(keys);
+        const values = try self.allocator.alloc([*c]const u8, items.len);
+        defer self.allocator.free(values);
+
+        for (items, 0..) |item, i| {
+            keys[i] = item.key.ptr;
+            values[i] = item.value.ptr;
+        }
+
+        var success_count: usize = 0;
+        const result = c.bb_batch_set(handle, keys.ptr, values.ptr, items.len, &success_count);
+        if (result != c.BB_OK) {
+            return translateError(result);
+        }
+
+        return success_count;
+    }
+
+    pub fn batchGet(self: *Client, keys: []const []const u8) Error!std.ArrayList(BatchGetResult) {
+        const handle = self.handle orelse return Error.UnknownError;
+
+        if (keys.len == 0) {
+            return std.ArrayList(BatchGetResult).init(self.allocator);
+        }
+
+        // Allocate array for C API
+        const c_keys = try self.allocator.alloc([*c]const u8, keys.len);
+        defer self.allocator.free(c_keys);
+
+        for (keys, 0..) |key, i| {
+            c_keys[i] = key.ptr;
+        }
+
+        var values_ptr: [*c][*c]u8 = undefined;
+        var statuses_ptr: [*c]u8 = undefined;
+        var result_count: usize = 0;
+
+        const result = c.bb_batch_get(handle, c_keys.ptr, keys.len, &values_ptr, &statuses_ptr, &result_count);
+        if (result != c.BB_OK) {
+            return translateError(result);
+        }
+
+        var list = std.ArrayList(BatchGetResult).init(self.allocator);
+        errdefer {
+            // Clean up on error
+            _ = c.bb_free_string_array(values_ptr, result_count);
+            c.free(@ptrCast(statuses_ptr));
+            list.deinit();
+        }
+
+        for (0..result_count) |i| {
+            if (statuses_ptr[i] == 0) { // Success status
+                const value = std.mem.sliceTo(values_ptr[i], 0);
+                try list.append(.{
+                    .key = keys[i],
+                    .value = value,
+                    .found = true,
+                });
+            }
+        }
+
+        // Clean up C arrays
+        _ = c.bb_free_string_array(values_ptr, result_count);
+        c.free(@ptrCast(statuses_ptr));
+
+        return list;
+    }
+
+    pub fn batchDelete(self: *Client, keys: []const []const u8) Error!usize {
+        const handle = self.handle orelse return Error.UnknownError;
+
+        if (keys.len == 0) return 0;
+
+        // Allocate array for C API
+        const c_keys = try self.allocator.alloc([*c]const u8, keys.len);
+        defer self.allocator.free(c_keys);
+
+        for (keys, 0..) |key, i| {
+            c_keys[i] = key.ptr;
+        }
+
+        var success_count: usize = 0;
+        const result = c.bb_batch_delete(handle, c_keys.ptr, keys.len, &success_count);
+        if (result != c.BB_OK) {
+            return translateError(result);
+        }
+
+        return success_count;
+    }
+
     // Range queries
     pub const RangeResult = struct {
+        allocator: std.mem.Allocator,
         items: std.ArrayList(Item),
         next_cursor: ?[]const u8,
         has_more: bool,
@@ -358,6 +477,86 @@ pub const Client = struct {
                 self.allocator.free(cursor);
             }
         }
+    };
+
+    pub fn itemsInRange(self: *Client, start_key: []const u8, end_key: []const u8, limit: usize, cursor: ?[]const u8) Error!RangeResult {
+        const handle = self.handle orelse return Error.UnknownError;
+
+        var result_ptr: [*c]c.BBRangeResult = undefined;
+        const cursor_ptr = if (cursor) |c| c.ptr else null;
+
+        const c_result = c.bb_items_in_range(handle, start_key.ptr, end_key.ptr, limit, cursor_ptr, &result_ptr);
+        if (c_result != c.BB_OK) {
+            return translateError(c_result);
+        }
+
+        return translateRangeResult(self.allocator, result_ptr);
+    }
+
+    pub fn itemsWithPrefix(self: *Client, prefix: []const u8, limit: usize, cursor: ?[]const u8) Error!RangeResult {
+        const handle = self.handle orelse return Error.UnknownError;
+
+        var result_ptr: [*c]c.BBRangeResult = undefined;
+        const cursor_ptr = if (cursor) |c| c.ptr else null;
+
+        const c_result = c.bb_items_with_prefix(handle, prefix.ptr, limit, cursor_ptr, &result_ptr);
+        if (c_result != c.BB_OK) {
+            return translateError(c_result);
+        }
+
+        return translateRangeResult(self.allocator, result_ptr);
+    }
+
+    fn translateRangeResult(allocator: std.mem.Allocator, result_ptr: [*c]c.BBRangeResult) Error!RangeResult {
+        if (result_ptr == null) {
+            return Error.UnknownError;
+        }
+
+        var result = RangeResult{
+            .allocator = allocator,
+            .items = std.ArrayList(RangeResult.Item).init(allocator),
+            .next_cursor = null,
+            .has_more = false,
+        };
+        errdefer result.deinit();
+
+        const count = result_ptr.*.count;
+        const keys = result_ptr.*.keys;
+        const values = result_ptr.*.values;
+
+        for (0..count) |i| {
+            const key = std.mem.sliceTo(keys[i], 0);
+            const value = std.mem.sliceTo(values[i], 0);
+            try result.items.append(.{
+                .key = key,
+                .value = value,
+            });
+        }
+
+        if (result_ptr.*.next_cursor) |cursor| {
+            const cursor_len = std.mem.len(cursor);
+            result.next_cursor = try allocator.alloc(u8, cursor_len + 1);
+            @memcpy(result.next_cursor.?[0..cursor_len], cursor[0..cursor_len]);
+            result.next_cursor.?[cursor_len] = 0;
+        }
+
+        result.has_more = result_ptr.*.has_more;
+
+        c.bb_free_range_result(result_ptr);
+
+        return result;
+    }
+
+    // Helper types
+    pub const BatchItem = struct {
+        key: []const u8,
+        value: []const u8,
+    };
+
+    pub const BatchGetResult = struct {
+        key: []const u8,
+        value: []const u8,
+        found: bool,
     };
 
     // Helper to translate C errors

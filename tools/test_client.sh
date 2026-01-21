@@ -141,12 +141,19 @@ for CLIENT_NAME in "$@"; do
           exit 0
         fi
         echo "Building and testing Zig client..."
+        # Build C library first if not available
+        if [ ! -f "../c/build/libbitbarrel.so" ] && [ -f "../c/CMakeLists.txt" ]; then
+          echo "Building C library for Zig tests..."
+          (cd ../c && rm -rf build && mkdir build && cd build && cmake .. > /dev/null 2>&1 && make -j$(nproc) > /dev/null 2>&1)
+        fi
         # Ensure C library is available
-        # Try to find the C library built in ../c/build
         if [ -f "../c/build/libbitbarrel.so" ]; then
           export LD_LIBRARY_PATH="../c/build:$LD_LIBRARY_PATH"
           echo "✓ Using C library from ../c/build"
+        else
+          echo "⚠ C library not found, Zig tests may fail"
         fi
+        # Run Zig tests
         zig build test
         ;;
       *)

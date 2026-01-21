@@ -68,6 +68,23 @@ pub fn build(b: *std.Build) void {
         });
         const run_message_tests = b.addRunArtifact(message_tests);
         test_step.dependOn(&run_message_tests.step);
+
+        // Integration tests
+        const integration_tests = b.addTest(.{
+            .root_source_file = .{ .path = "tests/test_integration.zig" },
+            .target = target,
+            .optimize = optimize,
+        });
+
+        // Link C library for integration tests
+        integration_tests.linkLibC();
+        integration_tests.linkSystemLibrary("bitbarrel");
+        integration_tests.linkSystemLibrary("ssl");
+        integration_tests.linkSystemLibrary("crypto");
+        integration_tests.linkSystemLibrary("pthread");
+
+        const run_integration_tests = b.addRunArtifact(integration_tests);
+        test_step.dependOn(&run_integration_tests.step);
     }
 
     // Examples
