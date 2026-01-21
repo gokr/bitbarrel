@@ -3,8 +3,8 @@
 ## This file demonstrates how to create plugins that transform query results
 ## from range and prefix queries before they are returned to the client.
 
-import ../../src/hooks/query_result_hooks
-import std/[strutils, json]
+import hooks/query_result_hooks
+import std/[strutils, json, algorithm]
 
 # Plugin 1: Filter keys with specific prefix
 ## This plugin filters out items whose keys start with "hidden:"
