@@ -7,7 +7,15 @@
 ## - Presence tracking
 ## - Configuration options
 
-import std/[tables, times, sets, json, random]
+import std/[tables, times, sets, random]
+import std/json as stdjson
+import sunny
+
+# Conversion helpers between Sunny JsonValue and std/json JsonNode
+proc toJsonNode*(value: JsonValue): stdjson.JsonNode =
+  ## Convert Sunny JsonValue to std/json JsonNode via string representation
+  result = stdjson.parseJson($value)
+
 
 proc generateUuid*(): string =
   ## Generate a simple UUID v4-like identifier
@@ -55,7 +63,7 @@ type
     topic*: string
     messageType*: PubSubMessageType
     payload*: string
-    headers*: JsonNode                ## Optional metadata
+    headers*: RawJson                ## Optional metadata
     timestamp*: int64                 ## Unix timestamp in ms
     sequence*: uint64                 ## Topic-specific sequence number
 
@@ -99,7 +107,7 @@ type
     username*: string                 ## From auth session
     joinedAt*: int64
     lastPing*: int64
-    metadata*: JsonNode               ## Client-provided metadata
+    metadata*: RawJson               ## Client-provided metadata
 
   ## Heartbeat tracker for health checking
   HeartbeatTracker* = ref HeartbeatTrackerObj
@@ -153,14 +161,14 @@ proc defaultPubSubConfig*(): PubSubConfig =
   result.defaultTopicConfig = defaultTopicConfig()
 
 proc newMessage*(topic: string, messageType: PubSubMessageType,
-                payload: string, headers: JsonNode = nil): Message =
+                payload: string, headers: RawJson = RawJson("{}")): Message =
   ## Create a new pub/sub message
   result = Message(
     id: generateUuid(),
     topic: topic,
     messageType: messageType,
     payload: payload,
-    headers: if headers != nil: headers else: newJObject(),
+    headers: headers,
     timestamp: int64(epochTime() * 1000),  # Milliseconds since epoch
     sequence: 0
   )
@@ -204,7 +212,7 @@ proc newPresenceInfo*(topic: string): PresenceInfo =
   )
 
 proc addMember*(presence: PresenceInfo, clientId: uint64,
-                username: string, metadata: JsonNode = nil) =
+                username: string, metadata: RawJson = RawJson("{}")) =
   ## Add a member to presence
   let idStr = $clientId
   presence.members[idStr] = PresenceMember(
@@ -212,7 +220,7 @@ proc addMember*(presence: PresenceInfo, clientId: uint64,
     username: username,
     joinedAt: int64(epochTime() * 1000),
     lastPing: int64(epochTime() * 1000),
-    metadata: if metadata != nil: metadata else: newJObject()
+    metadata: metadata
   )
   presence.lastUpdate = int64(epochTime() * 1000)
 
@@ -276,50 +284,61 @@ proc removeStaleClients*(tracker: HeartbeatTracker): seq[uint64] =
     tracker.clientLastSeen.del(clientId)
   return stale
 
+type
+  MessageJson = object
+    id {.json: "id".}: string
+    topic {.json: "topic".}: string
+    messageType {.json: "messageType".}: int
+    payload {.json: "payload".}: string
+    headers {.json: "headers".}: RawJson
+    timestamp {.json: "timestamp".}: int64
+    sequence {.json: "sequence".}: uint64
+
 proc toJson*(msg: Message): JsonNode =
   ## Convert a message to JSON
-  result = newJObject()
-  result["id"] = %msg.id
-  result["topic"] = %msg.topic
-  result["messageType"] = %ord(msg.messageType)
-  result["payload"] = %msg.payload
-  if msg.headers != nil:
-    result["headers"] = msg.headers
-  else:
-    result["headers"] = newJObject()
-  result["timestamp"] = %msg.timestamp
-  result["sequence"] = %msg.sequence
+  let msgJson = MessageJson(
+    id: msg.id,
+    topic: msg.topic,
+    messageType: ord(msg.messageType),
+    payload: msg.payload,
+    headers: msg.headers,
+    timestamp: msg.timestamp,
+    sequence: msg.sequence
+  )
+  result = stdjson.parseJson(sunny.toJson(msgJson))
 
 proc fromJson*(js: JsonNode): Message =
   ## Create a message from JSON
+  let msgJson = sunny.fromJson(MessageJson, $js)
+  let headers = msgJson.headers
   result = Message(
-    id: js["id"].getStr(),
-    topic: js["topic"].getStr(),
-    messageType: PubSubMessageType(js["messageType"].getInt()),
-    payload: js["payload"].getStr(),
-    headers: js["headers"],
-    timestamp: js["timestamp"].getInt(),
-    sequence: uint64(js["sequence"].getInt())
+    id: msgJson.id,
+    topic: msgJson.topic,
+    messageType: PubSubMessageType(msgJson.messageType),
+    payload: msgJson.payload,
+    headers: headers,
+    timestamp: msgJson.timestamp,
+    sequence: msgJson.sequence
   )
 
 proc toJson*(member: PresenceMember): JsonNode =
   ## Convert a presence member to JSON
-  result = newJObject()
+  result = stdjson.newJObject()
   result["clientId"] = %member.clientId
   result["username"] = %member.username
   result["joinedAt"] = %member.joinedAt
   result["lastPing"] = %member.lastPing
-  if member.metadata != nil:
-    result["metadata"] = member.metadata
+  if member.metadata.string != "" and member.metadata.string != "{}":
+    result["metadata"] = stdjson.parseJson(member.metadata.string)
   else:
-    result["metadata"] = newJObject()
+    result["metadata"] = stdjson.newJObject()
 
 proc toJson*(presence: PresenceInfo): JsonNode =
   ## Convert presence info to JSON
-  result = newJObject()
+  result = stdjson.newJObject()
   result["topic"] = %presence.topic
   result["lastUpdate"] = %presence.lastUpdate
-  let membersArray = newJArray()
+  let membersArray = stdjson.newJArray()
   for _, member in presence.members:
     membersArray.add(toJson(member))
   result["members"] = membersArray
