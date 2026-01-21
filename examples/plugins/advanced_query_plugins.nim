@@ -7,8 +7,8 @@
 ## - Data format conversion
 ## - Field masking for sensitive data
 
-import ../../src/hooks/query_result_hooks
-import std/[strutils, json, times, tables, os]
+import hooks/query_result_hooks
+import std/[strutils, json, times, tables, os, strformat]
 
 ## 1. Data Validation Plugin
 ## Validates JSON values against a schema and filters out invalid records
@@ -68,36 +68,23 @@ discard registerHook(
 ## 3. Performance Monitoring Plugin
 ## Logs query performance metrics and tracks statistics
 ## This plugin demonstrates how to collect performance data
-var queryStats = initTable[string, int]()  # Simple in-memory stats
-discard registerHook(
-  name = "performance_monitor",
-  hook = proc(metadata: HookMetadata,
-              items: var seq[(string, string)],
-              nextCursor: var string,
-              hasMore: var bool) {.gcsafe.} =
-    let startTime = getTime()
+## Note: Disabled for example code because hooks accessing GC-allocated globals
+## require proper thread-safe synchronization which is complex for examples.
+## Uncomment and add thread-safe locking for production use.
 
-    # Store original item count for metrics
-    let originalCount = items.len
-
-    # Simulate some processing time (in real plugin, this would be actual work)
-    sleep(1)  # 1ms delay for demonstration
-
-    let endTime = getTime()
-    let duration = (endTime - startTime).inMilliseconds()
-
-    # Update statistics
-    queryStats[metadata.barrelName] = queryStats.getOrDefault(metadata.barrelName) + 1
-
-    # Log performance data (in production, send to monitoring system)
-    echo fmt"[performance_monitor] Barrel: {metadata.barrelName}, " &
-          fmt"Client: {metadata.clientId}, " &
-          fmt"Items: {originalCount}, " &
-          fmt"Duration: {duration}ms"
-  ,
-  kind = hkAny,
-  description = "Collects and logs query performance metrics"
-)
+## var queryStats = initTable[string, int]()  # Simple in-memory stats
+## discard registerHook(
+##   name = "performance_monitor",
+##   hook = proc(metadata: HookMetadata,
+##               items: var seq[(string, string)],
+##               nextCursor: var string,
+##               hasMore: var bool) {.gcsafe, closure.} =
+##     let startTime = getTime()
+##     ... (implementation would need proper locking for queryStats access)
+##   ,
+##   kind = hkAny,
+##   description = "Collects and logs query performance metrics"
+## )
 
 ## 4. Data Transformation Plugin
 ## Converts values between formats (e.g., JSON to CSV)
@@ -169,38 +156,25 @@ discard registerHook(
 ## 6. Rate Limiting Plugin
 ## Limits query results based on client rate limits
 ## This example uses simple in-memory tracking
-var clientQueryCount = initTable[string, int]()
-discard registerHook(
-  name = "rate_limiter",
-  hook = proc(metadata: HookMetadata,
-              items: var seq[(string, string)],
-              nextCursor: var string,
-              hasMore: var bool) {.gcsafe.} =
-    let clientId = metadata.clientId
-    let currentCount = clientQueryCount.getOrDefault(clientId) + 1
-    clientQueryCount[clientId] = currentCount
+## Note: Disabled for example code because hooks accessing GC-allocated globals
+## require proper thread-safe synchronization which is complex for examples.
+## Uncomment and add thread-safe locking for production use.
 
-    # Example rate limit: 100 queries per client
-    const maxQueries = 100
-
-    if currentCount > maxQueries:
-      # Return empty results when rate limit exceeded
-      items = @[]
-      echo fmt"[rate_limiter] Rate limit exceeded for client: {clientId}"
-    else:
-      # Apply gradual throttling as limit approaches
-      let remaining = maxQueries - currentCount
-      if remaining < 10:
-        # Limit results when approaching rate limit
-        if items.len > 10:
-          items.setLen(10)
-          nextCursor = items[9][0]
-          hasMore = true
-          echo fmt"[rate_limiter] Approaching rate limit for client: {clientId}, limiting results"
-  ,
-  kind = hkAny,
-  description = "Enforces rate limits on client queries"
-)
+## var clientQueryCount = initTable[string, int]()
+## discard registerHook(
+##   name = "rate_limiter",
+##   hook = proc(metadata: HookMetadata,
+##               items: var seq[(string, string)],
+##               nextCursor: var string,
+##               hasMore: var bool) {.gcsafe, closure.} =
+##     let clientId = metadata.clientId
+##     let currentCount = clientQueryCount.getOrDefault(clientId) + 1
+##     clientQueryCount[clientId] = currentCount
+##     ... (implementation would need proper locking for clientQueryCount access)
+##   ,
+##   kind = hkAny,
+##   description = "Enforces rate limits on client queries"
+## )
 
 ## 7. Geographic Filtering Plugin
 ## Filters results based on geographic data in values
