@@ -298,13 +298,22 @@ static BBResult send_request(BBClient* client, const ProtocolRequest* req,
     }
 
     int decode_ret = decode_response(response_data, response_len, resp);
-    free(response_data);
 
     if (decode_ret < 0) {
-        strncpy(client->last_error, "Failed to decode response", sizeof(client->last_error) - 1);
+        char err_msg[256];
+        snprintf(err_msg, sizeof(err_msg), "Failed to decode response (len=%zd, first bytes: %02x %02x %02x %02x)",
+                 response_len,
+                 response_len > 0 ? response_data[0] : 0,
+                 response_len > 1 ? response_data[1] : 0,
+                 response_len > 2 ? response_data[2] : 0,
+                 response_len > 3 ? response_data[3] : 0);
+        strncpy(client->last_error, err_msg, sizeof(client->last_error) - 1);
+        free(response_data);
         pthread_mutex_unlock(&client->request_lock);
         return BB_PROTOCOL_ERROR;
     }
+
+    free(response_data);
 
     pthread_mutex_unlock(&client->request_lock);
     return BB_OK;
@@ -313,14 +322,18 @@ static BBResult send_request(BBClient* client, const ProtocolRequest* req,
 BBResult bb_create_barrel(BBClient* client, const char* name, BBMode mode) {
     if (!client || !name) return BB_ERROR;
 
+    // Server expects JSON config or empty string for default
+    // BM_HASH is default, so send empty string
+    // BM_CRITBIT requires explicit JSON config
     ProtocolRequest req = {
         .command = CMD_CREATE_BARREL,
         .seq = client->next_seq++,
         .key = name,
-        .value = (mode == BM_CRITBIT) ? "bmCritBit" : "bmHash"
+        .value = (mode == BM_CRITBIT) ? "{\"mode\": \"critbit\"}" : ""
     };
 
     ProtocolResponse resp;
+    memset(&resp, 0, sizeof(resp));
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -329,6 +342,10 @@ BBResult bb_create_barrel(BBClient* client, const char* name, BBMode mode) {
         } else if (resp.status == STATUS_BARREL_EXISTS) {
             result = BB_BARREL_EXISTS;
         } else {
+            // Store server error message
+            if (resp.value && resp.value[0]) {
+                strncpy(client->last_error, resp.value, sizeof(client->last_error) - 1);
+            }
             result = translate_error(resp.status);
         }
     }
@@ -432,15 +449,24 @@ BBResult bb_list_barrels(BBClient* client, char*** barrels, size_t* count) {
     };
 
     ProtocolResponse resp;
+    memset(&resp, 0, sizeof(resp));
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
         if (resp.status == STATUS_OK) {
+            // Handle empty response
+            if (!resp.value || resp.value[0] == '\0') {
+                *barrels = NULL;
+                *count = 0;
+                free(resp.value);
+                return BB_OK;
+            }
+
             // Parse comma-separated list
             char* data = resp.value;
-            size_t num_barrels = 1;  // At least empty string
+            size_t num_barrels = 1;
 
-            // Count commas
+            // Count commas to determine number of barrels
             for (char* p = data; *p; p++) {
                 if (*p == ',') num_barrels++;
             }
@@ -472,6 +498,42 @@ BBResult bb_list_barrels(BBClient* client, char*** barrels, size_t* count) {
     } else {
         *barrels = NULL;
         *count = 0;
+    }
+
+    free(resp.value);
+    return result;
+}
+
+BBResult bb_drop_barrel(BBClient* client, const char* name) {
+    if (!client || !name) return BB_ERROR;
+
+    ProtocolRequest req = {
+        .command = CMD_DROP_BARREL,
+        .seq = client->next_seq++,
+        .key = name,
+        .value = ""
+    };
+
+    ProtocolResponse resp;
+    memset(&resp, 0, sizeof(resp));
+    BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
+
+    if (result == BB_OK) {
+        if (resp.status == STATUS_OK) {
+            // If we dropped our current barrel, clear it
+            if (client->current_barrel && strcmp(client->current_barrel, name) == 0) {
+                free(client->current_barrel);
+                client->current_barrel = NULL;
+            }
+            result = BB_OK;
+        } else if (resp.status == STATUS_BARREL_NOT_FOUND) {
+            result = BB_NO_BARREL;
+        } else {
+            if (resp.value && resp.value[0]) {
+                strncpy(client->last_error, resp.value, sizeof(client->last_error) - 1);
+            }
+            result = translate_error(resp.status);
+        }
     }
 
     free(resp.value);
@@ -610,6 +672,351 @@ BBResult bb_count(BBClient* client, int64_t* count) {
 
     free(resp.value);
     return result;
+}
+
+BBResult bb_list_keys(BBClient* client, char*** keys, size_t* count) {
+    if (!client || !keys || !count) return BB_ERROR;
+
+    ProtocolRequest req = {
+        .command = CMD_LIST_KEYS,
+        .seq = client->next_seq++,
+        .key = "",
+        .value = ""
+    };
+
+    ProtocolResponse resp;
+    BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
+
+    if (result == BB_OK) {
+        if (resp.status == STATUS_OK) {
+            // Parse comma-separated list
+            if (!resp.value || resp.value[0] == '\0') {
+                *keys = NULL;
+                *count = 0;
+                free(resp.value);
+                return BB_OK;
+            }
+
+            char* data = resp.value;
+            size_t num_keys = 1;
+
+            // Count commas to determine number of keys
+            for (char* p = data; *p; p++) {
+                if (*p == ',') num_keys++;
+            }
+
+            // Allocate array
+            *keys = calloc(num_keys, sizeof(char*));
+            if (!*keys) {
+                free(resp.value);
+                return BB_ERROR;
+            }
+
+            // Parse keys
+            size_t idx = 0;
+            char* saveptr;
+            char* token = strtok_r(data, ",", &saveptr);
+            while (token && idx < num_keys) {
+                (*keys)[idx] = strdup(token);
+                token = strtok_r(NULL, ",", &saveptr);
+                idx++;
+            }
+
+            *count = idx;
+            result = BB_OK;
+        } else {
+            *keys = NULL;
+            *count = 0;
+            result = translate_error(resp.status);
+        }
+    } else {
+        *keys = NULL;
+        *count = 0;
+    }
+
+    free(resp.value);
+    return result;
+}
+
+// Batch operations
+
+BBResult bb_batch_set(BBClient* client, const char** keys, const char** values, size_t count, size_t* success_count) {
+    if (!client || !keys || !values || count == 0 || !success_count) return BB_ERROR;
+
+    pthread_mutex_lock(&client->request_lock);
+
+    // Build batch set request
+    // Format: [type:1=0x27][seq:4][count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...
+    size_t buffer_size = 9;  // type + seq + count
+    for (size_t i = 0; i < count; i++) {
+        buffer_size += 2 + strlen(keys[i]) + 4 + strlen(values[i]);
+    }
+
+    uint8_t* buffer = malloc(buffer_size);
+    if (!buffer) {
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_ERROR;
+    }
+
+    size_t offset = 0;
+    buffer[offset++] = CMD_BATCH_SET;
+
+    uint32_t seq = client->next_seq++;
+    *(uint32_t*)(buffer + offset) = htobe32(seq);
+    offset += 4;
+
+    *(uint32_t*)(buffer + offset) = htobe32((uint32_t)count);
+    offset += 4;
+
+    for (size_t i = 0; i < count; i++) {
+        uint16_t key_len = strlen(keys[i]);
+        *(uint16_t*)(buffer + offset) = htobe16(key_len);
+        offset += 2;
+        memcpy(buffer + offset, keys[i], key_len);
+        offset += key_len;
+
+        uint32_t val_len = strlen(values[i]);
+        *(uint32_t*)(buffer + offset) = htobe32(val_len);
+        offset += 4;
+        memcpy(buffer + offset, values[i], val_len);
+        offset += val_len;
+    }
+
+    if (ws_send_binary(client->ws, buffer, offset) < 0) {
+        strncpy(client->last_error, ws_get_error(client->ws), sizeof(client->last_error) - 1);
+        free(buffer);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_CONNECTION_ERROR;
+    }
+    free(buffer);
+
+    // Receive response
+    uint8_t* response_data = NULL;
+    ssize_t response_len = ws_recv_binary(client->ws, &response_data, client->config.timeout_ms);
+    if (response_len <= 0) {
+        strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_TIMEOUT;
+    }
+
+    // Decode batch response: [status:1][seq:4][count:4][status1:1]...[statusN:1]
+    if (response_len < 9) {
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_PROTOCOL_ERROR;
+    }
+
+    uint8_t status = response_data[0];
+    if (status != STATUS_OK) {
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return translate_error(status);
+    }
+
+    size_t pos = 5;  // Skip status and seq
+    uint32_t result_count = be32toh(*(uint32_t*)(response_data + pos));
+    pos += 4;
+
+    *success_count = 0;
+    for (uint32_t i = 0; i < result_count && pos < (size_t)response_len; i++) {
+        if (response_data[pos] == STATUS_OK) {
+            (*success_count)++;
+        }
+        pos++;
+    }
+
+    free(response_data);
+    pthread_mutex_unlock(&client->request_lock);
+    return BB_OK;
+}
+
+BBResult bb_batch_get(BBClient* client, const char** keys, size_t key_count,
+                      char*** values, uint8_t** statuses, size_t* result_count) {
+    if (!client || !keys || key_count == 0 || !values || !statuses || !result_count) return BB_ERROR;
+
+    pthread_mutex_lock(&client->request_lock);
+
+    // Build batch get request
+    // Format: [type:1=0x26][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]
+    size_t buffer_size = 9;
+    for (size_t i = 0; i < key_count; i++) {
+        buffer_size += 2 + strlen(keys[i]);
+    }
+
+    uint8_t* buffer = malloc(buffer_size);
+    if (!buffer) {
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_ERROR;
+    }
+
+    size_t offset = 0;
+    buffer[offset++] = CMD_BATCH_GET;
+
+    uint32_t seq = client->next_seq++;
+    *(uint32_t*)(buffer + offset) = htobe32(seq);
+    offset += 4;
+
+    *(uint32_t*)(buffer + offset) = htobe32((uint32_t)key_count);
+    offset += 4;
+
+    for (size_t i = 0; i < key_count; i++) {
+        uint16_t key_len = strlen(keys[i]);
+        *(uint16_t*)(buffer + offset) = htobe16(key_len);
+        offset += 2;
+        memcpy(buffer + offset, keys[i], key_len);
+        offset += key_len;
+    }
+
+    if (ws_send_binary(client->ws, buffer, offset) < 0) {
+        strncpy(client->last_error, ws_get_error(client->ws), sizeof(client->last_error) - 1);
+        free(buffer);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_CONNECTION_ERROR;
+    }
+    free(buffer);
+
+    // Receive response
+    uint8_t* response_data = NULL;
+    ssize_t response_len = ws_recv_binary(client->ws, &response_data, client->config.timeout_ms);
+    if (response_len <= 0) {
+        strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_TIMEOUT;
+    }
+
+    // Decode batch response: [status:1][seq:4][count:4][status1:1][valLen1:4][val1:N]...
+    if (response_len < 9) {
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_PROTOCOL_ERROR;
+    }
+
+    uint8_t status = response_data[0];
+    if (status != STATUS_OK) {
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return translate_error(status);
+    }
+
+    size_t pos = 5;  // Skip status and seq
+    uint32_t count = be32toh(*(uint32_t*)(response_data + pos));
+    pos += 4;
+
+    *values = calloc(count, sizeof(char*));
+    *statuses = calloc(count, sizeof(uint8_t));
+    if (!*values || !*statuses) {
+        free(*values);
+        free(*statuses);
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_ERROR;
+    }
+
+    *result_count = count;
+
+    for (uint32_t i = 0; i < count && pos + 5 <= (size_t)response_len; i++) {
+        (*statuses)[i] = response_data[pos++];
+
+        uint32_t val_len = be32toh(*(uint32_t*)(response_data + pos));
+        pos += 4;
+
+        if (pos + val_len <= (size_t)response_len) {
+            (*values)[i] = malloc(val_len + 1);
+            if ((*values)[i]) {
+                memcpy((*values)[i], response_data + pos, val_len);
+                (*values)[i][val_len] = '\0';
+            }
+            pos += val_len;
+        }
+    }
+
+    free(response_data);
+    pthread_mutex_unlock(&client->request_lock);
+    return BB_OK;
+}
+
+BBResult bb_batch_delete(BBClient* client, const char** keys, size_t count, size_t* success_count) {
+    if (!client || !keys || count == 0 || !success_count) return BB_ERROR;
+
+    pthread_mutex_lock(&client->request_lock);
+
+    // Build batch delete request
+    // Format: [type:1=0x28][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]
+    size_t buffer_size = 9;
+    for (size_t i = 0; i < count; i++) {
+        buffer_size += 2 + strlen(keys[i]);
+    }
+
+    uint8_t* buffer = malloc(buffer_size);
+    if (!buffer) {
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_ERROR;
+    }
+
+    size_t offset = 0;
+    buffer[offset++] = CMD_BATCH_DELETE;
+
+    uint32_t seq = client->next_seq++;
+    *(uint32_t*)(buffer + offset) = htobe32(seq);
+    offset += 4;
+
+    *(uint32_t*)(buffer + offset) = htobe32((uint32_t)count);
+    offset += 4;
+
+    for (size_t i = 0; i < count; i++) {
+        uint16_t key_len = strlen(keys[i]);
+        *(uint16_t*)(buffer + offset) = htobe16(key_len);
+        offset += 2;
+        memcpy(buffer + offset, keys[i], key_len);
+        offset += key_len;
+    }
+
+    if (ws_send_binary(client->ws, buffer, offset) < 0) {
+        strncpy(client->last_error, ws_get_error(client->ws), sizeof(client->last_error) - 1);
+        free(buffer);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_CONNECTION_ERROR;
+    }
+    free(buffer);
+
+    // Receive response
+    uint8_t* response_data = NULL;
+    ssize_t response_len = ws_recv_binary(client->ws, &response_data, client->config.timeout_ms);
+    if (response_len <= 0) {
+        strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_TIMEOUT;
+    }
+
+    // Decode batch response: [status:1][seq:4][count:4][status1:1]...[statusN:1]
+    if (response_len < 9) {
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return BB_PROTOCOL_ERROR;
+    }
+
+    uint8_t status = response_data[0];
+    if (status != STATUS_OK) {
+        free(response_data);
+        pthread_mutex_unlock(&client->request_lock);
+        return translate_error(status);
+    }
+
+    size_t pos = 5;  // Skip status and seq
+    uint32_t result_count_val = be32toh(*(uint32_t*)(response_data + pos));
+    pos += 4;
+
+    *success_count = 0;
+    for (uint32_t i = 0; i < result_count_val && pos < (size_t)response_len; i++) {
+        if (response_data[pos] == STATUS_OK) {
+            (*success_count)++;
+        }
+        pos++;
+    }
+
+    free(response_data);
+    pthread_mutex_unlock(&client->request_lock);
+    return BB_OK;
 }
 
 void bb_free_string(char* str) {

@@ -81,6 +81,7 @@ BBResult bb_create_barrel(BBClient* client, const char* name, BBMode mode);
 BBResult bb_open_barrel(BBClient* client, const char* name);
 BBResult bb_close_barrel(BBClient* client);
 BBResult bb_use_barrel(BBClient* client, const char* name);
+BBResult bb_drop_barrel(BBClient* client, const char* name);
 BBResult bb_list_barrels(BBClient* client, char*** barrels, size_t* count);
 
 // Key-Value operations
@@ -89,6 +90,12 @@ char* bb_get(BBClient* client, const char* key);  // Returns NULL if not found
 BBResult bb_delete(BBClient* client, const char* key);
 bool bb_exists(BBClient* client, const char* key);
 BBResult bb_count(BBClient* client, int64_t* count);
+BBResult bb_list_keys(BBClient* client, char*** keys, size_t* count);
+
+// Batch operations
+BBResult bb_batch_set(BBClient* client, const char** keys, const char** values, size_t count, size_t* success_count);
+BBResult bb_batch_get(BBClient* client, const char** keys, size_t key_count, char*** values, uint8_t** statuses, size_t* result_count);
+BBResult bb_batch_delete(BBClient* client, const char** keys, size_t count, size_t* success_count);
 
 // Range queries (only for BM_CRITBIT mode)
 BBResult bb_items_in_range(BBClient* client, const char* start_key, const char* end_key,
@@ -118,12 +125,6 @@ void bb_free_message(BBMessage* msg);
 // Key watching (protocol v1.1)
 BBResult bb_watch_key(BBClient* client, const char* pattern);
 BBResult bb_unwatch_key(BBClient* client, const char* pattern);
-
-// Range query operations
-BBResult bb_items_in_range(BBClient* client, const char* start_key, const char* end_key,
-                          size_t limit, const char* cursor, BBRangeResult** result);
-BBResult bb_items_with_prefix(BBClient* client, const char* prefix,
-                             size_t limit, const char* cursor, BBRangeResult** result);
 
 // Server info structure (from handshake)
 typedef struct {
