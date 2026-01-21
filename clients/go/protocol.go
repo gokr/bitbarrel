@@ -39,6 +39,9 @@ const (
 	CmdHistory        byte = 0x44
 	CmdListTopics     byte = 0x45
 	CmdPresence       byte = 0x46
+	// Key watching commands
+	CmdWatchKey   byte = 0x60
+	CmdUnwatchKey byte = 0x61
 	// PubSubEvent is sent as push notification
 	CmdPubSubEvent byte = 0xFF
 )
@@ -83,7 +86,8 @@ func IsValidCommand(cmd byte) bool {
 		CmdCreateBarrel, CmdOpenBarrel, CmdUseBarrel,
 		CmdCloseBarrel, CmdListBarrels, CmdDropBarrel,
 		CmdGetBarrelConfig, CmdSetBarrelConfig, CmdGetBarrelStats,
-		CmdSubscribe, CmdUnsubscribe, CmdPublish, CmdListSubscribers, CmdHistory, CmdListTopics, CmdPresence:
+		CmdSubscribe, CmdUnsubscribe, CmdPublish, CmdListSubscribers, CmdHistory, CmdListTopics, CmdPresence,
+		CmdWatchKey, CmdUnwatchKey:
 		return true
 	default:
 		return false
@@ -1100,4 +1104,42 @@ func DecodePresenceResponse(topic string, data string) (PresenceInfo, error) {
 	}
 
 	return items[0], nil
+}
+
+// EncodeWatchRequest encodes a watch request for key watching
+// Format: [barrelLen:2][barrel][patternLen:2][pattern][options:1]
+func EncodeWatchRequest(barrelName, pattern string, includeValues bool) ([]byte, error) {
+	barrelBytes := []byte(barrelName)
+	patternBytes := []byte(pattern)
+
+	if len(barrelBytes) > MaxKeySize {
+		return nil, fmt.Errorf("barrel name too large: %d bytes (max %d)", len(barrelBytes), MaxKeySize)
+	}
+	if len(patternBytes) > MaxKeySize {
+		return nil, fmt.Errorf("pattern too large: %d bytes (max %d)", len(patternBytes), MaxKeySize)
+	}
+
+	buf := make([]byte, 2+len(barrelBytes)+2+len(patternBytes)+1)
+	offset := 0
+
+	// Barrel name length and name
+	binary.BigEndian.PutUint16(buf[offset:], uint16(len(barrelBytes)))
+	offset += 2
+	copy(buf[offset:], barrelBytes)
+	offset += len(barrelBytes)
+
+	// Pattern length and pattern
+	binary.BigEndian.PutUint16(buf[offset:], uint16(len(patternBytes)))
+	offset += 2
+	copy(buf[offset:], patternBytes)
+	offset += len(patternBytes)
+
+	// Options byte
+	options := byte(0)
+	if includeValues {
+		options = 1
+	}
+	buf[offset] = options
+
+	return buf, nil
 }

@@ -1688,3 +1688,197 @@ func TestPublishWithHeaders(t *testing.T) {
 		t.Error("Publish() returned zero sequence number")
 	}
 }
+
+func TestWatchKey(t *testing.T) {
+	barrelName := uniqueBarrelName("watch")
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if err := client.CreateBarrel(barrelName); err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+	if err := client.UseBarrel(barrelName); err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	topic := "kv:testdb:"
+	subCalled := false
+	eventChannel := make(chan PubSubEvent, 10)
+
+	client.SetMessageHandler(func(event PubSubEvent) {
+		if event.MessageType == MessageTypeKvChange {
+			eventChannel <- event
+			subCalled = true
+		}
+	})
+
+	if err := client.Subscribe(topic); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	defer client.Unsubscribe(topic)
+
+	// Watch for key changes
+	pattern := "user:*"
+	if err := client.Watch(pattern, false); err != nil {
+		t.Fatalf("Watch() error = %v", err)
+	}
+
+	// Wait a bit for subscription to register
+	time.Sleep(100 * time.Millisecond)
+
+	// Set a matching key
+	key1 := "user:1"
+	if err := client.Set(key1, "Alice"); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	// Wait for event
+	select {
+	case event := <-eventChannel:
+		if event.Topic != topic+key1 {
+			t.Errorf("topic mismatch: got %s, want %s", event.Topic, topic+key1)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("Timeout waiting for key change event")
+	}
+}
+
+func TestWatchKeyWithValues(t *testing.T) {
+	barrelName := uniqueBarrelName("watch_with_values")
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if err := client.CreateBarrel(barrelName); err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+	if err := client.UseBarrel(barrelName); err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	topic := "kv:testdb:"
+	eventChannel := make(chan PubSubEvent, 10)
+
+	client.SetMessageHandler(func(event PubSubEvent) {
+		if event.MessageType == MessageTypeKvChange {
+			eventChannel <- event
+		}
+	})
+
+	if err := client.Subscribe(topic); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	defer client.Unsubscribe(topic)
+
+	// Watch with value inclusion
+	pattern := "cache:*"
+	if err := client.Watch(pattern, true); err != nil {
+		t.Fatalf("Watch() error = %v", err)
+	}
+
+	// Wait for subscription to register
+	time.Sleep(100 * time.Millisecond)
+
+	// Set a matching key
+	key1 := "cache:item1"
+	value1 := "cached_value"
+	if err := client.Set(key1, value1); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	// Wait for event
+	select {
+	case event := <-eventChannel:
+		if event.Payload != value1 {
+			t.Errorf("payload mismatch: got %s, want %s", event.Payload, value1)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("Timeout waiting for key change event with values")
+	}
+}
+
+func TestUnwatch(t *testing.T) {
+	barrelName := uniqueBarrelName("unwatch")
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if err := client.CreateBarrel(barrelName); err != nil {
+		t.Fatalf("CreateBarrel() error = %v", err)
+	}
+	defer client.DropBarrel(barrelName)
+	if err := client.UseBarrel(barrelName); err != nil {
+		t.Fatalf("UseBarrel() error = %v", err)
+	}
+
+	topic := "kv:testdb:"
+	eventCalled := false
+	mu := sync.Mutex{}
+
+	client.SetMessageHandler(func(event PubSubEvent) {
+		mu.Lock()
+		eventCalled = true
+		mu.Unlock()
+	})
+
+	if err := client.Subscribe(topic); err != nil {
+		t.Fatalf("Subscribe() error = %v", err)
+	}
+	defer client.Unsubscribe(topic)
+
+	// Set up watch
+	pattern := "temp:*"
+	if err := client.Watch(pattern, false); err != nil {
+		t.Fatalf("Watch() error = %v", err)
+	}
+
+	// Wait for setup
+	time.Sleep(100 * time.Millisecond)
+
+	// Unwatch
+	if err := client.Unwatch(pattern); err != nil {
+		t.Fatalf("Unwatch() error = %v", err)
+	}
+
+	// Set a key that would match the old pattern
+	key1 := "temp:1"
+	if err := client.Set(key1, "value1"); err != nil {
+		t.Fatalf("Set() error = %v", err)
+	}
+
+	// Wait to ensure no event comes
+	time.Sleep(300 * time.Millisecond)
+
+	mu.Lock()
+	called := eventCalled
+	mu.Unlock()
+
+	if called {
+		t.Error("Received event after unwatching")
+	}
+}
+
+func TestWatchWithoutBarrel(t *testing.T) {
+	client := NewClient(testServerHost, testServerPort)
+	defer client.Close()
+
+	if err := client.Connect(); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+
+	// Try to watch without selecting a barrel
+	pattern := "user:*"
+	err := client.Watch(pattern, false)
+	if err == nil {
+		t.Error("Expected error when watching without a barrel")
+	}
+}

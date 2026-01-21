@@ -68,6 +68,7 @@ type PubSubMessageType byte
 const (
 	MessageTypeData PubSubMessageType = iota
 	MessageTypePresence
+	MessageTypeKvChange // Key-value change events (for key watching)
 )
 
 // PubSubEvent represents a PubSub event received from the server

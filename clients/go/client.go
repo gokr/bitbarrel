@@ -1263,6 +1263,45 @@ func (c *Client) receivePubSubEvent() {
 	}
 }
 
+// Watch watches for changes to keys matching a pattern via Pub/Sub
+// When keys matching the pattern change (set or delete), you'll receive
+// PubSub events with MessageType KvChange.
+// patterns use * as wildcard (e.g., "user:*" or "cache:*")
+func (c *Client) Watch(pattern string, includeValues bool) error {
+	if c.currentBarrel == "" {
+		return NoBarrelError("no barrel selected")
+	}
+
+	watchData, err := EncodeWatchRequest("", pattern, includeValues)
+	if err != nil {
+		return err
+	}
+
+	if err = c.sendRequest(CmdWatchKey, "", string(watchData)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Unwatch stops watching a previously registered pattern
+func (c *Client) Unwatch(pattern string) error {
+	if c.currentBarrel == "" {
+		return NoBarrelError("no barrel selected")
+	}
+
+	watchData, err := EncodeWatchRequest("", pattern, false)
+	if err != nil {
+		return err
+	}
+
+	if err = c.sendRequest(CmdUnwatchKey, "", string(watchData)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Helper functions
 
 func contains(s, substr string) bool {
