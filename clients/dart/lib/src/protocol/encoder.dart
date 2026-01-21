@@ -333,4 +333,51 @@ class ProtocolEncoder {
     buffer.setUint8(0, operation);
     return buffer.buffer.asUint8List();
   }
+
+  /// Encode watch request for key watching
+  /// Format: [barrelLen:2][barrel][patternLen:2][pattern][options:1]
+  static Uint8List encodeWatchRequest({
+    required String barrelName,
+    required String pattern,
+    required bool includeValues,
+  }) {
+    final barrelBytes = utf8.encode(barrelName);
+    final patternBytes = utf8.encode(pattern);
+
+    if (barrelBytes.length > maxKeySize) {
+      throw ArgumentError(
+        'Barrel name too large: ${barrelBytes.length} bytes (max $maxKeySize)',
+      );
+    }
+    if (patternBytes.length > maxKeySize) {
+      throw ArgumentError(
+        'Pattern too large: ${patternBytes.length} bytes (max $maxKeySize)',
+      );
+    }
+
+    final totalSize = 2 + barrelBytes.length + 2 + patternBytes.length + 1;
+    final buffer = ByteData(totalSize);
+
+    var offset = 0;
+
+    // Barrel name length and name
+    buffer.setUint16(offset, barrelBytes.length, Endian.big);
+    offset += 2;
+    for (int i = 0; i < barrelBytes.length; i++) {
+      buffer.setUint8(offset++, barrelBytes[i]);
+    }
+
+    // Pattern length and pattern
+    buffer.setUint16(offset, patternBytes.length, Endian.big);
+    offset += 2;
+    for (int i = 0; i < patternBytes.length; i++) {
+      buffer.setUint8(offset++, patternBytes[i]);
+    }
+
+    // Options byte
+    final options = includeValues ? 1 : 0;
+    buffer.setUint8(offset, options);
+
+    return buffer.buffer.asUint8List();
+  }
 }

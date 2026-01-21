@@ -909,4 +909,49 @@ class BitBarrelClient {
 
     return ProtocolDecoder.decodePresenceResponse(topic, value);
   }
+
+  /// Watch for changes to keys matching a pattern via Pub/Sub.
+  ///
+  /// When keys matching the pattern change (set or delete), you'll receive
+  /// PubSub events via the message handler with [PubSubMessageType.kvChange].
+  ///
+  /// Patterns use * as wildcard (e.g., "user:*" or "cache:*")
+  ///
+  /// Throws [NoBarrelError] if no barrel is selected
+  /// Throws [ServerError] if the server reports an error
+  Future<void> watch(String pattern, {bool includeValues = false}) async {
+    _ensureBarrelSelected();
+
+    final encodedParams = ProtocolEncoder.encodeWatchRequest(
+      barrelName: '', // use current barrel
+      pattern: pattern,
+      includeValues: includeValues,
+    );
+
+    await _sendRequest(
+      command: Command.watchKey,
+      key: '',
+      binaryValue: encodedParams,
+    );
+  }
+
+  /// Stop watching a previously registered pattern.
+  ///
+  /// Throws [NoBarrelError] if no barrel is selected
+  /// Throws [ServerError] if the server reports an error
+  Future<void> unwatch(String pattern) async {
+    _ensureBarrelSelected();
+
+    final encodedParams = ProtocolEncoder.encodeWatchRequest(
+      barrelName: '', // use current barrel
+      pattern: pattern,
+      includeValues: false,
+    );
+
+    await _sendRequest(
+      command: Command.unwatchKey,
+      key: '',
+      binaryValue: encodedParams,
+    );
+  }
 }

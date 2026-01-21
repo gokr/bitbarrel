@@ -40,6 +40,10 @@ class Command {
   static const int listTopics = 0x45;
   static const int presence = 0x46;
 
+  // Key watching commands
+  static const int watchKey = 0x60;
+  static const int unwatchKey = 0x61;
+
   // PubSubEvent push notification
   static const int pubsubEvent = 0xFF;
 
@@ -74,6 +78,8 @@ class Command {
     history,
     listTopics,
     presence,
+    watchKey,
+    unwatchKey,
     pubsubEvent,
   };
 

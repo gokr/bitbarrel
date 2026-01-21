@@ -639,5 +639,146 @@ void main() {
         await client.close();
       });
     });
+
+    group('Key Watching', () {
+      test('watch requires barrel selection', () async {
+        final client = BitBarrelClient(
+          host: testServerHost,
+          port: testServerPort,
+        );
+        addTearDown(() => client.close());
+
+        await client.connect();
+
+        // Try to watch without selecting a barrel
+        expect(
+          () => client.watch('user:*'),
+          throwsA(isA<NoBarrelError>()),
+        );
+      });
+
+      test('watch basic functionality', () async {
+        final client = BitBarrelClient(
+          host: testServerHost,
+          port: testServerPort,
+        );
+        addTearDown(() => client.close());
+
+        final events = <PubSubEvent>[];
+        client.setMessageHandler(events.add);
+
+        await client.connect();
+
+        final barrelName = uniqueBarrelName('watch_test');
+        await client.createBarrel(barrelName);
+        addTearDown(() => client.dropBarrel(barrelName));
+
+        await client.useBarrel(barrelName);
+
+        // Subscribe to key events
+        await client.subscribe('kv:');
+        addTearDown(() => client.unsubscribe('kv:'));
+
+        // Watch pattern
+        await client.watch('user:*', includeValues: false);
+
+        // Wait for subscription
+        await Future.delayed(Duration(milliseconds: 100));
+
+        // Set a matching key
+        await client.set('user:1', 'Alice');
+
+        // Wait for event
+        await Future.delayed(Duration(milliseconds: 500));
+
+        // Verify event received
+        expect(events, isNotEmpty);
+        final event = events.last;
+        expect(event.topic, contains('user:1'));
+        expect(event.messageType, equals(PubSubMessageType.kvChange));
+        expect(event.payload, isEmpty); // No values included
+      });
+
+      test('watch with values', () async {
+        final client = BitBarrelClient(
+          host: testServerHost,
+          port: testServerPort,
+        );
+        addTearDown(() => client.close());
+
+        final events = <PubSubEvent>[];
+        client.setMessageHandler(events.add);
+
+        await client.connect();
+
+        final barrelName = uniqueBarrelName('watch_values_test');
+        await client.createBarrel(barrelName);
+        addTearDown(() => client.dropBarrel(barrelName));
+
+        await client.useBarrel(barrelName);
+
+        // Subscribe to key events
+        await client.subscribe('kv:');
+        addTearDown(() => client.unsubscribe('kv:'));
+
+        // Watch with values
+        await client.watch('cache:*', includeValues: true);
+
+        // Wait for subscription
+        await Future.delayed(Duration(milliseconds: 100));
+
+        // Set a matching key
+        await client.set('cache:item1', 'value1');
+
+        // Wait for event
+        await Future.delayed(Duration(milliseconds: 500));
+
+        // Verify event received with value
+        expect(events, isNotEmpty);
+        final event = events.last;
+        expect(event.topic, contains('cache:item1'));
+        expect(event.payload, equals('value1'));
+      });
+
+      test('unwatch stops events', () async {
+        final client = BitBarrelClient(
+          host: testServerHost,
+          port: testServerPort,
+        );
+        addTearDown(() => client.close());
+
+        final events = <PubSubEvent>[];
+        client.setMessageHandler(events.add);
+
+        await client.connect();
+
+        final barrelName = uniqueBarrelName('unwatch_test');
+        await client.createBarrel(barrelName);
+        addTearDown(() => client.dropBarrel(barrelName));
+
+        await client.useBarrel(barrelName);
+
+        // Subscribe to key events
+        await client.subscribe('kv:');
+        addTearDown(() => client.unsubscribe('kv:'));
+
+        // Set up watch
+        await client.watch('temp:*', includeValues: false);
+        await Future.delayed(Duration(milliseconds: 100));
+
+        // Now unwatch
+        await client.unwatch('temp:*');
+        await Future.delayed(Duration(milliseconds: 100));
+
+        // Set a key that would match the old pattern
+        await client.set('temp:1', 'value1');
+
+        // Wait to ensure no event comes
+        await Future.delayed(Duration(milliseconds: 500));
+
+        // Should not have received any events
+        expect(events, isEmpty);
+      });
+    });
   });
 }
