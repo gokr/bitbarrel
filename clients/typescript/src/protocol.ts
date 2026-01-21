@@ -1133,4 +1133,43 @@ export class Protocol {
 
     return results;
   }
+
+  // Key Watching
+
+  /**
+   * Encode watch request: [barrelLen:2][barrel][patternLen:2][pattern][options:1]
+   */
+  static encodeWatchRequest(req: {
+    barrelName: string;
+    pattern: string;
+    includeValues: boolean;
+  }): Buffer {
+    const barrelBytes = Buffer.from(req.barrelName, 'utf8');
+    const patternBytes = Buffer.from(req.pattern, 'utf8');
+
+    if (barrelBytes.length > MaxKeySize) {
+      throw new ProtocolError(`Barrel name too large: ${barrelBytes.length} bytes (max ${MaxKeySize})`);
+    }
+    if (patternBytes.length > MaxKeySize) {
+      throw new ProtocolError(`Pattern too large: ${patternBytes.length} bytes (max ${MaxKeySize})`);
+    }
+
+    const buffer = Buffer.allocUnsafe(2 + barrelBytes.length + 2 + patternBytes.length + 1);
+    let offset = 0;
+
+    buffer.writeUInt16BE(barrelBytes.length, offset);
+    offset += 2;
+    barrelBytes.copy(buffer, offset);
+    offset += barrelBytes.length;
+
+    buffer.writeUInt16BE(patternBytes.length, offset);
+    offset += 2;
+    patternBytes.copy(buffer, offset);
+    offset += patternBytes.length;
+
+    const options = req.includeValues ? 1 : 0;
+    buffer.writeUInt8(options, offset);
+
+    return buffer;
+  }
 }

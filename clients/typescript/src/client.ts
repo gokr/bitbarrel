@@ -1002,6 +1002,56 @@ export class BitBarrelClient extends EventEmitter {
   setMessageHandler(handler: ((event: PubSubEvent) => void) | null): void {
     this.onMessage = handler;
   }
+
+  // Key Watching
+
+  /**
+   * Watch for changes to keys matching a pattern.
+   *
+   * When keys matching the pattern change (set or delete), you'll receive
+   * PubSub events with message type mtKvChange (KvChangeType).
+   *
+   * @param pattern - Pattern with * as wildcard (e.g., "user:*" or "cache:*")
+   * @param includeValues - Whether to include values in change events (default: false)
+   * @returns Promise that resolves when watch is registered
+   */
+  async watch(pattern: string, includeValues = false): Promise<void> {
+    this.checkBarrelSelected();
+
+    const watchData = Protocol.encodeWatchRequest({
+      barrelName: '',  // Use current barrel
+      pattern,
+      includeValues
+    });
+    const req = Protocol.newRequest(Cmd.WatchKey, '', watchData.toString('binary'));
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Watch failed: ${resp.status}`);
+    }
+  }
+
+  /**
+   * Stop watching a previously registered pattern.
+   *
+   * @param pattern - The pattern to unwatch
+   * @returns Promise that resolves when unwatch is registered
+   */
+  async unwatch(pattern: string): Promise<void> {
+    this.checkBarrelSelected();
+
+    const watchData = Protocol.encodeWatchRequest({
+      barrelName: '',  // Use current barrel
+      pattern,
+      includeValues: false
+    });
+    const req = Protocol.newRequest(Cmd.UnwatchKey, '', watchData.toString('binary'));
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Unwatch failed: ${resp.status}`);
+    }
+  }
 }
 
 // Export a convenience function for creating clients

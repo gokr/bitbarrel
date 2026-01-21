@@ -80,6 +80,10 @@ export const enum Command {
   ListTopics = 0x45,
   Presence = 0x46,
 
+  // Key watching
+  WatchKey = 0x60,
+  UnwatchKey = 0x61,
+
   // PubSubEvent push notification
   PubSubEvent = 0xFF,
 }
@@ -209,6 +213,7 @@ export function normalizeRangeOptions(options?: RangeQueryOptions): Required<Ran
 export const enum PubSubMessageType {
   Data = 0,
   Presence = 1,
+  KvChange = 2,  // Key-value change events (for key watching)
 }
 
 export interface PubSubEvent {

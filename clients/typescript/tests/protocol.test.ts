@@ -1166,4 +1166,66 @@ describe('Protocol', () => {
       });
     });
   });
+
+  describe('Watch Request Encoding', () => {
+    it('should encode basic watch request', () => {
+      const encoded = Protocol.encodeWatchRequest({
+        barrelName: '',
+        pattern: 'user:*',
+        includeValues: false,
+      });
+
+      let offset = 0;
+      const barrelLen = encoded.readUInt16BE(offset);
+      offset += 2;
+      expect(barrelLen).toBe(0);
+
+      const patternLen = encoded.readUInt16BE(offset);
+      offset += 2;
+      expect(patternLen).toBe(6);
+      const pattern = encoded.toString('utf8', offset, offset + patternLen);
+      expect(pattern).toBe('user:*');
+      offset += patternLen;
+
+      const options = encoded.readUInt8(offset);
+      expect(options).toBe(0);
+    });
+
+    it('should encode watch request with values', () => {
+      const encoded = Protocol.encodeWatchRequest({
+        barrelName: 'testdb',
+        pattern: 'cache:*',
+        includeValues: true,
+      });
+
+      let offset = 0;
+      const barrelLen = encoded.readUInt16BE(offset);
+      offset += 2;
+      expect(barrelLen).toBe(6);
+      const barrel = encoded.toString('utf8', offset, offset + barrelLen);
+      expect(barrel).toBe('testdb');
+      offset += barrelLen;
+
+      const patternLen = encoded.readUInt16BE(offset);
+      offset += 2;
+      expect(patternLen).toBe(7);
+      const pattern = encoded.toString('utf8', offset, offset + patternLen);
+      expect(pattern).toBe('cache:*');
+      offset += patternLen;
+
+      const options = encoded.readUInt8(offset);
+      expect(options).toBe(1);
+    });
+
+    it('should throw error for oversized pattern', () => {
+      const largePattern = 'x'.repeat(65536);
+      expect(() => {
+        Protocol.encodeWatchRequest({
+          barrelName: '',
+          pattern: largePattern,
+          includeValues: false,
+        });
+      }).toThrow('Pattern too large');
+    });
+  });
 });
