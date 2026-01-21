@@ -87,7 +87,7 @@ bb_init();
 
 // Create default configuration
 BBConfig config = bb_config_default();
-config.url = "ws://localhost:7687";
+config.url = "ws://localhost:9876/ws";
 config.timeout_ms = 5000;
 
 // Create client
@@ -108,7 +108,7 @@ if (bb_connect(client) != BB_OK) {
 ### Barrel Operations
 
 ```c
-// Create a barrel
+// Create a barrel (BM_HASH or BM_CRITBIT)
 if (bb_create_barrel(client, "mydb", BM_HASH) != BB_OK) {
     fprintf(stderr, "Failed to create barrel\n");
 }
@@ -120,6 +120,21 @@ if (bb_open_barrel(client, "mydb") != BB_OK) {
 
 if (bb_use_barrel(client, "mydb") != BB_OK) {
     fprintf(stderr, "Failed to use barrel\n");
+}
+
+// List all barrels
+char** barrels = NULL;
+size_t barrel_count;
+if (bb_list_barrels(client, &barrels, &barrel_count) == BB_OK) {
+    for (size_t i = 0; i < barrel_count; i++) {
+        printf("Barrel: %s\n", barrels[i]);
+    }
+    bb_free_string_array(barrels, barrel_count);
+}
+
+// Drop barrel
+if (bb_drop_barrel(client, "mydb") != BB_OK) {
+    fprintf(stderr, "Failed to drop barrel\n");
 }
 ```
 
@@ -155,6 +170,16 @@ int64_t count;
 if (bb_count(client, &count) == BB_OK) {
     printf("Barrel has %ld keys\n", count);
 }
+
+// List all keys in barrel
+char** keys = NULL;
+size_t key_count;
+if (bb_list_keys(client, &keys, &key_count) == BB_OK) {
+    for (size_t i = 0; i < key_count; i++) {
+        printf("Key: %s\n", keys[i]);
+    }
+    bb_free_string_array(keys, key_count);
+}
 ```
 
 ### Range Queries
@@ -178,6 +203,42 @@ if (bb_items_in_range(client, "user:100", "user:200", 100, "", &result) == BB_OK
 if (bb_items_with_prefix(client, "user:", 100, "", &result) == BB_OK) {
     // Process results
     bb_free_range_result(result);
+}
+```
+
+### Batch Operations
+
+```c
+// Batch set multiple key-value pairs
+const char* keys[3] = {"key1", "key2", "key3"};
+const char* values[3] = {"value1", "value2", "value3"};
+size_t success_count;
+if (bb_batch_set(client, keys, values, 3, &success_count) == BB_OK) {
+    printf("Set %zu keys successfully\n", success_count);
+}
+
+// Batch get multiple values
+const char* get_keys[3] = {"key1", "key2", "key3"};
+char** values = NULL;
+uint8_t* statuses = NULL;
+size_t result_count;
+if (bb_batch_get(client, get_keys, 3, &values, &statuses, &result_count) == BB_OK) {
+    for (size_t i = 0; i < result_count; i++) {
+        if (statuses[i] == 0) {  // STATUS_OK
+            printf("%s = %s\n", get_keys[i], values[i]);
+            free(values[i]);
+        } else {
+            printf("%s not found\n", get_keys[i]);
+        }
+    }
+    free(values);
+    free(statuses);
+}
+
+// Batch delete multiple keys
+const char* del_keys[2] = {"key1", "key2"};
+if (bb_batch_delete(client, del_keys, 2, &success_count) == BB_OK) {
+    printf("Deleted %zu keys successfully\n", success_count);
 }
 ```
 
@@ -253,8 +314,6 @@ if (result != BB_OK) {
 
 ## Limitations
 
-- WebSocket client uses a simplified implementation without full WebSocket handshake
-- SSL/TLS support is included but not fully tested
 - Range queries only work with barrels in bmCritBit mode
 - Pub/Sub message persistence between reconnections is not implemented
 
@@ -265,15 +324,16 @@ See the `clients/zig/` directory for Zig bindings that provide a safe, idiomatic
 ## Protocol Compliance
 
 This implementation follows BitBarrel protocol v1.1:
-- ✅ WebSocket transport
+- ✅ WebSocket transport (using libwebsockets)
 - ✅ Binary protocol encoding
 - ✅ Big-endian integers
 - ✅ Barrel management commands
-- ✅ Data operations (GET, SET, DELETE, etc.)
-- ✅ Range queries
-- ✅ Pub/Sub (SUBSCRIBE, PUBLISH)
+- ✅ Data operations (GET, SET, DELETE, EXISTS, COUNT, LIST_KEYS)
+- ✅ Barrel management (CREATE, OPEN, USE, CLOSE, DROP, LIST)
+- ✅ Range queries (RANGE_QUERY, PREFIX_QUERY)
+- ✅ Pub/Sub (SUBSCRIBE, PUBLISH, UNSUBSCRIBE)
 - ✅ Key watching
-- ✅ Batch operations (encoded but not fully exposed in API yet)
+- ✅ Batch operations (BATCH_SET, BATCH_GET, BATCH_DELETE)
 
 ## Performance Considerations
 
@@ -308,10 +368,8 @@ Test categories:
 
 ## Future Enhancements
 
-- Full WebSocket handshake implementation
 - SSL/TLS verification
 - Additional examples (Pub/Sub, benchmarks)
 - Async callback API
 - Connection resilience with automatic reconnection
 - Health checking
-
