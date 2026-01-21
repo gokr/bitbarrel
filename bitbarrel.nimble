@@ -17,6 +17,7 @@ requires "supersnappy"      # For optional Snappy support
 requires "https://github.com/gokr/lz4wrapper" # For optional LZ4 support
 requires "https://github.com/gokr/mummy"      # MummyX WebSocket/HTTP server
 requires "https://github.com/gokr/whisky"     # Websocket client library
+requires "sunny"                             # Fast JSON library
  
 # Task for testing
 
