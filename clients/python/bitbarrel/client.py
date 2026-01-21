@@ -547,6 +547,48 @@ class Client:
         except ValueError:
             return 0
 
+    def watch(self, pattern: str, include_values: bool = False) -> bool:
+        """Watch for changes to keys matching a pattern.
+
+        When keys matching the pattern change (set or delete), you'll receive
+        PubSub events via the message handler with message_type mtKvChange.
+
+        Args:
+            pattern: Pattern with * as wildcard (e.g., "user:*" or "cache:*")
+            include_values: Whether to include values in change events (default: False)
+
+        Returns:
+            True on success
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+
+        watch_data = encode_watch_request('', pattern, include_values)
+        self._send_request(Command.WATCH_KEY, '', watch_data)
+        return True
+
+    def unwatch(self, pattern: str) -> bool:
+        """Stop watching a previously registered pattern.
+
+        Args:
+            pattern: The pattern to unwatch
+
+        Returns:
+            True on success
+
+        Raises:
+            NoBarrelError: If no barrel selected
+            ServerError: If server reports an error
+        """
+        self._ensure_barrel()
+
+        watch_data = encode_watch_request('', pattern, False)
+        self._send_request(Command.UNWATCH_KEY, '', watch_data)
+        return True
+
     def delete(self, key: str) -> bool:
         """Delete a key from the current barrel.
 

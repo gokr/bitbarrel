@@ -54,6 +54,9 @@ class Command(IntEnum):
     BATCH_GET = 0x26
     BATCH_SET = 0x27
     BATCH_DELETE = 0x28
+    # Key watching
+    WATCH_KEY = 0x60
+    UNWATCH_KEY = 0x61
 
 
 class Status(IntEnum):
@@ -1043,3 +1046,42 @@ def decode_batch_get_response(data: bytes) -> List[Tuple[str, str]]:
             results.append((key, value))
 
     return results
+
+
+def encode_watch_request(barrel_name: str, pattern: str, include_values: bool = False) -> bytes:
+    """Encode watch request: [barrelLen:2][barrel][patternLen:2][pattern][options:1]
+
+    Args:
+        barrel_name: Empty string to use current barrel
+        pattern: Pattern with * wildcard
+        include_values: Whether to include values in change events
+    """
+    barrel_bytes = barrel_name.encode("utf-8")
+    pattern_bytes = pattern.encode("utf-8")
+
+    if len(barrel_bytes) > MAX_KEY_SIZE:
+        raise ProtocolError(f"Barrel name too large: {len(barrel_bytes)} bytes (max {MAX_KEY_SIZE})")
+    if len(pattern_bytes) > MAX_KEY_SIZE:
+        raise ProtocolError(f"Pattern too large: {len(pattern_bytes)} bytes (max {MAX_KEY_SIZE})")
+
+    total_size = 2 + len(barrel_bytes) + 2 + len(pattern_bytes) + 1
+    buf = bytearray(total_size)
+    offset = 0
+
+    # Barrel name length and name
+    buf[offset:offset+2] = struct.pack(">H", len(barrel_bytes))
+    offset += 2
+    buf[offset:offset+len(barrel_bytes)] = barrel_bytes
+    offset += len(barrel_bytes)
+
+    # Pattern length and pattern
+    buf[offset:offset+2] = struct.pack(">H", len(pattern_bytes))
+    offset += 2
+    buf[offset:offset+len(pattern_bytes)] = pattern_bytes
+    offset += len(pattern_bytes)
+
+    # Options byte
+    options = 1 if include_values else 0
+    buf[offset] = options
+
+    return bytes(buf)

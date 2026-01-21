@@ -385,3 +385,255 @@ class TestJWTAuthentication:
             else:
                 raise
 
+
+class TestBatchOperations:
+    """Test batch operations."""
+
+    def test_batch_set_empty(self, client, temp_barrel):
+        """Test batch_set with empty list."""
+        client.use_barrel(temp_barrel)
+        count = client.batch_set([])
+        assert count == 0
+
+    def test_batch_set_single(self, client, temp_barrel):
+        """Test batch_set with single item."""
+        client.use_barrel(temp_barrel)
+        items = [("key1", "value1")]
+        count = client.batch_set(items)
+        assert count == 1
+        assert client.get("key1") == "value1"
+
+    def test_batch_set_multiple(self, client, temp_barrel):
+        """Test batch_set with multiple items."""
+        client.use_barrel(temp_barrel)
+        items = [
+            ("key1", "value1"),
+            ("key2", "value2"),
+            ("key3", "value3"),
+        ]
+        count = client.batch_set(items)
+        assert count == 3
+        assert client.get("key1") == "value1"
+        assert client.get("key2") == "value2"
+        assert client.get("key3") == "value3"
+
+    def test_batch_get_empty(self, client, temp_barrel):
+        """Test batch_get with empty list."""
+        client.use_barrel(temp_barrel)
+        result = client.batch_get([])
+        assert result == []
+
+    def test_batch_get_single(self, client, temp_barrel):
+        """Test batch_get with single existing key."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1")
+        result = client.batch_get(["key1"])
+        assert len(result) == 1
+        assert result[0] == ("key1", "value1")
+
+    def test_batch_get_multiple(self, client, temp_barrel):
+        """Test batch_get with multiple keys."""
+        client.use_barrel(temp_barrel)
+        items = [
+            ("key1", "value1"),
+            ("key2", "value2"),
+            ("key3", "value3"),
+        ]
+        client.batch_set(items)
+        result = client.batch_get(["key1", "key2", "key3"])
+        assert len(result) == 3
+        assert ("key1", "value1") in result
+        assert ("key2", "value2") in result
+        assert ("key3", "value3") in result
+
+    def test_batch_get_with_missing_keys(self, client, temp_barrel):
+        """Test batch_get returns only found keys."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1")
+        result = client.batch_get(["key1", "nonexistent_key", "key2"])
+        assert len(result) == 1
+        assert result[0] == ("key1", "value1")
+
+    def test_batch_delete_empty(self, client, temp_barrel):
+        """Test batch_delete with empty list."""
+        client.use_barrel(temp_barrel)
+        count = client.batch_delete([])
+        assert count == 0
+
+    def test_batch_delete_single(self, client, temp_barrel):
+        """Test batch_delete with single key."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1")
+        count = client.batch_delete(["key1"])
+        assert count == 1
+        assert not client.exists("key1")
+
+    def test_batch_delete_multiple(self, client, temp_barrel):
+        """Test batch_delete with multiple keys."""
+        client.use_barrel(temp_barrel)
+        items = [
+            ("key1", "value1"),
+            ("key2", "value2"),
+            ("key3", "value3"),
+        ]
+        client.batch_set(items)
+        count = client.batch_delete(["key1", "key2"])
+        assert count == 2
+        assert not client.exists("key1")
+        assert not client.exists("key2")
+        assert client.exists("key3")  # Should still exist
+
+
+class TestTTL:
+    """Test TTL (Time To Live) functionality."""
+
+    def test_set_without_ttl(self, client, temp_barrel):
+        """Test set without TTL parameter."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1")
+        assert client.get("key1") == "value1"
+        # Key should persist
+        time.sleep(1)
+        assert client.get("key1") == "value1"
+
+    def test_set_with_ttl(self, client, temp_barrel):
+        """Test set with TTL parameter."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1", ttl=2)  # 2 second TTL
+        assert client.get("key1") == "value1"
+        # Wait for key to expire
+        time.sleep(3)
+        with pytest.raises(NotFoundError):
+            client.get("key1")
+
+    def test_set_with_zero_ttl(self, client, temp_barrel):
+        """Test set with TTL=0 (should not expire)."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1", ttl=0)
+        assert client.get("key1") == "value1"
+        time.sleep(1)
+        assert client.get("key1") == "value1"
+
+    def test_overwrite_with_ttl(self, client, temp_barrel):
+        """Test overwriting key with TTL."""
+        client.use_barrel(temp_barrel)
+        client.set("key1", "value1")
+        # Overwrite with TTL
+        client.set("key1", "value2", ttl=2)
+        assert client.get("key1") == "value2"
+        time.sleep(3)
+        with pytest.raises(NotFoundError):
+            client.get("key1")
+
+
+class TestKeyWatching:
+    """Test key watching functionality."""
+
+    def test_watch_basic(self, client, temp_barrel):
+        """Test basic watch functionality."""
+        client.use_barrel(temp_barrel)
+
+        # Set up message handler
+        events = []
+        def handler(event):
+            if event.message_type == PubSubMessageType.mtKvChange:
+                events.append(event)
+
+        client.set_message_handler(handler)
+
+        # Subscribe to kv events
+        topic = "kv:"
+        client.subscribe(topic)
+
+        # Watch for key changes
+        pattern = "user:*"
+        client.watch(pattern, include_values=False)
+
+        # Give some time for subscription to register
+        time.sleep(0.1)
+
+        # Set a matching key
+        client.set("user:1", "Alice")
+
+        # Wait for event
+        time.sleep(0.5)
+
+        # Should have received an event
+        assert len(events) >= 1
+        event = events[0]
+        assert event.topic == topic + "user:1"
+        assert event.message_type == PubSubMessageType.mtKvChange
+        assert event.payload == ""  # No values included
+
+        client.unsubscribe(topic)
+
+    def test_watch_with_values(self, client, temp_barrel):
+        """Test watch with value inclusion."""
+        client.use_barrel(temp_barrel)
+
+        events = []
+        def handler(event):
+            if event.message_type == PubSubMessageType.mtKvChange:
+                events.append(event)
+
+        client.set_message_handler(handler)
+
+        topic = "kv:"
+        client.subscribe(topic)
+
+        # Watch with values
+        pattern = "cache:*"
+        client.watch(pattern, include_values=True)
+
+        time.sleep(0.1)
+
+        # Set a matching key
+        client.set("cache:item1", "value1")
+
+        time.sleep(0.5)
+
+        # Check event received with value
+        assert len(events) >= 1
+        event = events[0]
+        assert event.topic == topic + "cache:item1"
+        assert event.payload == "value1"  # Value included
+
+        client.unsubscribe(topic)
+
+    def test_unwatch(self, client, temp_barrel):
+        """Test unwatch functionality."""
+        client.use_barrel(temp_barrel)
+
+        events = []
+        def handler(event):
+            if event.message_type == PubSubMessageType.mtKvChange:
+                events.append(event)
+
+        client.set_message_handler(handler)
+
+        topic = "kv:"
+        client.subscribe(topic)
+
+        # Set up watch
+        pattern = "temp:*"
+        client.watch(pattern, include_values=False)
+        time.sleep(0.1)
+
+        # Now unwatch
+        client.unwatch(pattern)
+        time.sleep(0.1)
+
+        # Set a key that would match
+        client.set("temp:1", "value1")
+        time.sleep(0.5)
+
+        # Should not have received any events
+        assert len(events) == 0
+
+        client.unsubscribe(topic)
+
+    def test_watch_without_barrel(self, client):
+        """Test watch without selecting a barrel raises error."""
+        with pytest.raises(NoBarrelError):
+            client.watch("user:*", include_values=False)
+
