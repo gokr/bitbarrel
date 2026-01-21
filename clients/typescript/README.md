@@ -7,7 +7,8 @@ A TypeScript client library for [BitBarrel](https://github.com/bitbarrel/bitbarr
 - 🚀 **High Performance**: Binary protocol with WebSocket transport
 - 📝 **Type-Safe**: Full TypeScript support with comprehensive type definitions
 - 🔒 **Authentication**: JWT-based authentication support
-- 📦 **Multiple Operations**: Full CRUD operations, range queries, and barrel management
+- 📦 **Multiple Operations**: Full CRUD operations, range queries, batch operations, and barrel management
+- ⚡ **TTL Support**: Automatic key expiration with optional TTL parameter
 - 📡 **Pub/Sub Messaging**: Real-time topic-based subscriptions with pattern matching (core subscribe/publish implemented)
 - 🎯 **Error Handling**: Comprehensive error hierarchy with detailed messages
 - ⚡ **Automatic Reconnection**: Auto-connect on first operation with configurable timeouts
@@ -188,14 +189,26 @@ console.log(`Total keys: ${stats.totalKeys}`);
 
 ### Key-Value Operations
 
-#### `set(key: string, value: string): Promise<boolean>`
+#### `set(key: string, value: string, ttl?: number): Promise<boolean>`
 
-Store a key-value pair.
+Store a key-value pair with optional TTL (Time To Live).
 
 ```typescript
+// Store without expiration
 await client.set('user:1', JSON.stringify({ name: 'Alice' }));
 await client.set('total:visits', '1000');
+
+// Store with TTL (key will expire after 3600 seconds = 1 hour)
+await client.set('temp:session', 'abc123', 3600);
+
+// Store with short TTL (key will expire after 60 seconds)
+await client.set('cache:price', '19.99', 60);
 ```
+
+**Parameters:**
+- `key` - The key to store
+- `value` - The value to store
+- `ttl` (optional) - Time to live in seconds. If provided, the key will automatically expire after this many seconds.
 
 #### `get(key: string): Promise<string>`
 
@@ -250,6 +263,55 @@ Get all keys in the current barrel.
 const keys = await client.listKeys();
 console.log(`First key: ${keys[0]}`);
 ```
+
+### Batch Operations
+
+Batch operations allow you to perform multiple operations in a single request, improving performance for bulk operations.
+
+#### `batchSet(items: Array<[string, string]>): Promise<number>`
+
+Store multiple key-value pairs in a single request.
+
+```typescript
+const items: Array<[string, string]> = [
+  ['user:1', JSON.stringify({ name: 'Alice' })],
+  ['user:2', JSON.stringify({ name: 'Bob' })],
+  ['user:3', JSON.stringify({ name: 'Charlie' })],
+];
+
+const successCount = await client.batchSet(items);
+console.log(`Successfully stored ${successCount} items`);
+```
+
+**Returns:** The number of items successfully stored.
+
+#### `batchGet(keys: string[]): Promise<Array<[string, string]>>`
+
+Retrieve multiple values by their keys in a single request.
+
+```typescript
+const keys = ['user:1', 'user:2', 'user:3'];
+const items = await client.batchGet(keys);
+
+for (const [key, value] of items) {
+  console.log(`${key}: ${value}`);
+}
+// Note: Only found keys are returned. Keys that don't exist are omitted from the result.
+```
+
+**Returns:** An array of `[key, value]` pairs for all found keys.
+
+#### `batchDelete(keys: string[]): Promise<number>`
+
+Delete multiple keys in a single request.
+
+```typescript
+const keysToDelete = ['temp:1', 'temp:2', 'temp:3'];
+const deletedCount = await client.batchDelete(keysToDelete);
+console.log(`Successfully deleted ${deletedCount} keys`);
+```
+
+**Returns:** The number of keys successfully deleted.
 
 ### Range Queries
 
