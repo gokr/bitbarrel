@@ -716,3 +716,153 @@ suite "Integration: Batch Operations":
 
     except CatchableError as e:
       skip()  # Server not available
+
+suite "Key Watching":
+  test "watch requires barrel selection":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    try:
+      client.connect()
+
+      # Try watch without selecting a barrel
+      expect NoBarrelError:
+        client.watch("user:*", includeValues=false)
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "watch basic functionality":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    var events: seq[PubSubEvent] = @[]
+
+    try:
+      client.connect()
+
+      let barrelName = uniqueBarrelName("watch_test")
+      client.createBarrel(barrelName, bmHash)
+      defer: client.dropBarrel(barrelName)
+
+      client.useBarrel(barrelName)
+
+      # Set up message handler
+      client.setMessageHandler(proc(event: PubSubEvent) =
+        events.add(event)
+      )
+
+      # Subscribe to key events
+      client.subscribe("kv:")
+      defer: client.unsubscribe("kv:")
+
+      # Watch pattern
+      client.watch("user:*", includeValues=false)
+
+      # Wait for subscription
+      sleep(100)
+
+      # Set a matching key
+      client.set("user:1", "Alice")
+
+      # Wait for event
+      sleep(500)
+
+      # Verify event received
+      check events.len >= 1
+      let event = events[^1]  # last event
+      check event.topic.contains("user:1")
+      check event.messageType == mtKvChange
+      check event.payload == ""
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "watch with values":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    var events: seq[PubSubEvent] = @[]
+
+    try:
+      client.connect()
+
+      let barrelName = uniqueBarrelName("watch_values_test")
+      client.createBarrel(barrelName, bmHash)
+      defer: client.dropBarrel(barrelName)
+
+      client.useBarrel(barrelName)
+
+      # Set up message handler
+      client.setMessageHandler(proc(event: PubSubEvent) =
+        events.add(event)
+      )
+
+      # Subscribe to key events
+      client.subscribe("kv:")
+      defer: client.unsubscribe("kv:")
+
+      # Watch with values
+      client.watch("cache:*", includeValues=true)
+
+      # Wait for subscription
+      sleep(100)
+
+      # Set a matching key
+      client.set("cache:item1", "value1")
+
+      # Wait for event
+      sleep(500)
+
+      # Verify event received with value
+      check events.len >= 1
+      let event = events[^1]
+      check event.topic.contains("cache:item1")
+      check event.payload == "value1"
+
+    except CatchableError as e:
+      skip()  # Server not available
+
+  test "unwatch stops events":
+    var client = newClient(TestServerHost, TestServerPort)
+    defer: client.close()
+
+    var events: seq[PubSubEvent] = @[]
+
+    try:
+      client.connect()
+
+      let barrelName = uniqueBarrelName("unwatch_test")
+      client.createBarrel(barrelName, bmHash)
+      defer: client.dropBarrel(barrelName)
+
+      client.useBarrel(barrelName)
+
+      # Set up message handler
+      client.setMessageHandler(proc(event: PubSubEvent) =
+        events.add(event)
+      )
+
+      # Subscribe to key events
+      client.subscribe("kv:")
+      defer: client.unsubscribe("kv:")
+
+      # Set up watch
+      client.watch("temp:*", includeValues=false)
+      sleep(100)
+
+      # Now unwatch
+      client.unwatch("temp:*")
+      sleep(100)
+
+      # Set a key that would match the old pattern
+      client.set("temp:1", "value1")
+
+      # Wait to ensure no event comes
+      sleep(500)
+
+      # Should not have received any events
+      check events.len == 0
+
+    except CatchableError as e:
+      skip()  # Server not available

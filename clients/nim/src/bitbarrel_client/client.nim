@@ -1474,3 +1474,27 @@ proc newKeysPrefixIterator*(client: var BitBarrelClient, prefix: string,
     cursor: "",
     exhausted: false
   )
+
+## Key watching
+
+proc watch*(client: var BitBarrelClient, pattern: string, includeValues = false) =
+  ## Watch for changes to keys matching a pattern via Pub/Sub.
+  ##
+  ## When keys matching the pattern change (set or delete), you'll receive
+  ## PubSub events via the message handler with message_type mtKvChange.
+  ##
+  ## Patterns use * as wildcard (e.g., "user:*" or "cache:*")
+  if client.currentBarrel.len == 0:
+    raise NoBarrelError.newException("No barrel selected")
+
+  let watchData = encodeWatchRequest("", pattern, includeValues)
+  discard client.sendRequest(cmdWatchKey, "", watchData)
+
+proc unwatch*(client: var BitBarrelClient, pattern: string) =
+  ## Stop watching a previously registered pattern.
+  if client.currentBarrel.len == 0:
+    raise NoBarrelError.newException("No barrel selected")
+
+  let watchData = encodeWatchRequest("", pattern, false)
+  discard client.sendRequest(cmdUnwatchKey, "", watchData)
+

@@ -48,6 +48,9 @@ type
     cmdHistory = 0x44
     cmdListTopics = 0x45
     cmdPresence = 0x46
+    ## Key watching commands
+    cmdWatchKey = 0x60
+    cmdUnwatchKey = 0x61
 
   PubSubMessageType* = enum
     mtData = 0
@@ -1014,5 +1017,27 @@ proc decodeHandshake*(data: string): ServerHandshake =
       result.plugins[i] = readString(data, pos, int(pluginNameLen))
   else:
     result.plugins = @[]
+
+## Watch request encoding/decoding
+
+proc encodeWatchRequest*(barrelName: string, pattern: string, includeValues: bool): string =
+  ## Encode a watch request to binary format.
+  ## Format: ``[barrelLen:2][barrel][patternLen:2][pattern][options:1]``
+  if barrelName.len > MaxKeySize:
+    raise newException(ProtocolError, "Barrel name too large: " & $barrelName.len)
+  if pattern.len > MaxKeySize:
+    raise newException(ProtocolError, "Pattern too large: " & $pattern.len)
+
+  result = newStringOfCap(2 + barrelName.len + 2 + pattern.len + 1)
+  result.writeUint16BE(uint16(barrelName.len))
+  result.add(barrelName)
+  result.writeUint16BE(uint16(pattern.len))
+  result.add(pattern)
+
+  var options: byte = 0
+  if includeValues:
+    options = options or 0x01
+  result.add(char(options))
+
 
 
