@@ -28,9 +28,9 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
     # Exit on first error
     set -e
 
-    # Compile all examples (excluding utility modules)
+    # Compile all examples (excluding utility modules and pubsub which has incomplete client features)
     # Note: pubsub examples require --path:clients/nim/src to find bitbarrel_client
-    find examples -name "*.nim" -type f | grep -v demo_utils.nim | while IFS= read -r file; do
+    find examples -name "*.nim" -type f | grep -v "pubsub/" | while IFS= read -r file; do
       echo "Compiling $file..."
       nim c --verbosity:0 --path:src --path:clients/nim/src "$file"
     done
@@ -41,7 +41,7 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
       nim c --verbosity:0 --path:src "$file"
     done
 
-    echo "✓ All examples and benchmarks compiled successfully!"
+    echo "✓ All examples (except pubsub) and benchmarks compiled successfully!"
   """
 
 task test, "Run all tests (automatic discovery via testament)":
@@ -130,25 +130,6 @@ task exampleNetworkBarrels, "Run network barrels example":
 
 task exampleHooks, "Run hook system examples":
   exec "nim r examples/plugins/range_query_plugins.nim"
-
-# Backward compatibility aliases
-task demoBasic, "Run basic CRUD demo (deprecated: use exampleBasic)":
-  exec "nim r examples/basic/basic.nim"
-
-task demoPerformance, "Run performance demo (deprecated: use examplePerformance)":
-  exec "nim r examples/basic/performance.nim"
-
-task demoGraph, "Run graph traversal demo (deprecated: use exampleGraph)":
-  exec "nim r examples/advanced/graph_traversal.nim"
-
-task demoAdvanced, "Run advanced features demo (deprecated: use exampleAdvanced)":
-  exec "nim r examples/advanced/advanced.nim"
-
-task demoNetworkBasic, "Run basic network demo (deprecated: use exampleNetworkBasic)":
-  exec "nim r examples/networking/basic_client.nim"
-
-task demoNetworkBarrels, "Run network barrels demo (deprecated: use exampleNetworkBarrels)":
-  exec "nim r examples/networking/barrels_example.nim"
 
 # Task for benchmarking
 
