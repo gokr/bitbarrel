@@ -4,6 +4,7 @@
 ## prefix-based queries. Uses bmCritBit mode for ordered retrieval.
 
 import std/[tables, locks, sequtils, strutils, json, algorithm]
+import sunny
 import ./pubsub
 import ./storage_backend
 import ../bitbarrel/barrel
@@ -103,8 +104,8 @@ proc encodeMessage(message: Message): string =
   data["timestamp"] = %message.timestamp
   data["sequence"] = %message.sequence
 
-  if message.headers != nil:
-    data["headers"] = message.headers
+  if message.headers.string.len > 0:
+    data["headers"] = %message.headers.string
 
   result = $data
 
@@ -121,9 +122,9 @@ proc decodeMessage(data: string): Message =
   result.sequence = uint64(jsonNode["sequence"].getBiggestInt())
 
   if "headers" in jsonNode:
-    result.headers = jsonNode["headers"]
+    result.headers = RawJson($jsonNode["headers"])
   else:
-    result.headers = nil
+    result.headers = RawJson("{}")
 
 method store(backend: SharedBarrelBackend, topic: string,
              message: Message): bool {.gcsafe.} =
