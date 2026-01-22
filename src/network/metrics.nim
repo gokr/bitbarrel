@@ -267,7 +267,7 @@ proc getMetricsJson*(collector: MetricsCollector): JsonNode =
   var operations = newJObject()
   withLock(collector.opsLock):
     for op in [opGet, opSet, opDelete]:
-      var opNode = newTable[string, JsonValue]()
+      var opNode = newJObject()
       for status in [stSuccess, stFailure]:
         let key = (op, status)
         opNode[$status] = %collector.opsTotal.getOrDefault(key, 0)
