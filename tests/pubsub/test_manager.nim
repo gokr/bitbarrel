@@ -3,6 +3,7 @@
 ## Tests for topic/subscription management, message publishing, and routing
 
 import std/[unittest, strutils, options, json]
+import sunny
 import ../../src/pubsub/[pubsub, manager, pattern]
 
 suite "PubSubManager":
@@ -194,7 +195,7 @@ suite "PubSubManager":
     discard manager.subscribe(1'u64, "topic1")
 
     let msg = newMessage("topic1", mtData, "payload")
-    msg.headers = %*{"sender": "alice"}
+    msg.headers = RawJson($(%*{"sender": "alice"}))
     discard manager.publish(msg)
 
     check received.headers.contains("alice")

@@ -3,6 +3,7 @@
 ## End-to-end integration tests for pub/sub workflows
 
 import std/[unittest, strutils, options, strformat, os, json]
+import sunny
 import ../../src/pubsub/pubsub
 import ../../src/pubsub/manager
 import ../../src/pubsub/barrel_hooks
@@ -393,7 +394,7 @@ suite "Pub/Sub Integration":
     discard manager.subscribe(1'u64, "topic1")
 
     let msg = newMessage("topic1", pubsub.mtData, "payload")
-    msg.headers = %*{"sender": "alice", "priority": 1}
+    msg.headers = RawJson($(%*{"sender": "alice", "priority": 1}))
     discard manager.publish(msg)
 
     check received.headers.contains("alice")
