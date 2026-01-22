@@ -5,6 +5,7 @@
 import std/[net, locks, tables, strutils, os, sequtils, strformat, times, json]
 import mummy
 import mummy/routers
+import sunny
 import session
 import auth as authjwt
 import ../bitbarrel/barrel
@@ -1173,9 +1174,9 @@ proc handleWebSocketMessage*(
       try:
         let pubReq = protocol.decodePublishRequest(req.value)
         let headers = if pubReq.headers.len > 0:
-                        parseJson(pubReq.headers)
+                        RawJson(pubReq.headers)
                       else:
-                        nil
+                        RawJson("{}")
 
         let seqNo = server.pubSubManager.publish(pubReq.topic,
                                                      pubsub.PubSubMessageType(ord(pubReq.messageType)),
@@ -1232,8 +1233,8 @@ proc handleWebSocketMessage*(
           msgJson["payload"] = %msg.payload
           msgJson["timestamp"] = %msg.timestamp
           msgJson["sequence"] = %msg.sequence
-          if msg.headers != nil:
-            msgJson["headers"] = msg.headers
+          if msg.headers.string.len > 0 and msg.headers.string != "{}":
+            msgJson["headers"] = %msg.headers.string
           else:
             msgJson["headers"] = newJObject()
           respArray.add(msgJson)
