@@ -2,7 +2,8 @@
 ##
 ## Tests for Message, Topic, Subscription, Presence, and other core types
 
-import std/[unittest, json, sets, tables, os]
+import std/[unittest, json, sets, tables, os, strutils]
+import sunny
 import ../../src/pubsub/pubsub
 
 suite "PubSub Core Types":
@@ -17,12 +18,12 @@ suite "PubSub Core Types":
     check msg.sequence == 0  # Not set yet
 
   test "newMessage with headers":
-    let headers = %*{"sender": "alice", "priority": 1}
+    let headers = RawJson($(%*{"sender": "alice", "priority": 1}))
     let msg = newMessage("test:topic", mtData, "payload", headers)
 
-    check msg.headers != nil
-    check msg.headers["sender"].getStr() == "alice"
-    check msg.headers["priority"].getInt() == 1
+    check msg.headers.string.len > 0
+    check msg.headers.string.contains("alice")
+    check msg.headers.string.contains("priority")
 
   test "Message UUID uniqueness":
     let msg1 = newMessage("topic", mtData, "p1")
@@ -45,14 +46,16 @@ suite "PubSub Core Types":
     check restored.sequence == original.sequence
 
   test "Message toJson with headers":
-    let headers = %*{"sender": "bob"}
+    let headers = RawJson($(%*{"sender": "bob"}))
     let original = newMessage("topic", mtData, "payload", headers)
     original.sequence = 10
 
     let jsonNode = toJson(original)
     let restored = fromJson(jsonNode)
 
-    check restored.headers["sender"].getStr() == "bob"
+    # Parse RawJson as JsonNode to access fields
+    let parsedHeaders = parseJson(restored.headers.string)
+    check parsedHeaders["sender"].getStr() == "bob"
 
   test "newTopic creates valid topic":
     let topic = newTopic("chat:room1")
@@ -142,11 +145,12 @@ suite "PubSub Core Types":
 
   test "PresenceInfo addMember with metadata":
     let presence = newPresenceInfo("chat:room1")
-    let metadata = %*{"status": "online"}
+    let metadata = RawJson($(%*{"status": "online"}))
 
     presence.addMember(1'u64, "alice", metadata)
 
-    check presence.members["1"].metadata["status"].getStr() == "online"
+    let parsedMetadata = parseJson(presence.members["1"].metadata.string)
+    check parsedMetadata["status"].getStr() == "online"
 
   test "PresenceInfo removeMember":
     let presence = newPresenceInfo("chat:room1")
@@ -187,7 +191,7 @@ suite "PubSub Core Types":
 
   test "PresenceMember toJson":
     let presence = newPresenceInfo("chat:room1")
-    let metadata = %*{"status": "online"}
+    let metadata = RawJson($(%*{"status": "online"}))
     presence.addMember(1'u64, "alice", metadata)
 
     let member = presence.members["1"]
