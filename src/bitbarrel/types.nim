@@ -141,7 +141,7 @@ type
     bmCritBit      # CritBit tree - O(key_len), supports range/prefix queries
     bmHugeCritBit  # Two-tier for massive datasets with range queries
 
-  HugeBarrelConfig* {.json: "", extraFields: {}.} = object
+  HugeBarrelConfig* {.json: "".} = object
     maxEntriesPerRange* {.json: "maxEntriesPerRange".}: int      # Max entries per RangeKeyDir (default: 100_000)
     rangeCacheSize* {.json: "rangeCacheSize".}: int          # Max RangeKeyDirs in memory (default: 10)
     rangesPerFile* {.json: "rangesPerFile".}: int           # Max RangeKeyDirs per Barrel2 file (default: 100)
@@ -150,7 +150,7 @@ type
     flushIntervalMs* {.json: "flushIntervalMs".}: int         # Time-based flush interval in ms (default: 1000, 0 = disabled)
     enableBarrel2Recovery* {.json: "enableBarrel2Recovery".}: bool  # Enable Barrel2 recovery on startup (default: true)
 
-  BarrelConfig* {.json: "", extraFields: {}.} = object
+  BarrelConfig* {.json: "".} = object
     # Storage config
     writeBufferSize* {.json: "writeBufferSize".}: int
     syncMode* {.json: "syncMode".}: UserSyncMode
