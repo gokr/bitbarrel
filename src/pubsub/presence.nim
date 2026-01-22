@@ -7,6 +7,7 @@
 
 import std/[tables, locks, sets, times, strformat, os, json, sequtils]
 import std/options
+import sunny
 import ./pubsub
 import ./eventbroker
 
@@ -136,7 +137,7 @@ proc stopCleanupThread*(manager: PresenceManager) =
 
 proc joinTopic*(manager: PresenceManager, topic: string,
                 clientId: uint64, username: string,
-                metadata: JsonNode = nil): bool =
+                metadata: RawJson = RawJson("{}")): bool =
   ## Client joins a topic, notifies other subscribers
 
   withLock manager.presenceLock:
@@ -150,7 +151,7 @@ proc joinTopic*(manager: PresenceManager, topic: string,
     let idStr = $clientId
     if idStr in info.members:
       # Update metadata if provided
-      if metadata != nil:
+      if metadata.string.len > 0 and metadata.string != "{}":
         info.members[idStr].metadata = metadata
       return false
 
@@ -237,7 +238,7 @@ proc updatePing*(manager: PresenceManager, clientId: uint64): bool =
   return false
 
 proc updateMetadata*(manager: PresenceManager, topic: string,
-                     clientId: uint64, metadata: JsonNode) =
+                     clientId: uint64, metadata: RawJson) =
   ## Update client metadata for a topic
 
   withLock manager.presenceLock:
