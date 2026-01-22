@@ -35,7 +35,7 @@ This directory contains examples and scripts for deploying and using BitBarrel o
 
 ### Deployment Scripts
 
-Located in `.././examples/koyeb/scripts/`:
+Located in `./scripts/`:
 
 - **install-koyeb-cli.sh** - Install Koyeb CLI
 - **configure-koyeb.sh** - Interactive configuration wizard
