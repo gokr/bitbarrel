@@ -8,6 +8,7 @@
 ## All multi-byte integers use big-endian encoding.
 
 import std/strutils
+import sunny
 
 type
   Command* = enum
@@ -1056,15 +1057,14 @@ proc `$`*(resp: Response): string =
 
 ## BarrelStats JSON serialization
 
-import sunny
-
 proc encodeBarrelStats*(stats: BarrelStats): string =
   ## Encode BarrelStats to JSON string
   result = $toJson(stats)
 
 proc decodeBarrelStats*(jsonStr: string): BarrelStats =
   ## Decode BarrelStats from JSON string
-  result = fromJson(jsonStr, BarrelStats)
+  let jsonValue = parseJson(jsonStr)
+  fromJson(result, jsonValue, jsonStr)
 
 
 ## Pub/Sub protocol extensions
