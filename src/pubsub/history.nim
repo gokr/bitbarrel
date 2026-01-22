@@ -6,7 +6,8 @@
 ## - Per-topic history configuration
 ## - Message retention and cleanup
 
-import std/[tables, locks, sequtils, strutils, json]
+import std/[tables, locks, sequtils, strutils, json as stdjson]
+import sunny
 import ./pubsub
 import ../bitbarrel/barrel
 
@@ -125,19 +126,8 @@ proc addToHistory*(store: HistoryStore, topic: string,
     # Also store in persistent barrel
     if store.barrel != nil and message.sequence > 0:
       try:
-        # Encode message as JSON for storage
-        var record = newJObject()
-        record["id"] = %message.id
-        record["topic"] = %message.topic
-        record["messageType"] = %ord(message.messageType)
-        record["payload"] = %message.payload
-        record["timestamp"] = %message.timestamp
-        record["sequence"] = %message.sequence
-        if message.headers != nil:
-          record["headers"] = message.headers
-        else:
-          record["headers"] = newJObject()
-
+        # Encode message as JSON for storage using Message.toJson
+        let record = message.toJson()
         let key = topic & ":" & $message.sequence  # Simple key format: topic:sequence
         let value = $record
         discard store.barrel.set(key, value)

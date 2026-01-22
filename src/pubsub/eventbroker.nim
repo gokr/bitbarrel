@@ -3,7 +3,8 @@
 ## The EventBroker receives published messages and routes them to
 ## connected PubSubWebSocket clients based on their subscriptions.
 
-import std/[tables, json, locks, times, sets]
+import std/[tables, json as stdjson, locks, times, sets]
+import sunny
 import ./pubsub
 import ./manager
 
@@ -23,6 +24,13 @@ type
 
     ## Clients lock
     clientsLock*: Lock
+
+type
+  PresenceHeaders* = object
+    eventType {.json: "eventType".}: int
+    clientId {.json: "clientId".}: uint64
+    username {.json: "username".}: string
+    metadata {.json: "metadata".}: RawJson
 
 proc newEventBroker*(pubSubManager: PubSubManager): EventBroker =
   ## Create a new event broker
@@ -140,7 +148,7 @@ proc routeEvent*(broker: EventBroker, msg: Message): seq[tuple[clientId: uint64,
 
   # Convert headers to string
   var headers = ""
-  if msg.headers != nil:
+  if $msg.headers != "{}":
     headers = $msg.headers
 
   # Collect messages for all subscribers
@@ -179,16 +187,21 @@ proc publishPresence*(broker: EventBroker, topic: string,
   ## Publish a presence event
   ## Returns list of messages to send
 
-  let headers = newJObject()
-  headers["eventType"] = %ord(eventType)
-  headers["clientId"] = %clientId
-  headers["username"] = %username
+  var metadataJson: RawJson = RawJson("null")
   if metadata.len > 0:
     try:
-      headers["metadata"] = parseJson(metadata)
+      let parsed = stdjson.parseJson(metadata)
+      metadataJson = RawJson($parsed)
     except CatchableError:
       discard
 
+  let headersObj = PresenceHeaders(
+    eventType: ord(eventType),
+    clientId: clientId,
+    username: username,
+    metadata: metadataJson
+  )
+  let headers = RawJson($toJson(headersObj))
   let msg = newMessage(topic, mtPresence, "", headers)
   result = broker.routeEvent(msg)
 
