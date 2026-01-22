@@ -148,8 +148,8 @@ proc routeEvent*(broker: EventBroker, msg: Message): seq[tuple[clientId: uint64,
 
   # Convert headers to string
   var headers = ""
-  if $msg.headers != "{}":
-    headers = $msg.headers
+  if msg.headers.string.len > 0 and msg.headers.string != "{}":
+    headers = msg.headers.string
 
   # Collect messages for all subscribers
   result = @[]
