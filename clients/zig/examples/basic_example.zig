@@ -14,28 +14,30 @@ pub fn main() !void {
 
     // Create client configuration
     const config = bitbarrel.Config{
-        .url = "ws://localhost:7687",
+        .url = "ws://localhost:9876/ws",
         .timeout_ms = 5000,
         .max_retries = 3,
         .enable_auto_reconnect = true,
     };
 
     // Create and connect client
-    var client = try bitbarrel.Client.init(allocator, config);
+    var client = bitbarrel.Client.init(allocator, config) catch |err| {
+        std.debug.print("Failed to connect: {}\n", .{err});
+        return;
+    };
     defer client.deinit();
 
-    std.debug.print("✓ Connected to BitBarrel server\n", .{});
+    std.debug.print("Connected to BitBarrel server\n", .{});
 
     // Create a barrel
     const barrel_name = "zig_test";
     client.createBarrel(barrel_name, .hash) catch |err| {
-        std.debug.print("ℹ Barrel may already exist: {}\n", .{err});
+        std.debug.print("Note: Barrel may already exist: {}\n", .{err});
     };
 
-    // Open and use the barrel
-    try client.openBarrel(barrel_name);
+    // Use the barrel
     try client.useBarrel(barrel_name);
-    std.debug.print("✓ Using barrel: {s}\n", .{barrel_name});
+    std.debug.print("Using barrel: {s}\n", .{barrel_name});
 
     // Store some data
     const data = [_]struct { key: []const u8, value: []const u8 }{
@@ -47,35 +49,37 @@ pub fn main() !void {
     std.debug.print("\nStoring data:\n", .{});
     for (data) |item| {
         try client.set(item.key, item.value);
-        std.debug.print("  ✓ Set: {s} = {s}\n", .{ item.key, item.value });
+        std.debug.print("  Set: {s} = {s}\n", .{ item.key, item.value });
     }
 
     // Retrieve data
     std.debug.print("\nRetrieving data:\n", .{});
     for (data) |item| {
         const value = try client.get(item.key);
+        defer if (value) |v| allocator.free(v);
         if (value) |v| {
-            std.debug.print("  ✓ Get: {s} = {s}\n", .{ item.key, v });
+            std.debug.print("  Get: {s} = {s}\n", .{ item.key, v });
         }
     }
 
     // Check existence
     std.debug.print("\nChecking existence:\n", .{});
     for (data) |item| {
-        if (client.exists(item.key)) {
-            std.debug.print("  ✓ Key exists: {s}\n", .{item.key});
+        const exists = try client.exists(item.key);
+        if (exists) {
+            std.debug.print("  Key exists: {s}\n", .{item.key});
         } else {
-            std.debug.print("  ✗ Key not found: {s}\n", .{item.key});
+            std.debug.print("  Key not found: {s}\n", .{item.key});
         }
     }
 
     // Count keys
     const count = try client.count();
-    std.debug.print("\n✓ Total keys in barrel: {}\n", .{count});
+    std.debug.print("\nTotal keys in barrel: {}\n", .{count});
 
     // List all barrels
     std.debug.print("\nListing barrels:\n", .{});
-    const barrels = try client.listBarrels();
+    var barrels = try client.listBarrels();
     defer barrels.deinit();
     for (barrels.items) |barrel| {
         std.debug.print("  - {s}\n", .{barrel});
@@ -86,13 +90,14 @@ pub fn main() !void {
     try client.delete(data[0].key);
 
     // Verify deletion
-    if (!client.exists(data[0].key)) {
-        std.debug.print("✓ Key successfully deleted\n", .{});
+    const exists_after_delete = try client.exists(data[0].key);
+    if (!exists_after_delete) {
+        std.debug.print("Key successfully deleted\n", .{});
     }
 
     // Close barrel
     try client.closeBarrel();
-    std.debug.print("✓ Closed barrel\n", .{});
+    std.debug.print("Closed barrel\n", .{});
 
-    std.debug.print("\n✓ Example completed successfully!\n", .{});
+    std.debug.print("\nExample completed successfully!\n", .{});
 }

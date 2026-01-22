@@ -7,38 +7,40 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    std.debug.print("=== BitBarrel Zig PubSub Chat Example (12-step pattern) ===\n\n", .{});
+    std.debug.print("=== BitBarrel Zig PubSub Example ===\n\n", .{});
 
-    // Step 1: Connect to BitBarrel server (localhost:9876)
+    // Step 1: Connect to BitBarrel server
     std.debug.print("1. Connecting to BitBarrel server...\n", .{});
     const config = bitbarrel.Config{
-        .url = "ws://localhost:9876",
+        .url = "ws://localhost:9876/ws",
         .timeout_ms = 10000,
         .max_retries = 3,
         .enable_auto_reconnect = true,
     };
-    var client = try bitbarrel.Client.init(allocator, config);
+    var client = bitbarrel.Client.init(allocator, config) catch |err| {
+        std.debug.print("Failed to connect: {}\n", .{err});
+        return;
+    };
     defer client.deinit();
-    std.debug.print("✓ Connected to BitBarrel server\n\n", .{});
+    std.debug.print("Connected to BitBarrel server\n\n", .{});
 
     // Step 2: Setup chat storage barrel
     std.debug.print("2. Setting up chat storage barrel...\n", .{});
     const barrel_name = "chat_storage";
-    client.createBarrel(barrel_name, .critbit) catch |err| {
+    _ = client.createBarrel(barrel_name, .critbit) catch {
         // Barrel might already exist
-        _ = err;
-        std.debug.print("✓ Using existing chat_storage barrel\n", .{});
+        std.debug.print("Using existing chat_storage barrel\n", .{});
     };
     try client.useBarrel(barrel_name);
-    std.debug.print("✓ Using chat_storage barrel\n\n", .{});
+    std.debug.print("Using chat_storage barrel\n\n", .{});
 
-    // Step 3: Subscribe to "room:general" with options (history replay, presence)
+    // Step 3: Subscribe to "room:general"
     std.debug.print("3. Subscribing to \"room:general\"...\n", .{});
     try client.subscribe("room:general");
-    std.debug.print("✓ Subscribed to \"room:general\"\n\n", .{});
+    std.debug.print("Subscribed to \"room:general\"\n\n", .{});
 
-    // Step 4: Publish 5 chat messages from 5 users
-    std.debug.print("4. Publishing 5 chat messages from 5 users...\n", .{});
+    // Step 4: Publish chat messages
+    std.debug.print("4. Publishing chat messages...\n", .{});
     const users = [_][]const u8{ "Alice", "Bob", "Charlie", "Diana", "Eve" };
     const messages = [_][]const u8{
         "Hello everyone!",
@@ -51,115 +53,54 @@ pub fn main() !void {
     for (users, messages, 0..) |user, message, i| {
         // Simple JSON construction
         var json_buf: [256]u8 = undefined;
-        const timestamp = std.time.timestamp();
         const data = std.fmt.bufPrint(&json_buf,
-            \\{"user":"{s}","message":"{s}","timestamp":{d}}
-        , .{ user, message, timestamp }) catch "{}";
+            \\{{"user":"{s}","message":"{s}","timestamp":{d}}}
+        , .{ user, message, i }) catch "{}";
 
         try client.publish("room:general", data);
         std.debug.print("  {s}: {s}\n", .{ user, message });
-        std.time.sleep(100_000_000); // 100ms delay
     }
-    std.debug.print("✓ Published 5 messages\n\n", .{});
+    std.debug.print("Published 5 messages\n\n", .{});
 
-    // Step 5: Retrieve and display message history
-    std.debug.print("5. Retrieving message history...\n", .{});
-    const history = try client.getHistory("room:general", 10, 0);
-    defer {
-        for (history.items) |msg| {
-            msg.deinit();
-        }
-        history.deinit();
-    }
-    std.debug.print("✓ Retrieved {d} messages from history:\n", .{history.items.len});
-    for (history.items, 0..) |msg, idx| {
-        std.debug.print("  [{d}] {s}: {s}\n", .{ idx + 1, msg.topic(), msg.data() });
-    }
-    std.debug.print("\n", .{});
-
-    // Step 6: Subscribe to "room:*" pattern
-    std.debug.print("6. Subscribing to \"room:*\" pattern...\n", .{});
-    try client.watchKey("room:*");
-    std.debug.print("✓ Subscribed to \"room:*\" pattern\n\n", .{});
-
-    // Step 7: Publish to different rooms (tech, random)
-    std.debug.print("7. Publishing to different rooms...\n", .{});
-    const room_messages = [_]struct { room: []const u8, user: []const u8, message: []const u8 }{
-        .{ .room = "room:tech", .user = "Alice", .message = "New TypeScript features are awesome!" },
-        .{ .room = "room:random", .user = "Bob", .message = "Random thought: pineapples on pizza?" },
-    };
-    for (room_messages) |rm| {
-        var json_buf: [256]u8 = undefined;
-        const timestamp = std.time.timestamp();
-        const data = std.fmt.bufPrint(&json_buf,
-            \\{"user":"{s}","message":"{s}","timestamp":{d}}
-        , .{ rm.user, rm.message, timestamp }) catch "{}";
-        try client.publish(rm.room, data);
-        std.debug.print("  Published to {s}: {s}: {s}\n", .{ rm.room, rm.user, rm.message });
-    }
-    std.debug.print("\n", .{});
-
-    // Step 8: Query subscribers in "room:general"
-    std.debug.print("8. Querying subscribers in \"room:general\"...\n", .{});
-    const subscribers = try client.listSubscribers("room:general");
-    defer subscribers.deinit();
-    std.debug.print("✓ Subscribers in \"room:general\": {d} subscribers\n", .{subscribers.items.len});
-    for (subscribers.items, 0..) |sub, idx| {
-        std.debug.print("  {d}. {s}\n", .{ idx + 1, sub });
-    }
-    std.debug.print("\n", .{});
-
-    // Step 9: Check presence information
-    std.debug.print("9. Checking presence information...\n", .{});
-    const presence_json = try client.getPresence("room:general");
-    defer allocator.free(presence_json);
-    std.debug.print("✓ Presence information: {s}\n", .{presence_json});
-    std.debug.print("\n", .{});
-
-    // Step 10: Get history with sequence filtering (sinceSeq=3)
-    std.debug.print("10. Getting history since sequence 3...\n", .{});
-    const history_since3 = try client.getHistory("room:general", 10, 3);
-    defer {
-        for (history_since3.items) |msg| {
-            msg.deinit();
-        }
-        history_since3.deinit();
-    }
-    std.debug.print("✓ Retrieved {d} messages since sequence 3:\n", .{history_since3.items.len});
-    for (history_since3.items) |msg| {
-        std.debug.print("  [seq ?] {s}: {s}\n", .{ msg.topic(), msg.data() });
-    }
-    std.debug.print("\n", .{});
-
-    // Step 11: Show history per room
-    std.debug.print("11. Showing history per room...\n", .{});
-    const rooms = [_][]const u8{ "room:general", "room:tech", "room:random" };
-    for (rooms) |room| {
-        const room_history = client.getHistory(room, 3, 0) catch |err| {
-            std.debug.print("  {s}: No history available ({s})\n", .{ room, @errorName(err) });
-            continue;
-        };
-        defer {
-            for (room_history.items) |msg| {
-                msg.deinit();
-            }
-            room_history.deinit();
-        }
-        std.debug.print("  {s}: {d} messages\n", .{ room, room_history.items.len });
-        if (room_history.items.len > 0) {
-            const last_msg = room_history.items[room_history.items.len - 1];
-            std.debug.print("    Last: {s}\n", .{last_msg.data()});
+    // Step 5: Poll for messages
+    std.debug.print("5. Polling for messages...\n", .{});
+    var poll_count: usize = 0;
+    while (poll_count < 10) : (poll_count += 1) {
+        if (client.pollMessage()) |msg| {
+            defer msg.deinit();
+            std.debug.print("  Received: {s}: {s}\n", .{ msg.topic(), msg.data() });
         }
     }
-    std.debug.print("\n", .{});
+    std.debug.print("Finished polling\n\n", .{});
 
-    // Step 12: Cleanup (unsubscribe, close)
-    std.debug.print("12. Cleaning up...\n", .{});
+    // Step 6: Watch key pattern
+    std.debug.print("6. Watching key pattern \"user:*\"...\n", .{});
+    try client.watchKey("user:*");
+    std.debug.print("Watching \"user:*\" pattern\n\n", .{});
+
+    // Step 7: Set some keys that match the pattern
+    std.debug.print("7. Setting keys that match \"user:*\"...\n", .{});
+    try client.set("user:1", "Alice");
+    try client.set("user:2", "Bob");
+    try client.set("user:3", "Charlie");
+    std.debug.print("Set 3 user keys\n\n", .{});
+
+    // Step 8: Poll for key change events
+    std.debug.print("8. Polling for key change events...\n", .{});
+    poll_count = 0;
+    while (poll_count < 5) : (poll_count += 1) {
+        if (client.pollMessage()) |msg| {
+            defer msg.deinit();
+            std.debug.print("  Key event: {s}: {s}\n", .{ msg.topic(), msg.data() });
+        }
+    }
+    std.debug.print("Finished polling for key events\n\n", .{});
+
+    // Step 9: Cleanup
+    std.debug.print("9. Cleaning up...\n", .{});
     try client.unsubscribe("room:general");
-    try client.unwatchKey("room:*");
-    std.debug.print("✓ Unsubscribed from all topics\n", .{});
-    // Client deinit will close connection
-    std.debug.print("✓ Closed connection\n\n", .{});
+    try client.unwatchKey("user:*");
+    std.debug.print("Unsubscribed and unwatched\n", .{});
 
-    std.debug.print("=== Example completed successfully! ===\n", .{});
+    std.debug.print("\n=== Example completed successfully! ===\n", .{});
 }

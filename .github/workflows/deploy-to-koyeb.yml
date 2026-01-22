@@ -1,0 +1,361 @@
+name: Deploy to Koyeb
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'bitbarrel.nimble'
+      - '.github/workflows/deploy-to-koyeb.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'src/**'
+      - 'Dockerfile'
+      - 'bitbarrel.nimble'
+      - '.github/workflows/deploy-to-koyeb.yml'
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Koyeb App Name'
+        required: true
+        default: 'bitbarrel-github'
+        type: string
+      region:
+        description: 'Deployment Region'
+        required: false
+        default: 'fra'
+        type: choice
+        options:
+          - fra
+          - was
+          - par
+          - lhr
+      environment:
+        description: 'Deployment Environment'
+        required: false
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      deploy_type:
+        description: 'Deploy Type'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - redeploy
+          - update-config
+
+env:
+  NIM_VERSION: '2.0.0'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Nim
+        uses: iffy/install-nim@v4.7.3
+        with:
+          version: ${{ env.NIM_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          nimble install -y
+          nimble install -y ws
+
+      - name: Run tests
+        run: nimble test
+
+      - name: Build binary
+        run: nimble build --accept
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' && github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Koyeb CLI
+        run: |
+          curl -sSL https://raw.githubusercontent.com/gokr/bitbarrel/main/scripts/install-koyeb-cli.sh | bash
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Authenticate with Koyeb
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
+        run: koyeb login --token "$KOYEB_TOKEN"
+
+      - name: Deploy to Koyeb
+        id: deploy
+        env:
+          APP_NAME: ${{ github.event.inputs.app_name }}
+          REGION: ${{ github.event.inputs.region }}
+          JWT_SECRET: ${{ secrets.BITBARREL_JWT_SECRET_STAGING }}
+        run: |
+          if [ "${{ github.event.inputs.deploy_type }}" = "redeploy" ]; then
+            ./scripts/update-koyeb.sh --name "$APP_NAME"
+          else
+            export BITBARREL_JWT_SECRET="$JWT_SECRET"
+            ./scripts/deploy-to-koyeb.sh \
+              --name "$APP_NAME" \
+              --region "$REGION"
+          fi
+          PUBLIC_URL=$(koyeb service describe "$APP_NAME/$APP_NAME" --output json | grep -o '"public_url":"[^"]*"' | cut -d'"' -f4)
+          echo "url=$PUBLIC_URL" >> $GITHUB_OUTPUT
+
+      - name: Run smoke tests
+        env:
+          ENDPOINT: ${{ steps.deploy.outputs.url }}
+          TOKEN: ${{ secrets.BITBARREL_JWT_SECRET_STAGING }}
+        run: |
+          ./examples/koyeb/test-connection.sh \
+            --endpoint "$ENDPOINT" \
+            --token "$TOKEN"
+
+      - name: Comment PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 Deployed to staging: ${{ steps.deploy.outputs.url }}`
+            })
+
+  deploy-production:
+    name: Deploy to Production
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Koyeb CLI
+        run: |
+          curl -sSL https://raw.githubusercontent.com/gokr/bitbarrel/main/scripts/install-koyeb-cli.sh | bash
+          echo "/usr/local/bin" >> $GITHUB_PATH
+
+      - name: Authenticate with Koyeb
+        env:
+          KOYEB_TOKEN: ${{ secrets.KOYEB_TOKEN }}
+        run: koyeb login --token "$KOYEB_TOKEN"
+
+      - name: Get deployment config
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "app_name=${{ github.event.inputs.app_name }}" >> $GITHUB_OUTPUT
+            echo "region=${{ github.event.inputs.region }}" >> $GITHUB_OUTPUT
+            echo "deploy_type=${{ github.event.inputs.deploy_type }}" >> $GITHUB_OUTPUT
+          else
+            echo "app_name=${{ vars.KOYEB_APP_NAME || 'bitbarrel-prod' }}" >> $GITHUB_OUTPUT
+            echo "region=${{ vars.KOYEB_REGION || 'fra' }}" >> $GITHUB_OUTPUT
+            echo "deploy_type=full" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to Koyeb
+        id: deploy
+        env:
+          APP_NAME: ${{ steps.config.outputs.app_name }}
+          REGION: ${{ steps.config.outputs.region }}
+          DEPLOY_TYPE: ${{ steps.config.outputs.deploy_type }}
+          JWT_SECRET: ${{ secrets.BITBARREL_JWT_SECRET_PRODUCTION }}
+        run: |
+          case "$DEPLOY_TYPE" in
+            redeploy)
+              echo "Redeploying existing image..."
+              ./scripts/update-koyeb.sh --name "$APP_NAME"
+              ;;
+            update-config)
+              echo "Updating configuration..."
+              # Add config update logic here
+              ./scripts/update-koyeb.sh --name "$APP_NAME"
+              ;;
+            *)
+              echo "Full deployment..."
+              export BITBARREL_JWT_SECRET="$JWT_SECRET"
+              ./scripts/deploy-to-koyeb.sh \
+                --name "$APP_NAME" \
+                --region "$REGION"
+              ;;
+          esac
+          PUBLIC_URL=$(koyeb service describe "$APP_NAME/$APP_NAME" --output json | grep -o '"public_url":"[^"]*"' | cut -d'"' -f4)
+          echo "url=$PUBLIC_URL" >> $GITHUB_OUTPUT
+
+      - name: Wait for deployment
+        env:
+          APP_NAME: ${{ steps.config.outputs.app_name }}
+        run: |
+          max_attempts=30
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            status=$(koyeb service describe "$APP_NAME/$APP_NAME" --output json 2>/dev/null | \
+              grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+            if [ "$status" = "HEALTHY" ]; then
+              echo "✓ Service is healthy!"
+              exit 0
+            elif [ "$status" = "UNHEALTHY" ] || [ "$status" = "UNHEALTHY_TRANSIENT" ]; then
+              echo "✗ Service is unhealthy"
+              exit 1
+            else
+              echo -n "."
+              sleep 10
+              ((attempt++))
+            fi
+          done
+          echo "✗ Timeout waiting for service to be healthy"
+          exit 1
+
+      - name: Run smoke tests
+        env:
+          ENDPOINT: ${{ steps.deploy.outputs.url }}
+          TOKEN: ${{ secrets.BITBARREL_JWT_SECRET_PRODUCTION }}
+        run: |
+          ./examples/koyeb/test-connection.sh \
+            --endpoint "$ENDPOINT" \
+            --token "$TOKEN"
+
+      - name: Run performance tests
+        env:
+          ENDPOINT: ${{ steps.deploy.outputs.url }}
+          TOKEN: ${{ secrets.BITBARREL_JWT_SECRET_PRODUCTION }}
+        run: |
+          # Simple performance check
+          start_time=$(date +%s.%N)
+          for i in {1..100}; do
+            curl -s -X POST "$ENDPOINT/api/set" \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"perf:test:$$i\",\"value\":\"value_$$i\"}" > /dev/null
+          done
+          end_time=$(date +%s.%N)
+          elapsed=$(echo "$end_time - $start_time" | bc)
+          ops_per_sec=$(echo "100 / $elapsed" | bc)
+          echo "Performance: $ops_per_sec ops/sec"
+
+      - name: Create deployment summary
+        if: success()
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          APP_NAME: ${{ steps.config.outputs.app_name }}
+        run: |
+          echo "## Deployment Summary" > deployment-summary.md
+          echo "" >> deployment-summary.md
+          echo "✅ Successfully deployed BitBarrel to Koyeb" >> deployment-summary.md
+          echo "" >> deployment-summary.md
+          echo "**Application:** $APP_NAME" >> deployment-summary.md
+          echo "**URL:** $URL" >> deployment-summary.md
+          echo "**Region:** ${{ steps.config.outputs.region }}" >> deployment-summary.md
+          echo "" >> deployment-summary.md
+          echo "**Endpoints:**" >> deployment-summary.md
+          echo "- WebSocket: $URL" >> deployment-summary.md
+          echo "- HTTP API: $URL/api" >> deployment-summary.md
+          echo "- WebAdmin: $URL/webadmin" >> deployment-summary.md
+          echo "" >> deployment-summary.md
+          echo "**Next Steps:**" >> deployment-summary.md
+          echo "1. Test the deployment: make koyeb-test APP_NAME=$APP_NAME" >> deployment-summary.md
+          echo "2. Run the demo: make koyeb-demo APP_NAME=$APP_NAME" >> deployment-summary.md
+          echo "3. Connect your applications using the examples in examples/koyeb/clients/" >> deployment-summary.md
+
+      - name: Upload deployment summary
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-summary
+          path: deployment-summary.md
+
+      - name: Comment deployment summary
+        if: github.event_name == 'push' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('deployment-summary.md', 'utf8');
+
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: summary
+            });
+
+  notify:
+    name: Notify
+    needs: [deploy-staging, deploy-production]
+    runs-on: ubuntu-latest
+    if: always() && (needs.deploy-staging.result != 'skipped' || needs.deploy-production.result != 'skipped')
+
+    steps:
+      - name: Determine deployment result
+        id: result
+        run: |
+          if [ "${{ needs.deploy-production.result }}" = "success" ] || [ "${{ needs.deploy-staging.result }}" = "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.deploy-production.result }}" = "failure" ] || [ "${{ needs.deploy-staging.result }}" = "failure" ]; then
+            echo "status=failure" >> $GITHUB_OUTPUT
+          else
+            echo "status=skipped" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Slack
+        if: steps.result.outputs.status != 'skipped' && secrets.SLACK_WEBHOOK_URL != ''
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ steps.result.outputs.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Update deployment status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ steps.result.outputs.status }}';
+            const env = '${{ github.event.inputs.environment || 'production' }}';
+            const sha = context.sha.substring(0, 7);
+
+            const statusConfig = {
+              success: { state: 'success', description: `Deployed to ${env}` },
+              failure: { state: 'failure', description: `Failed to deploy to ${env}` },
+              skipped: { state: 'pending', description: 'Deployment skipped' }
+            };
+
+            const config = statusConfig[status] || statusConfig.skipped;
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: config.state,
+              description: config.description,
+              context: 'deploy/koyeb'
+            });
