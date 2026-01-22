@@ -275,10 +275,61 @@ let jsonStr = $toJson(config)  # {"name":"test","value":42,"enabled":true}
 let parsed = fromJson(jsonStr, MyConfig)
 ```
 
+### Pub/Sub RawJson Type
+
+Pub/Sub uses `RawJson` (a distinct string type from Sunny) for headers and metadata:
+
+```nim
+import sunny
+import std/json as stdjson
+
+# Creating RawJson from JsonNode (for tests or dynamic JSON)
+let headers = RawJson($(%*{"sender": "alice", "priority": 1}))
+
+# Checking if RawJson is empty
+if headers.string.len > 0 and headers.string != "{}":
+  # Headers contain data
+  ...
+
+# Accessing fields in RawJson (parse first)
+let parsed = stdjson.parseJson(headers.string)
+let sender = parsed["sender"].getStr()
+```
+
+This is used in pub/sub for:
+- `Message.headers` - Optional message metadata
+- `PresenceMember.metadata` - Client presence information
+- API parameters in `publish()`, `joinTopic()`, etc.
+
+**Key differences from JsonNode:**
+- RawJson is a distinct string type (not a JSON tree)
+- Must use `.string` to get the JSON string
+- To access fields, parse with `parseJson()` first
+- Check emptiness with `.string.len > 0`, not `nil`
+
 ### Migration Notes
 
-- Use Sunny's `parseJson()` which returns `JsonValue`, not std/json's `JsonNode`
-- For object deserialization: `fromJson(var obj, JsonValue, input_string)`
+**For structured data (use this approach):**
+```nim
+# Deserialization - specify type directly
+let obj = fromJson(MyType, jsonString)
+
+# Field tags
+{.json: "".}  # Enable automatic field mapping
+{.json: "fieldName".}  # Custom field name mapping
+```
+
+**For dynamic JSON (when you need JsonNode):**
+```nim
+import std/json
+
+# Parse to std/json JsonNode
+let node = parseJson(jsonString)
+
+# For RawJson conversions in tests
+let rawJson = RawJson($(%*{"key": "value"}))
+```
+
 - Field tags use PascalCase: `{.json: "fieldName".}` not `{.json: "field_name".}`
 - Add `{.json: "".}` pragma to object types for automatic field mapping
 - Only import std/json when you specifically need JsonNode compatibility

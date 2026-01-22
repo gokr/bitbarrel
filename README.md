@@ -10,6 +10,7 @@ BitBarrel is a high-performance key/value storage engine built in Nim, using the
 - **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig.
 - **WebSocket protocol v1.1** with binary handshake, per-key TTL, key watching with pattern matching, and client-side request pipelining for reduced latency.
 - **JWT authentication** with role-based access control (admin, readwrite, readonly) for secure network access.
+- **High-performance JSON** with Sunny library for structured data serialization and type safety.
 - **LZ4 compression by default** (with Snappy as alternative), TTL, CRC32 checksums, and fast hint-file recovery.
 
 ## Quick Start
@@ -383,6 +384,7 @@ BitBarrel packs a comprehensive set of features into a lightweight package:
 | Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
 | Network | WebSocket binary protocol (28 commands), REST API, JWT authentication, session management, Pub/Sub messaging, presence, message history |
 | Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
+| JSON | High-performance Sunny JSON library for structured data, RawJson type for pub/sub headers |
 | Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection, query result hooks |
 
 **Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
