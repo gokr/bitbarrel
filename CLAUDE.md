@@ -234,6 +234,55 @@ task testStorage, "Run storage tests (unit/storage)":
   exec "testament pattern \"tests/unit/storage/*.nim\""
 ```
 
+## JSON Serialization Libraries
+
+BitBarrel has migrated from `std/json` to **Sunny** for JSON serialization due to:
+- **Better performance**: Faster parsing and serialization
+- **Type safety**: Compile-time checking with field tags
+- **Cleaner API**: Direct object serialization with `{.json.}` pragmas
+- **Less boilerplate**: Automatic serialization without manual JsonNode construction
+
+### When to Use Each Library
+
+**Use Sunny (default choice):**
+- Structured data with known fields (configurations, JWT tokens, BarrelStats)
+- Type definitions where field names can be specified with `{.json: "fieldName".}`
+- Any new JSON serialization code
+- Cases where you want compile-time field name validation
+
+**Use std/json (exceptional cases):**
+- Dynamic JSON structures where keys are not known at compile time
+- Metrics generation (e.g., Prometheus format in metrics.nim)
+- JSON traversal/extraction logic (e.g., refs.nim with _refs field processing)
+- When you need to build JSON objects programmatically with variable keys
+
+### Example Sunny Usage
+
+```nim
+import sunny
+
+type
+  MyConfig {.json: "".} = object
+    name {.json: "name".}: string
+    value {.json: "value".}: int
+    enabled {.json: "enabled".}: bool
+
+# Serialization
+let config = MyConfig(name: "test", value: 42, enabled: true)
+let jsonStr = $toJson(config)  # {"name":"test","value":42,"enabled":true}
+
+# Deserialization
+let parsed = fromJson(jsonStr, MyConfig)
+```
+
+### Migration Notes
+
+- Use Sunny's `parseJson()` which returns `JsonValue`, not std/json's `JsonNode`
+- For object deserialization: `fromJson(var obj, JsonValue, input_string)`
+- Field tags use PascalCase: `{.json: "fieldName".}` not `{.json: "field_name".}`
+- Add `{.json: "".}` pragma to object types for automatic field mapping
+- Only import std/json when you specifically need JsonNode compatibility
+
 ## Architecture
 
 ### Layered Design
