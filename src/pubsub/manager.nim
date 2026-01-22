@@ -9,6 +9,7 @@
 ## Thread-safe using locks for all shared state
 
 import std/[tables, locks, sets, times, sequtils, json, options, strutils]
+import sunny
 import ./pubsub
 import ./pattern
 import ./history_v2
@@ -373,8 +374,8 @@ proc publish*(manager: PubSubManager, msg: Message): uint64 =
 
       # Convert headers to JSON string for callback
       var headers = ""
-      if msg.headers != nil:
-        headers = $msg.headers
+      if msg.headers.string.len > 0:
+        headers = msg.headers.string
 
       manager.messageCallback(sub.clientId, msg.topic, msg.messageType,
                              msg.payload, headers)
@@ -388,7 +389,7 @@ proc publish*(manager: PubSubManager, msg: Message): uint64 =
 proc publish*(manager: PubSubManager, topic: string,
                messageType: PubSubMessageType = mtData,
                payload: string = "",
-               headers: JsonNode = nil): uint64 =
+               headers: RawJson = RawJson("{}")): uint64 =
   ## Convenience proc to publish a message
   let msg = newMessage(topic, messageType, payload, headers)
   return manager.publish(msg)
