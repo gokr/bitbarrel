@@ -1063,8 +1063,7 @@ proc encodeBarrelStats*(stats: BarrelStats): string =
 
 proc decodeBarrelStats*(jsonStr: string): BarrelStats =
   ## Decode BarrelStats from JSON string
-  let jsonValue = parseJson(jsonStr)
-  fromJson(result, jsonValue, jsonStr)
+  result = fromJson(BarrelStats, jsonStr)
 
 
 ## Pub/Sub protocol extensions
