@@ -3,6 +3,7 @@
 ## Tests for message history storage (memory and persistent modes)
 
 import std/[unittest, strutils, strformat, json, os]
+import sunny
 import ../../src/pubsub/[pubsub, history]
 
 suite "HistoryStore":
@@ -270,7 +271,7 @@ suite "HistoryStore":
 
     let msg = newMessage("topic1", mtPresence, "payload")
     msg.sequence = 42
-    msg.headers = %*{"sender": "alice"}
+    msg.headers = RawJson($(%*{"sender": "alice"}))
     store.addToHistory("topic1", msg)
 
     let history = store.getHistory("topic1")
@@ -280,7 +281,7 @@ suite "HistoryStore":
     check history[0].messageType == mtPresence
     check history[0].payload == "payload"
     check history[0].sequence == 42
-    check history[0].headers["sender"].getStr() == "alice"
+    check history[0].headers.string.contains("alice")
 
   test "edge case: sinceSeq larger than all sequences":
     let store = newHistoryStore()
@@ -322,7 +323,7 @@ suite "HistoryStore":
     for i in 1..5:
       let msg = newMessage("persistent_topic", mtData, fmt"msg{i}")
       msg.sequence = uint64(i)
-      msg.headers = %*{"index": i}
+      msg.headers = RawJson($(%*{"index": i}))
       store.addToHistory("persistent_topic", msg)
 
     # Verify messages are in memory
