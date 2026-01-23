@@ -920,7 +920,7 @@ class BitBarrelClient {
   /// Throws [NoBarrelError] if no barrel is selected
   /// Throws [ServerError] if the server reports an error
   Future<void> watch(String pattern, {bool includeValues = false}) async {
-    _ensureBarrelSelected();
+    _ensureBarrel();
 
     final encodedParams = ProtocolEncoder.encodeWatchRequest(
       barrelName: '', // use current barrel
@@ -940,7 +940,7 @@ class BitBarrelClient {
   /// Throws [NoBarrelError] if no barrel is selected
   /// Throws [ServerError] if the server reports an error
   Future<void> unwatch(String pattern) async {
-    _ensureBarrelSelected();
+    _ensureBarrel();
 
     final encodedParams = ProtocolEncoder.encodeWatchRequest(
       barrelName: '', // use current barrel
