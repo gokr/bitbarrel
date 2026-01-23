@@ -420,14 +420,13 @@ proc decodeWatchRequest*(data: string): WatchRequest =
 ## Batch operation encoding/decoding
 
 proc encodeBatchGetRequest*(req: BatchGetRequest): string =
-  ## Encode a batch get request
-  ## Format: ``[type:1=0x26][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Encode a batch get request for use as the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Note: Command byte and sequence should be in the outer Request, not here.
   if req.keys.len > MaxBatchItems:
     raise newException(ProtocolError, "Too many keys in batch get: " & $req.keys.len)
 
-  result = newStringOfCap(1 + 4 + 4)
-  result.writeByte(byte(ord(cmdBatchGet)))
-  result.writeUint32BE(req.seq)
+  result = newStringOfCap(4)
   result.writeUint32BE(uint32(req.keys.len))
 
   for key in req.keys:
@@ -437,14 +436,11 @@ proc encodeBatchGetRequest*(req: BatchGetRequest): string =
     result.add(key)
 
 proc decodeBatchGetRequest*(data: string): BatchGetRequest =
-  ## Decode a batch get request
+  ## Decode a batch get request from the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Note: Command byte and sequence are in the outer Request, not here.
   var pos = 0
 
-  let cmdByte = readByte(data, pos)
-  if cmdByte != byte(ord(cmdBatchGet)):
-    raise newException(ProtocolError, "Invalid command for batch get: 0x" & cmdByte.toHex)
-
-  result.seq = readUint32BE(data, pos)
   let count = readUint32BE(data, pos)
 
   if count > MaxBatchItems:
@@ -492,14 +488,13 @@ proc decodeBatchGetResponse*(data: string): BatchGetResponse =
     result.results[i].value = readString(data, pos, int(valLen))
 
 proc encodeBatchSetRequest*(req: BatchSetRequest): string =
-  ## Encode a batch set request
-  ## Format: ``[type:1=0x27][seq:4][count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...``
+  ## Encode a batch set request for use as the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...``
+  ## Note: Command byte and sequence should be in the outer Request, not here.
   if req.pairs.len > MaxBatchItems:
     raise newException(ProtocolError, "Too many pairs in batch set: " & $req.pairs.len)
 
-  result = newStringOfCap(1 + 4 + 4)
-  result.writeByte(byte(ord(cmdBatchSet)))
-  result.writeUint32BE(req.seq)
+  result = newStringOfCap(4)
   result.writeUint32BE(uint32(req.pairs.len))
 
   for (key, value) in req.pairs:
@@ -513,14 +508,11 @@ proc encodeBatchSetRequest*(req: BatchSetRequest): string =
     result.add(value)
 
 proc decodeBatchSetRequest*(data: string): BatchSetRequest =
-  ## Decode a batch set request
+  ## Decode a batch set request from the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...``
+  ## Note: Command byte and sequence are in the outer Request, not here.
   var pos = 0
 
-  let cmdByte = readByte(data, pos)
-  if cmdByte != byte(ord(cmdBatchSet)):
-    raise newException(ProtocolError, "Invalid command for batch set: 0x" & cmdByte.toHex)
-
-  result.seq = readUint32BE(data, pos)
   let count = readUint32BE(data, pos)
 
   if count > MaxBatchItems:
@@ -565,14 +557,13 @@ proc decodeBatchSetResponse*(data: string): BatchSetResponse =
     result.statuses[i] = readByte(data, pos)
 
 proc encodeBatchDeleteRequest*(req: BatchDeleteRequest): string =
-  ## Encode a batch delete request
-  ## Format: ``[type:1=0x28][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Encode a batch delete request for use as the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Note: Command byte and sequence should be in the outer Request, not here.
   if req.keys.len > MaxBatchItems:
     raise newException(ProtocolError, "Too many keys in batch delete: " & $req.keys.len)
 
-  result = newStringOfCap(1 + 4 + 4)
-  result.writeByte(byte(ord(cmdBatchDelete)))
-  result.writeUint32BE(req.seq)
+  result = newStringOfCap(4)
   result.writeUint32BE(uint32(req.keys.len))
 
   for key in req.keys:
@@ -582,14 +573,11 @@ proc encodeBatchDeleteRequest*(req: BatchDeleteRequest): string =
     result.add(key)
 
 proc decodeBatchDeleteRequest*(data: string): BatchDeleteRequest =
-  ## Decode a batch delete request
+  ## Decode a batch delete request from the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Note: Command byte and sequence are in the outer Request, not here.
   var pos = 0
 
-  let cmdByte = readByte(data, pos)
-  if cmdByte != byte(ord(cmdBatchDelete)):
-    raise newException(ProtocolError, "Invalid command for batch delete: 0x" & cmdByte.toHex)
-
-  result.seq = readUint32BE(data, pos)
   let count = readUint32BE(data, pos)
 
   if count > MaxBatchItems:
