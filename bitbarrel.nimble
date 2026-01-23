@@ -45,6 +45,34 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
     echo "✓ All examples (except pubsub) and benchmarks compiled successfully!"
   """
 
+task checkCompilation, "Run all compilation checks (doc examples, examples, benchmarks)":
+  exec """
+    echo "=== Checking documentation examples ==="
+    nim c -r tools/check_doc_examples.nim
+    echo ""
+    echo "=== Checking examples and benchmarks ==="
+    # Exit on first error
+    set -e
+
+    # Compile all examples (excluding utility modules)
+    # Note: pubsub examples require --path:clients/nim/src to find bitbarrel_client
+    find examples -name "*.nim" -type f | grep -v "pubsub/" | while IFS= read -r file; do
+      echo "Compiling $file..."
+      nim c --verbosity:0 --path:src --path:clients/nim/src "$file"
+    done
+
+    # Compile all benchmarks
+    find bench -name "*.nim" -type f | while IFS= read -r file; do
+      echo "Compiling $file..."
+      nim c --verbosity:0 --path:src "$file"
+    done
+
+    echo "✓ All compilation checks passed!"
+  """
+
+task buildWebAdmin, "Build Flutter webadmin":
+  exec "cd webadmin && flutter build web --release"
+
 task test, "Run all tests (automatic discovery via testament)":
   exec """
     echo "Running BitBarrel test suite..."
@@ -292,6 +320,7 @@ task dockerPublish, "Build and publish Docker image to registry":
     nimble dockerBuild
     echo "Publishing to registry..."
     docker push bitbarrel:latest
+"""
 
 # Client library assessment tasks
 
@@ -305,12 +334,7 @@ task assessClientsJSON, "Generate JSON report of client library assessment":
   exec "python3 tools/assess_clients.py --json > client-assessment.json"
 
 task assessClientsUpdateDocs, "Update client libraries assessment documentation":
-  exec """
-    echo "Running client library assessment..."
-    python3 tools/assess_clients.py --json > docs/client-assessment-data.json
-    echo "Update docs/CLIENT_LIBRARIES.md with latest data"
-    echo "Assessment completed on $(date)" >> docs/CLIENT_LIBRARIES.md
-  ""
+  exec "python3 tools/assess_clients.py --update-docs"
 
 task assessClientsDetailed, "Detailed assessment of each client library":
   exec "python3 tools/assess_clients.py --detailed"
