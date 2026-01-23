@@ -1,26 +1,27 @@
-# BitBarrel - High-Performance Bitcask-style Key/Value Store
+# BitBarrel - Bitcask-style Key/Value Store with Extras
 
-BitBarrel is a high-performance key/value storage engine built in Nim, using the Bitcask storage model. It offers fast writes, efficient reads, and robust crash recovery—perfect for caching, session storage, time‑series data, and large‑scale analytics.
+BitBarrel is a high-performance key/value database built in Nim, using the Bitcask storage model at the core. Bitcask implies **append only updates** and keeping **keys with file offsets in memory** for really fast one-seek reads. BitBarrel goes beyond this model in several aspects and it can be used both compiled-in similar to Sqlite or as a traditional network server using a native threading model.
 
-### Why BitBarrel?
-- **Three index modes** tailor performance to your use case: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑tier partitioned indexes for massive datasets.
-- **Cursor-based pagination** for efficient range queries and prefix searches without offset overhead.
-- **Non-blocking compaction** — writes continue uninterrupted during background compaction.
-- **Graph traversal** with built-in reference model for modeling relationships and detecting cycles.
-- **Network enabled** with WebSocket and REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig.
-- **WebSocket protocol v1.1** with binary handshake, per-key TTL, key watching with pattern matching, and client-side request pipelining for reduced latency.
-- **JWT authentication** with role-based access control (admin, readwrite, readonly) for secure network access.
-- **High-performance JSON** with Sunny library for structured data serialization and type safety.
-- **LZ4 compression by default** (with Snappy as alternative), TTL, CRC32 checksums, and fast hint-file recovery.
+BitBarrel offers fast writes, efficient reads, and robust crash recovery. It offers a mix of key/value benefits (fast), range queries, batch operations, JSON document features like server side graph traversal, TTL support per key and last but not least - a builtin pubsub system including watchable keys. Given that it uses websockets it can also be used directly from frontends.
+
+**Some Features:**
+- Three index modes: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑tier partitioned indexes for massive datasets
+- Cursor-based pagination for efficient range queries and prefix searches without offset overhead
+- Non-blocking compaction — writes continue uninterrupted during background compaction
+- Network enabled with WebSocket and basic REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig
+- JWT authentication with role-based access control (admin, readwrite, readonly) for secure network access
+- Web Admin UI written in Flutter using the Dart client library
+- Simple to use Docker container including Web Admin UI
+- 
 
 ## Quick Start
 
 ### Get started in 30 seconds
 
-```nim.compilable
+```nim
 import bitbarrel
 
-# Open a database with default settings (fast, durable enough for most apps)
+# Open a database with default settings
 var db = openBarrel("myapp.db")
 
 # Store some data
@@ -34,438 +35,88 @@ echo "User name: ", db.get("user:42:name")
 db.close()
 ```
 
-### Run the examples
+**Installation:** `nimble install` • **Build:** `nimble build` • **Tests:** `nimble test`
 
-```bash
-# Install dependencies first
-nimble install
+## Advanced Examples Showcase
 
-# Run basic CRUD example
-nimble exampleBasic
+### Example 1: Range Queries with CritBit Mode
 
-# Run performance example
-nimble examplePerformance
+```nim
+# Configure for ordered data and range queries
+var config = defaultBarrelConfig()
+config.mode = BarrelMode.bmCritBit
+let db = openBarrel("timeseries.db", config)
 
-# Run advanced features example
-nimble exampleAdvanced
+# Store timestamped metrics (keys are naturally sorted)
+for i in 0..<100:
+  discard db.set(&"sensor:temp:{i}", &"{rand(20.0..30.0):.1f}")
 
-# Run hook system examples
-nimble exampleHooks
-
-# Run all tests
-nimble test
-# See CLAUDE.md for detailed test commands including testStorage, testKeydir, testIntegration, etc.
-
-# Run benchmark (default implementation)
-nimble bench
-
-# Run benchmark with crunchy CRC32
-nimble benchCrunchy
-
-# Run stress test
-nimble stress
+# Range query for specific time period
+let keys = db.keysInRange("sensor:temp:10", "sensor:temp:30")
+echo "Found ", keys.len, " readings in range"
 ```
 
-### Build with compression
+### Example 2: Pub/Sub Messaging
 
-```bash
-# Build with LZ4 compression (default)
-nimble buildLz4
+```nim
+# Connect to server and subscribe to pattern
+var client = newClient("localhost", 9876.Port)
+client.connect()
+let subId = client.subscribe("user:*:notifications")
 
-# Or simply (LZ4 is the default)
-nimble build
+# Set up real-time message handler
+client.onMessage = proc(event: PubSubEvent) =
+  echo "💬 ", event.topic, ": ", event.payload
 
-# Build with Snappy compression
-nimble buildSnappy
+# Publish messages to matching topics
+discard client.publish("user:alice:notifications", "New message!")
+```
 
-# Build without compression
-nimble buildNoCompression
+### Example 3: Graph Traversal with References
+
+```nim
+# Store user with friend relationships using _refs field
+let aliceData = %*{"name": "Alice", "_refs": {"friends": ["user:bob"]}}
+discard client.set("user:alice", $aliceData)
+
+# Traverse relationships
+let friends = client.traversePath("user:alice", "friends")
+echo "Alice has ", friends.len, " friends"
+```
+
+### Example 4: TTL & Batch Operations
+
+```nim
+# Set key with automatic expiration (local barrel)
+var db = openBarrel("myapp.db")
+discard db.set("session:temp", "data", ttl=5)
+
+# Batch operations via network client
+var client = newClient("localhost", 9876.Port)
+client.connect()
+discard client.useBarrel("myapp")
+let items = [("key1", "val1"), ("key2", "val2"), ("key3", "val3")]
+let successCount = client.setMany(items)
+let results = client.getMany(["key1", "key2"])
 ```
 
 ## Client Libraries
 
 BitBarrel provides client libraries in multiple languages for remote access via WebSocket, with JWT authentication support:
 
-| Language | Location | Status | Auth Support | Notes |
-|----------|----------|--------|--------------|-------|
-| Nim | `clients/nim/` | Full WebSocket protocol | Token in ClientConfig | Native implementation |
-| Go | `clients/go/` | Full WebSocket protocol | Token parameter | Native implementation |
-| Dart/Flutter | `clients/dart/` | Mobile + Web compatible | `authToken` in config | Native implementation |
-| Python | `clients/python/` | Feature-complete WebSocket client | `auth_token` parameter, context manager | Native implementation |
-| TypeScript | `clients/typescript/` | Full WebSocket protocol + types | Token in ClientConfig | Native implementation |
-| **C** | `clients/c/` | Full WebSocket protocol | N/A | Binary protocol client |
-| **Zig** | `clients/zig/` | Idiomatic Zig API | N/A | Bindings to C library |
-
-### Dart/Flutter Example
-
-```dart
-import 'package:bitbarrel/bitbarrel.dart';
-
-final client = BitBarrelClient.localhost();
-await client.connect();
-await client.createBarrel('mydb');
-await client.useBarrel('mydb');
-await client.set('key', 'value');
-final value = await client.get('key');
-await client.close();
-```
-
-See [`clients/dart/README.md`](clients/dart/README.md) for full documentation.
-
-### Web Admin Console
-
-BitBarrel includes a modern Flutter-based web admin console for visual database management. The webadmin can be served directly from the BitBarrel server or run separately during development.
-
-**Integrated Server Mode (Recommended):**
-
-```bash
-# Build webadmin
-cd webadmin && flutter build web --release && cd ..
-
-# Start BitBarrel with integrated webadmin
-./bitbarrel serve --webadmin-path=./webadmin/build/web
-
-# Access at http://localhost:8080/admin/
-```
-
-**Separate Development Mode:**
-
-```bash
-# Start the BitBarrel server
-./bitbarrel serve
-
-# In another terminal, run the web admin
-cd webadmin
-flutter run -d chrome --web-port 8080
-```
-
-**Features:**
-- Connection management with JWT authentication support
-- Barrel management (create, delete, switch)
-- Data explorer with full CRUD operations
-- **Import/Export** - Bulk data operations in JSONL and CSV formats
-- Query interface for prefix and range queries (CritBit mode)
-- **Graph Traversal UI** - Explore _ref relationships interactively
-- **Barrel Configuration Editor** - Edit sync mode, buffer sizes, compaction settings
-- Statistics dashboard with comprehensive metrics
-- JSON visualization with syntax highlighting
-- Real-time data browsing with pagination
-
-See [`webadmin/README.md`](webadmin/README.md) for detailed usage instructions.
-
-### Go Example
-
-```go
-package main
-
-import "github.com/tankfeed/bitbarrel-go"
-
-client := bitbarrel.NewClient("localhost", 9876)
-client.Connect()
-client.CreateBarrel("mydb", "")
-client.UseBarrel("mydb")
-client.Set("key", "value")
-value := client.Get("key")
-client.Close()
-```
-
-See [`clients/go/README.md`](clients/go/README.md) for full documentation.
-
-### Client Libraries Feature Matrix
-
-| Language | Location | Batch Ops | TTL | Key Watching | Auth Support | Status |
-|----------|----------|-----------|-----|--------------|--------------|--------|
-| Nim | `clients/nim/` | ✅ | ✅ | ✅ | Token in ClientConfig | Feature-complete |
-| Go | `clients/go/` | ✅ | ✅ | ✅ | Token parameter | Feature-complete |
-| Python | `clients/python/` | ✅ | ✅ | ✅ | `auth_token` parameter, context manager | Feature-complete |
-| Dart/Flutter | `clients/dart/` | ✅ | ✅ | ✅ | `authToken` in config | Feature-complete |
-| TypeScript | `clients/typescript/` | ✅ | ✅ | ✅ | Token in ClientConfig | Feature-complete |
-| **C** | `clients/c/` | ✅ | ✅ | ✅ | N/A | Feature-complete |
-| **Zig** | `clients/zig/` | ✅ | ✅ | ✅ | N/A | Feature-complete ✅ |
-
-**Feature Status**:
-- **Batch Operations**: Multi-key get/set/delete in a single request (All clients ✅)
-- **TTL Support**: Per-key time-to-live with automatic expiration (All clients ✅)
-- **Key Watching**: Pattern-based key change subscriptions (All clients ✅)
-- **All Clients**: 100% feature-complete as of 2026-01-21
-
-### TypeScript/Node.js Example
-
-```typescript
-import { BitBarrelClient } from '@bitbarrel/client';
-
-const client = new BitBarrelClient({
-  host: 'localhost',
-  port: 9876,
-  autoConnect: true
-});
-
-// Create and use barrel
-await client.createBarrel('mydb');
-await client.useBarrel('mydb');
-
-// Store data
-await client.set('user:1', JSON.stringify({ name: 'Alice', age: 30 }));
-
-// Retrieve data
-const user = JSON.parse(await client.get('user:1'));
-console.log(`User: ${user.name}, Age: ${user.age}`);
-
-// Range queries (requires bmCritBit mode)
-// Cursor-based pagination for efficient large dataset traversal
-let cursor = '';
-let allUsers = [];
-
-while (true) {
-  const result = await client.prefixQuery('user:', { limit: 100, cursor });
-  allUsers.push(...result.items);
-
-  if (!result.hasMore) break;
-  cursor = result.nextCursor;
-}
-
-console.log(`Found ${allUsers.length} users`);
-
-// Clean up
-await client.close();
-```
-
-See [`clients/typescript/README.md`](clients/typescript/README.md) for full API documentation.
-
-### Batch Operations Example
-
-All client libraries support batch operations for improved performance with multiple keys:
-
-```typescript
-// Batch set multiple key-value pairs
-const items = [
-  ['user:1:name', 'Alice'],
-  ['user:1:email', 'alice@example.com'],
-  ['user:2:name', 'Bob'],
-  ['user:2:email', 'bob@example.com']
-];
-await client.batchSet(items);
-
-// Batch get multiple keys
-const keys = ['user:1:name', 'user:1:email', 'user:2:name'];
-const results = await client.batchGet(keys);
-// Returns: [['user:1:name', 'Alice'], ['user:1:email', 'alice@example.com'], ...]
-
-// Batch delete multiple keys
-await client.batchDelete(['temp:1', 'temp:2', 'temp:3']);
-```
-
-Batch operations use the binary protocol efficiently, sending multiple operations in a single network request.
-
-### TTL (Time-To-Live) Example
-
-Set automatic expiration on keys using the optional TTL parameter:
-
-```typescript
-// Set a key with 60-second TTL
-await client.set('session:abc123', 'user_data', 60);
-
-// Key will automatically expire after 60 seconds
-// Attempting to get after expiration will throw KeyNotFoundError
-```
-
-TTL is supported in all client libraries and uses protocol v1.1's optional TTL field.
-
-### Key Watching Example
-
-Monitor key changes with pattern-based subscriptions:
-
-```typescript
-// Set up message handler for key change events
-client.setMessageHandler((event) => {
-  if (event.messageType === PubSubMessageType.KvChange) {
-    console.log(`Key changed: ${event.topic} = ${event.payload}`);
-  }
-});
-
-// Subscribe to key-value events
-await client.subscribe('kv:');
-
-// Watch for changes to keys matching pattern
-await client.watch('user:*', { includeValues: true });
-
-// Now any set/delete operations on keys starting with 'user:' will trigger events
-await client.set('user:123', 'Alice');  // Triggers event with payload 'Alice'
-await client.delete('user:123');       // Triggers delete event
-
-// Stop watching when done
-await client.unwatch('user:*');
-```
-
-Key watching integrates with Pub/Sub system and supports wildcards (`*` for any characters).
-
-### JWT Authentication Example
-
-For production deployments, enable JWT authentication on the server:
-
-```bash
-# Initialize config with auth disabled (default)
-bitbarrel init
-
-# Edit config to enable auth and add users
-# bitbarrel.yaml:
-#   auth:
-#     enabled: true
-#     secret: "your-32-char-secret-key"
-#   users:
-#     - username: "admin"
-#       roles:
-#         - "admin"
-#     - username: "app"
-#       roles:
-#         - "readwrite"
-
-# Generate JWT token for a user
-bitbarrel token
-
-# Start server
-bitbarrel serve
-
-# Client connects with JWT token
-var client = newClient(host="localhost", port=9876.Port,
-                        token="eyJhbGciOiJIUzI1...")
-client.connect()
-```
-
-See [`docs/networking-guide.md`](docs/networking-guide.md) for full authentication documentation.
-
-### Using as a Nim Library
-
-BitBarrel can be installed via nimble and used as a library in your projects:
-
-```nim.compilable
-import bitbarrel
-
-# Simple high-level API
-var db = openBarrel("mydb")
-discard db.set("key", "value")
-echo db.get("key")
-db.close()
-```
-
-For advanced use cases, you can access the low‑level storage API:
-
-```nim.compilable
-import bitbarrel
-from bitbarrel/types import BarrelMode
-
-# Open a barrel with CritBit mode for ordered keys
-var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmCritBit
-
-var db = openBarrel("/tmp/custom.db", cfg)
-discard db.set("key1", "value1")
-echo db.get("key1")
-db.close()
-```
-
-See the [tutorial](docs/USER_GUIDE/tutorial.md) for comprehensive examples.
-
-### Testing All Clients
-
-```bash
-# Test all client libraries (starts server on port 9876, runs tests, stops server)
-nimble testClients
-```
-
-## Features at a Glance
-
-BitBarrel packs a comprehensive set of features into a lightweight package:
-
-| Category | Highlights |
-|----------|------------|
-| Storage | Append‑only log, three index modes, compression (LZ4 by default, Snappy optional), binary record encoding |
-| Reliability | Crash recovery, hint files with incremental recovery (40K+ keys/sec), CRC32 checksums |
-| Performance | Write buffering, read‑ahead LRU, background compaction, TTL, configurable sync modes |
-| Network | WebSocket binary protocol (28 commands), REST API, JWT authentication, session management, Pub/Sub messaging, presence, message history |
-| Clients | Nim, Go, Dart/Flutter (mobile + web), Python, TypeScript client libraries |
-| JSON | High-performance Sunny JSON library for structured data, RawJson type for pub/sub headers |
-| Advanced | Reference model (graph traversal), range queries, prefix search, Pub/Sub with pattern matching, cycle detection, query result hooks |
-
-**Comprehensive test suite**: 33 test files with 350+ test cases, covering filesystem stress, concurrent access, crash recovery, memory pressure, network resilience, and compression.
-
-## Pub/Sub Messaging
-
-BitBarrel provides real-time Pub/Sub messaging with topic-based subscriptions, pattern matching, and presence tracking:
-
-- **Topic-based subscriptions**: Subscribe to exact topics or wildcard patterns (`user/*`)
-- **Message types**: Data messages, presence notifications, key-value change events
-- **History**: Configurable message retention with replay on subscribe
-- **Presence tracking**: See who's subscribed to topics with metadata
-- **Pattern matching**: Redis-style glob patterns (`*`) for flexible subscriptions
-- **Key-value integration**: Automatic publishing of key-value change events
-
-### Examples
-
-**Nim client** (full implementation):
-```nim
-import bitbarrel_client
-
-let client = newClient("localhost", 9876.Port)
-client.connect()
-
-# Subscribe to user notifications pattern
-let subId = client.subscribe("user:notifications:*")
-
-# Publish a message
-let seq = client.publish("user:notifications:123", "Welcome!")
-
-# Handle incoming messages
-client.onMessage = proc(event: PubSubEvent) =
-  echo "Received: ", event.topic, " -> ", event.payload
-
-# Clean up
-client.unsubscribe(subId)
-client.close()
-```
-
-**Go client** (full PubSub implementation including ListSubscribers/ListTopics):
-```go
-package main
-
-import (
-    "fmt"
-    "github.com/tankfeed/bitbarrel-go"
-)
-
-func main() {
-    client := bitbarrel.NewClient("localhost", 9876)
-    client.Connect()
-
-    // Subscribe to pattern
-    subId, _ := client.Subscribe("user:notifications:*", "")
-
-    // Publish message
-    seq, _ := client.Publish("user:notifications:123", "Welcome!")
-
-    // Handle events
-    client.SetMessageHandler(func(event bitbarrel.PubSubEvent) {
-        fmt.Printf("Received: %s -> %s\n", event.Topic, event.Payload)
-    })
-    client.StartEventReceiver()
-
-    // Query subscribers and topics
-    subs, _ := client.ListSubscribers("user:notifications:123")
-    topics, _ := client.ListTopics()
-
-    // Clean up
-    client.Unsubscribe(subId)
-    client.Close()
-}
-```
-
-**Supported commands**: `SUBSCRIBE` (0x40), `UNSUBSCRIBE` (0x41), `PUBLISH` (0x42), `LIST_SUBSCRIBERS` (0x43), `HISTORY` (0x44), `LIST_TOPICS` (0x45), `PRESENCE` (0x46)
-
-See [Pub/Sub Protocol Specification](docs/PROTOCOL.md#pubsub-messaging) for complete details and [Pub/Sub Client Implementation Plan](docs/PUBSUB_CLIENT_PLAN.md) for client library status.
+| Language | Status | Auth | Batch | TTL | Watch | Notes |
+|----------|--------|------|-------|-----|-------|-------|
+| Nim | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Native implementation |
+| Go | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Native implementation |
+| Python | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Context manager support |
+| Dart/Flutter | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Mobile + Web compatible |
+| TypeScript | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Node.js + browser |
+| C | ✅ Complete | ⚠️ | ✅ | ✅ | ✅ | Binary protocol client |
+| Zig | ✅ Complete | ⚠️ | ✅ | ✅ | ✅ | Bindings to C library |
+
+**All clients are 100% feature-complete as of 2026-01-21** • See individual client READMEs for detailed documentation.
 
 ## Performance Highlights
-
-Here are the key performance metrics from release builds on Linux x86_64 (ThinkPad Carbon X1 with SSD):
 
 | Metric | Value | Context |
 |--------|-------|---------|
@@ -475,316 +126,37 @@ Here are the key performance metrics from release builds on Linux x86_64 (ThinkP
 | Read throughput | ~172K ops/sec | Random access via in‑memory index |
 | Mixed workload (80% read) | ~137K ops/sec | Combined operations |
 | Recovery speed | 40K+ keys/sec | With v2 hint files and incremental recovery |
-| Write latency (none/sync) | ~0.005 ms | Sub‑millisecond |
-| Read latency | ~0.006 ms | O(1) hash lookup |
 
-*See the [DEVELOPER_GUIDE/performance.md](docs/DEVELOPER_GUIDE/performance.md) for detailed measurements and methodology.
+*See [Performance Guide](docs/DEVELOPER_GUIDE/performance.md) for detailed measurements.*
 
-**CRC32**: BitBarrel includes a pure Nim lookup table implementation for CRC32 validation.
+## Docker Quick Start
 
-### Performance Tips
-- Use `none` sync for fastest writes (data at risk on crash)
-- Use `sync` for balanced performance/durability
-- Use `fsync` for critical data (slower but safer)
-- Buffer size 4KB‑256KB provides good performance (4KB gave best results in benchmarks)
-- Mixed workloads benefit from read‑ahead caching
+### Run with Docker
 
-## Barrel Modes Deep Dive
-
-BitBarrel supports three index modes optimized for different use cases:
-
-| Mode | Best For | Lookup | Memory | Special Features |
-|------|----------|--------|--------|------------------|
-| `bmHash` | General KV, caching, sessions | O(1) | ~40 bytes/key | Fastest lookups |
-| `bmCritBit` | Time‑series, leaderboards, prefix searches | O(k) | ~60 bytes/key | Range queries, ordered iteration |
-| `bmHugeCritBit` | Billions of keys, limited RAM (separate API) | O(1) per range | Lazy‑loaded partitions | Massive datasets, range‑based caching, requires `openHugeBarrel()` |
-
-### bmHash Mode – Session Store
-```nim.compilable
-import bitbarrel
-from bitbarrel/types import BarrelMode
-
-var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmHash
-
-var sessionStore = openBarrel("sessions.db", cfg)
-
-# Store and retrieve sessions quickly
-discard sessionStore.set("sess_7a3b1c", """{"user_id": 123, "expires": 1734800000}""")
-echo sessionStore.get("sess_7a3b1c")
+```bash
+docker run -d --name bitbarrel -p 8080:8080 -v bitbarrel-data:/data ghcr.io/gokr/bitbarrel:latest
 ```
 
-### bmCritBit Mode – Time-Series Data
-```nim.compilable
-import bitbarrel
-from bitbarrel/types import BarrelMode
+*Access: Server at `ws://localhost:8080`, Web Admin at `http://localhost:8080/admin/` • [Full Docker Guide](docs/DOCKER.md)*
 
-var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmCritBit  # Sorted keys for range queries
-
-var metricsDb = openBarrel("/tmp/metrics.db", cfg)
-
-# Store timestamped metrics (keys are naturally sorted)
-discard metricsDb.set("metrics:temp:1734800000", "22.5")
-discard metricsDb.set("metrics:temp:1734800100", "23.1")
-discard metricsDb.set("metrics:humidity:1734800000", "65.2")
-
-# Range query: get all temperature metrics for a time period
-let temps = metricsDb.keysInRange("metrics:temp:1734800000", "metrics:temp:1734800200")
-echo "Found ", temps.len, " temperature readings"
-
-# Prefix search: get all humidity metrics
-let (humidityKeys, _, _) = metricsDb.keysByPrefix("metrics:humidity:")
-echo "Humidity sensors: ", humidityKeys.len
-
-metricsDb.close()
-```
-
-### bmHugeCritBit Mode – Large Analytics Dataset
-
-**Note:** HugeBarrel (`bmHugeCritBit` mode) is partially implemented and uses a separate API (`openHugeBarrel()`) from regular barrels:
-
-```nim.compilable
-import bitbarrel
-import storage/hugebarrel  # Import the HugeBarrel module
-from bitbarrel/types import BarrelMode
-
-var cfg = defaultBarrelConfig()
-cfg.mode = BarrelMode.bmHugeCritBit
-cfg.hugeConfig.maxEntriesPerRange = 1_000_000  # Split into 1M-key ranges
-cfg.hugeConfig.rangeCacheSize = 5              # Keep 5 ranges in memory
-
-# Use openHugeBarrel() instead of openBarrel() for HugeBarrel
-var analyticsDb = openHugeBarrel("/tmp/analytics", cfg)
-
-# Store user events (potentially billions)
-discard analyticsDb.set("events:user:123:click:1734800000", """{"page": "/home"}""")
-discard analyticsDb.set("events:user:456:purchase:1734800100", """{"amount": 99.99}""")
-
-# Retrieve a specific event
-let clickEvent = analyticsDb.get("events:user:123:click:1734800000")
-if clickEvent != "":
-  echo "Found click event: ", clickEvent
-
-# Check how many ranges the data is split across
-let rangeCount = analyticsDb.getRangeCount()
-echo "Data distributed across ", rangeCount, " ranges"
-
-analyticsDb.close()
-```
-
-**Network Server:** When using the network server, HugeBarrel is transparently supported through the standard `createBarrel` command with `bmHugeCritBit` mode configured.
-
-## Configuration Examples
-
-Choose the right durability for your use case:
-
-```nim
-import bitbarrel
-from bitbarrel/config import UserSyncMode
-
-# Fast caching (risk data loss on crash)
-var cacheCfg = defaultBarrelConfig()
-cacheCfg.syncMode = UserSyncMode.None
-cacheCfg.writeBufferSize = 256 * 1024  # 256KB buffer
-
-# General-purpose storage (safe from app crashes)
-var generalCfg = defaultBarrelConfig()
-generalCfg.syncMode = UserSyncMode.Sync
-
-# Critical data (safe from power loss)
-var criticalCfg = defaultBarrelConfig()
-criticalCfg.syncMode = UserSyncMode.Fsync
-criticalCfg.writeBufferSize = 32 * 1024  # Smaller buffer for frequent syncs
-
-# Open databases with appropriate durability
-var cacheDb = openBarrel("cache.db", cacheCfg)
-var generalDb = openBarrel("data.db", generalCfg)
-var criticalDb = openBarrel("critical.db", criticalCfg)
-```
-
-### Network Configuration with JWT Authentication
-
-```nim
-import network/server
-import network/auth as authjwt
-
-# Configure server with JWT authentication
-var serverConfig = ServerConfig(
-  address: "0.0.0.0",
-  port: 9876.Port,
-  dataDir: "./data",
-  workerThreads: 10,
-  auth: authjwt.AuthConfig(
-    enabled: true,
-    secret: "production-secret-key-32-chars-minimum",
-    defaultTokenExpiryHours: 24,
-    users: {
-      "admin": @[authjwt.rAdmin],
-      "readwrite": @[authjwt.rReadWrite],
-      "readonly": @[authjwt.rReadonly]
-    }.toTable()
-  )
-)
-
-var server = newServer(serverConfig)
-server.start()
-```
-
-## Documentation & Next Steps
-
-### Client Libraries
-- **[clients/dart/README.md](clients/dart/README.md)** - Dart/Flutter client (mobile + web)
-- **[clients/go/README.md](clients/go/README.md)** - Go client documentation
-- **[clients/nim/README.md](clients/nim/README.md)** - Nim client documentation
-- **[clients/python/README.md](clients/python/README.md)** - Python client documentation
-- **[clients/typescript/README.md](clients/typescript/README.md)** - TypeScript/Node.js client documentation
-- **[clients/c/README.md](clients/c/README.md)** - C client library (binary protocol)
-- **[clients/zig/README.md](clients/zig/README.md)** - Zig bindings (idiomatic API)
+## Documentation
 
 ### Getting Started
-- **[docs/USER_GUIDE/tutorial.md](docs/USER_GUIDE/tutorial.md)**: Comprehensive tutorial with examples
-- **[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md)**: Quick setup guide
-- **[docs/GETTING_STARTED.md#automatic-barrel-discovery](docs/GETTING_STARTED.md#automatic-barrel-discovery)**: Automatic barrel discovery on startup
-- **[examples/README.md](examples/README.md)**: Example documentation
+- [Quick Setup](docs/GETTING_STARTED.md) - Installation and first steps
+- [Tutorial](docs/USER_GUIDE/tutorial.md) - Comprehensive guide with examples
+- [Examples Directory](examples/README.md) - Runnable example programs
 
-### Test Suite
-- **[tests/README.md](tests/README.md)**: Complete test suite guide
+### Advanced Features
+- [Features Overview](FEATURES.md) - Barrel modes, compression, networking, and more
+- [Pub/Sub Messaging](docs/USER_GUIDE/pubsub.md) - Real-time messaging guide
+- [Network Guide](docs/networking-guide.md) - Client/server setup with JWT auth
+- [Configuration Guide](docs/USER_GUIDE/configuration.md) - Tuning for your use case
 
-### Performance & Benchmarks
-- **[docs/DEVELOPER_GUIDE/performance.md](docs/DEVELOPER_GUIDE/performance.md)**: Benchmarking guide
-- **[bench/](bench/)**: Benchmark suites
-
-### Architecture & Design
-- **[docs/DEVELOPER_GUIDE/architecture.md](docs/DEVELOPER_GUIDE/architecture.md)**: System design document
-- **[docs/COMPARISON.md](docs/COMPARISON.md)**: Comparison with other databases
-
-### Feature Documentation
-- **[docs/FEATURES/hint-files.md](docs/FEATURES/hint-files.md)**: Hint file format (v2 with incremental recovery)
-- **[docs/FEATURES/compression.md](docs/FEATURES/compression.md)**: LZ4 and Snappy compression
-- **[docs/FEATURES/data-integrity.md](docs/FEATURES/data-integrity.md)**: CRC32 implementation
-- **[docs/FEATURES/read-buffering.md](docs/FEATURES/read-buffering.md)**: Read-ahead LRU buffering
-- **[docs/FEATURES/networking.md](docs/FEATURES/networking.md)**: Network protocol and client
-
-### Advanced Topics
-- **[docs/network-architecture.md](docs/network-architecture.md)**: Network layer architecture
-- **[docs/research/REFERENCES.md](docs/research/REFERENCES.md)**: Reference model (graph traversal)
-
-## Running with Docker
-
-Get started with BitBarrel in seconds using our official Docker image from GitHub Container Registry (ghcr.io), which bundles the server with a Flutter web admin interface served at `/admin/`.
-
-### Quick Start with Docker Compose
-
-```bash
-# Start BitBarrel with integrated webadmin
-docker compose up -d
-
-# Access the services:
-# - BitBarrel Server: ws://localhost:8080 or http://localhost:8080
-# - Web Admin: http://localhost:8080/admin/
-
-# View logs
-docker compose logs -f
-```
-
-### Quick Start with Docker Run
-
-The easiest way to get started is using the pre-built image from GitHub Container Registry:
-
-```bash
-# Pull and run from GitHub Container Registry
-docker run -d \
-  --name bitbarrel \
-  -p 8080:8080 \
-  -v bitbarrel-data:/data \
-  ghcr.io/gokr/bitbarrel:latest
-```
-
-Or build locally from source:
-
-```bash
-# First, build the bitbarrel binary and webadmin
-nimble build
-cd webadmin && flutter build web --release && cd ..
-
-# Build and run Docker image
-docker build -t bitbarrel:latest .
-docker run -d \
-  --name bitbarrel \
-  -p 8080:8080 \
-  -v bitbarrel-data:/data \
-  bitbarrel:latest
-```
-
-### Features
-
-- **Integrated webadmin**: Server serves static webadmin files at `/admin/`
-- **Single port**: Both API and webadmin on port 8080
-- **Zero configuration**: Works out of the box with sensible defaults
-- **Environment-driven**: Easy configuration via environment variables
-- **Persistent storage**: Data volume for reliable persistence
-- **Security**: Runs as non-root user with JWT authentication support
-- **Alpine-based**: Small image size with minimal attack surface
-
-### Configuration
-
-Configure BitBarrel using environment variables:
-
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -v bitbarrel-data:/data \
-  -e BITBARREL_AUTH_ENABLED=true \
-  -e BITBARREL_AUTH_SECRET="your-32-char-secret" \
-  -e BITBARREL_SERVER_PORT=8080 \
-  -e BITBARREL_WEB_ADMIN_ENABLED=true \
-  -e BITBARREL_WEB_ADMIN_PATH=/opt/bitbarrel/webadmin \
-  -e BITBARREL_LOGGING_LEVEL=info \
-  ghcr.io/gokr/bitbarrel:latest
-```
-
-See [docs/DOCKER.md](docs/DOCKER.md) for complete Docker documentation including:
-- Building Docker images
-- Advanced configuration options
-- Docker Compose examples
-- Security best practices
-- Troubleshooting guide
-- Production deployment tips
-
-## Future Enhancements
-
-- **Pub/Sub Messaging**: Real-time messaging system ✅ (implemented - see PROTOCOL.md)
-- **Monitoring & Observability**: Prometheus metrics, health checks ✅ (implemented)
-- **Replication**: Master-replica for high availability
-- **Advanced Query Features**: Filtering and aggregation
-- **Backup & Snapshots**: Online backup and point-in-time recovery
-
-### Zig Client Completion
-
-The Zig client library is currently incomplete and not recommended for production use:
-
-**Current Status**: ⚠️ Incomplete (7% of features implemented)
-
-**Missing Features**:
-- Batch operations (batchGet, batchSet, batchDelete)
-- TTL support for set operations
-- Key watching (watch/unwatch)
-- Barrel statistics
-- Configuration management
-- Graph traversal
-- Range queries
-
-**Known Issues**:
-- Memory safety issues in `get()` method (returns pointer to freed memory)
-- No integration tests
-
-**Estimated Effort**: 1-2 weeks to complete properly
-
-See [clients/zig/README.md](clients/zig/README.md) for current status.
-
-See [TODO.md](TODO.md) for detailed roadmap.
+### Developer Resources
+- [Performance Guide](docs/DEVELOPER_GUIDE/performance.md) - Benchmarking and optimization
+- [Testing Guide](docs/DEVELOPER_GUIDE/testing.md) - Test suite documentation
+- [Architecture](docs/DEVELOPER_GUIDE/architecture.md) - System design
+- [Roadmap](TODO.md) - Future enhancements and priorities
 
 ## License
-
 MIT License
