@@ -271,6 +271,9 @@ class PubSubMessageType {
 
   /// Presence message
   static const int presence = 1;
+
+  /// Key-value change event
+  static const int kvChange = 2;
 }
 
 /// Event received from PubSub subscription

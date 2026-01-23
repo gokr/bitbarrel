@@ -643,8 +643,7 @@ void main() {
     group('Key Watching', () {
       test('watch requires barrel selection', () async {
         final client = BitBarrelClient(
-          host: testServerHost,
-          port: testServerPort,
+          BitBarrelConfig(host: testServerHost, port: testServerPort),
         );
         addTearDown(() => client.close());
 
@@ -653,23 +652,22 @@ void main() {
         // Try to watch without selecting a barrel
         expect(
           () => client.watch('user:*'),
-          throwsA(isA<NoBarrelError>()),
+          throwsA(isA<NoBarrelSelectedException>()),
         );
       });
 
       test('watch basic functionality', () async {
         final client = BitBarrelClient(
-          host: testServerHost,
-          port: testServerPort,
+          BitBarrelConfig(host: testServerHost, port: testServerPort),
         );
         addTearDown(() => client.close());
 
         final events = <PubSubEvent>[];
-        client.setMessageHandler(events.add);
+        client.setOnMessage(events.add);
 
         await client.connect();
 
-        final barrelName = uniqueBarrelName('watch_test');
+        final barrelName = 'test_barrel_watch_${DateTime.now().millisecondsSinceEpoch}';
         await client.createBarrel(barrelName);
         addTearDown(() => client.dropBarrel(barrelName));
 
@@ -701,17 +699,16 @@ void main() {
 
       test('watch with values', () async {
         final client = BitBarrelClient(
-          host: testServerHost,
-          port: testServerPort,
+          BitBarrelConfig(host: testServerHost, port: testServerPort),
         );
         addTearDown(() => client.close());
 
         final events = <PubSubEvent>[];
-        client.setMessageHandler(events.add);
+        client.setOnMessage(events.add);
 
         await client.connect();
 
-        final barrelName = uniqueBarrelName('watch_values_test');
+        final barrelName = 'test_barrel_watch_values_${DateTime.now().millisecondsSinceEpoch}';
         await client.createBarrel(barrelName);
         addTearDown(() => client.dropBarrel(barrelName));
 
@@ -742,17 +739,16 @@ void main() {
 
       test('unwatch stops events', () async {
         final client = BitBarrelClient(
-          host: testServerHost,
-          port: testServerPort,
+          BitBarrelConfig(host: testServerHost, port: testServerPort),
         );
         addTearDown(() => client.close());
 
         final events = <PubSubEvent>[];
-        client.setMessageHandler(events.add);
+        client.setOnMessage(events.add);
 
         await client.connect();
 
-        final barrelName = uniqueBarrelName('unwatch_test');
+        final barrelName = 'test_barrel_unwatch_${DateTime.now().millisecondsSinceEpoch}';
         await client.createBarrel(barrelName);
         addTearDown(() => client.dropBarrel(barrelName));
 

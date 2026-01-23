@@ -242,7 +242,7 @@ void main() {
     });
 
     test('allValues contains all expected commands', () {
-      expect(Command.allValues.length, equals(30));  // Including Pub/Sub commands
+      expect(Command.allValues.length, equals(32));  // Including Pub/Sub and Watch commands
       expect(Command.allValues.contains(Command.get), isTrue);
       expect(Command.allValues.contains(Command.set), isTrue);
       expect(Command.allValues.contains(Command.delete), isTrue);
