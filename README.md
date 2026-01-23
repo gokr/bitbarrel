@@ -7,12 +7,11 @@ BitBarrel offers fast writes, efficient reads, and robust crash recovery. It off
 **Some Features:**
 - Three index modes: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑tier partitioned indexes for massive datasets
 - Cursor-based pagination for efficient range queries and prefix searches without offset overhead
-- Non-blocking compaction — writes continue uninterrupted during background compaction
-- Network enabled with WebSocket and basic REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig
+- Non-blocking background thread compaction — writes continue uninterrupted during background compaction
+- Network enabled with WebSockets and basic REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig
 - JWT authentication with role-based access control (admin, readwrite, readonly) for secure network access
 - Web Admin UI written in Flutter using the Dart client library
 - Simple to use Docker container including Web Admin UI
-- 
 
 ## Quick Start
 
@@ -39,65 +38,201 @@ db.close()
 
 ## Advanced Examples Showcase
 
-### Example 1: Range Queries with CritBit Mode
+### Example 1: Range Queries with Cursor Pagination (Go)
 
-```nim
-# Configure for ordered data and range queries
-var config = defaultBarrelConfig()
-config.mode = BarrelMode.bmCritBit
-let db = openBarrel("timeseries.db", config)
+```go
+package main
 
-# Store timestamped metrics (keys are naturally sorted)
-for i in 0..<100:
-  discard db.set(&"sensor:temp:{i}", &"{rand(20.0..30.0):.1f}")
+import (
+    "fmt"
+    "github.com/tankfeed/bitbarrel-go"
+)
 
-# Range query for specific time period
-let keys = db.keysInRange("sensor:temp:10", "sensor:temp:30")
-echo "Found ", keys.len, " readings in range"
+func main() {
+    client := bitbarrel.NewClient("localhost", 9876)
+    client.Connect()
+    defer client.Close()
+
+    // Create barrel with CritBit mode for ordered keys
+    client.CreateBarrel("metrics", "critbit")
+    client.UseBarrel("metrics")
+
+    // Store time-series data
+    for i := 0; i < 1000; i++ {
+        key := fmt.Sprintf("sensor:temp:%04d", i)
+        value := fmt.Sprintf("%.1f", 20.0 + float64(i%20)*0.5)
+        client.Set(key, value)
+    }
+
+    // Cursor-based pagination through range
+    var allItems []bitbarrel.KeyValue
+    cursor := ""
+
+    for {
+        items, nextCursor, hasMore, err := client.PrefixQuery("sensor:temp:", 100, cursor)
+        if err != nil {
+            panic(err)
+        }
+
+        allItems = append(allItems, items...)
+
+        if !hasMore {
+            break
+        }
+        cursor = nextCursor
+    }
+
+    fmt.Printf("Processed %d temperature readings\n", len(allItems))
+}
 ```
 
-### Example 2: Pub/Sub Messaging
+### Example 2: Pub/Sub Messaging with Pattern Matching (Python)
+
+```python
+import asyncio
+from bitbarrel import BitBarrelClient
+
+async def main():
+    # Connect to server with context manager
+    async with BitBarrelClient("localhost", 9876) as client:
+        await client.use_barrel("chat")
+
+        # Subscribe to user notification patterns
+        await client.subscribe("user:*:notifications")
+
+        # Set up message handler
+        def on_message(event):
+            print(f"📨 {event.topic}: {event.payload}")
+
+        client.on_message = on_message
+
+        # Start receiving messages in background
+        client.start_event_receiver()
+
+        # Publish messages to matching topics
+        await client.publish("user:alice:notifications", "Welcome to the platform!")
+        await client.publish("user:bob:notifications", "You have a new message")
+
+        # Wait for messages to be delivered
+        await asyncio.sleep(0.1)
+
+asyncio.run(main())
+```
+
+### Example 3: Graph Traversal with References (TypeScript)
+
+```typescript
+import { BitBarrelClient } from '@bitbarrel/client';
+
+async function socialGraph() {
+    const client = new BitBarrelClient({
+        host: 'localhost',
+        port: 9876,
+        autoConnect: true
+    });
+
+    await client.createBarrel('social');
+    await client.useBarrel('social');
+
+    // Store users with friend relationships using _refs field
+    const aliceData = {
+        name: 'Alice',
+        age: 30,
+        _refs: {
+            friends: ['user:bob', 'user:charlie'],
+            posts: ['post:123', 'post:456']
+        }
+    };
+
+    const bobData = {
+        name: 'Bob',
+        age: 28,
+        _refs: {
+            friends: ['user:alice'],
+            posts: ['post:789']
+        }
+    };
+
+    await client.set('user:alice', JSON.stringify(aliceData));
+    await client.set('user:bob', JSON.stringify(bobData));
+
+    // Traverse friend relationships
+    const aliceFriends = await client.traversePath('user:alice', 'friends');
+    console.log(`Alice has ${aliceFriends.length} friends:`);
+
+    aliceFriends.forEach((friend: string) => {
+        console.log(`  - ${friend}`);
+    });
+
+    // Find all connections (two-level traversal)
+    const allConnections = await client.traverse('user:alice', 'friends/*/friends', {
+        includeFullData: false,
+        extractArrays: true
+    });
+
+    console.log(`Found ${allConnections.length} total connections in graph`);
+
+    await client.close();
+}
+
+socialGraph().catch(console.error);
+```
+
+### Example 4: TTL, Batch Operations & Iterators (Nim)
 
 ```nim
-# Connect to server and subscribe to pattern
+import bitbarrel
+import bitbarrel_client
+
+# Local barrel with TTL support
+var localDb = openBarrel("cache.db")
+defer: localDb.close()
+
+# Set keys with automatic expiration
+discard localDb.set("session:abc123", "user_data", ttl=300)  # 5 minutes
+discard localDb.set("temp:calculation", "result", ttl=60)      # 1 minute
+
+# Network client for batch operations
 var client = newClient("localhost", 9876.Port)
 client.connect()
-let subId = client.subscribe("user:*:notifications")
+defer: client.close()
 
-# Set up real-time message handler
-client.onMessage = proc(event: PubSubEvent) =
-  echo "💬 ", event.topic, ": ", event.payload
+discard client.useBarrel("inventory")
 
-# Publish messages to matching topics
-discard client.publish("user:alice:notifications", "New message!")
-```
+# Batch set multiple items efficiently
+let products = @[
+  ("product:1:name", "Laptop"),
+  ("product:1:price", "999.99"),
+  ("product:2:name", "Phone"),
+  ("product:2:price", "699.99"),
+  ("product:3:name", "Tablet"),
+  ("product:3:price", "499.99")
+]
 
-### Example 3: Graph Traversal with References
+let successCount = client.setMany(products)
+echo "Successfully stored ", successCount, " products"
 
-```nim
-# Store user with friend relationships using _refs field
-let aliceData = %*{"name": "Alice", "_refs": {"friends": ["user:bob"]}}
-discard client.set("user:alice", $aliceData)
+# Use iterator for memory-efficient traversal of large datasets
+echo "All products:"
+for (key, value) in client.itemsWithPrefix("product:"):
+  echo "  ", key, " = ", value
 
-# Traverse relationships
-let friends = client.traversePath("user:alice", "friends")
-echo "Alice has ", friends.len, " friends"
-```
+# Cursor-based pagination example
+var cursor = ""
+var allPrices: seq[float]
 
-### Example 4: TTL & Batch Operations
+while true:
+  let (items, nextCursor, hasMore) = client.prefixQuery("product:", limit=50, cursor=cursor)
 
-```nim
-# Set key with automatic expiration (local barrel)
-var db = openBarrel("myapp.db")
-discard db.set("session:temp", "data", ttl=5)
+  for (key, value) in items:
+    if key.endsWith(":price"):
+      allPrices.add(parseFloat(value))
 
-# Batch operations via network client
-var client = newClient("localhost", 9876.Port)
-client.connect()
-discard client.useBarrel("myapp")
-let items = [("key1", "val1"), ("key2", "val2"), ("key3", "val3")]
-let successCount = client.setMany(items)
-let results = client.getMany(["key1", "key2"])
+  if not hasMore:
+    break
+  cursor = nextCursor
+
+echo "Average price: ", allPrices.sum() / allPrices.len.float
 ```
 
 ## Client Libraries
@@ -112,7 +247,7 @@ BitBarrel provides client libraries in multiple languages for remote access via 
 | Dart/Flutter | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Mobile + Web compatible |
 | TypeScript | ✅ Complete | ✅ | ✅ | ✅ | ✅ | Node.js + browser |
 | C | ✅ Complete | ⚠️ | ✅ | ✅ | ✅ | Binary protocol client |
-| Zig | ✅ Complete | ⚠️ | ✅ | ✅ | ✅ | Bindings to C library |
+| Zig | ✅ Complete | ⚠️ | ✅ | ✅ | ✅ | Direct WebSocket using libwebsockets |
 
 **All clients are 100% feature-complete as of 2026-01-21** • See individual client READMEs for detailed documentation.
 
