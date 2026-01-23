@@ -18,7 +18,8 @@ from .protocol import (
     decode_list_subscribers_response, decode_list_topics_response,
     decode_history_response, decode_presence_response,
     encode_batch_set, encode_batch_get, encode_batch_delete,
-    decode_batch_get_response,
+    decode_batch_get_response, decode_batch_set_response, decode_batch_delete_response,
+    encode_watch_request,
     SubscriptionOptions, default_subscription_options,
     PresenceMember, PresenceInfo, SubscriptionInfo, HistoryRequest,
 )
@@ -105,6 +106,8 @@ class Client:
         self._on_message: Optional[Callable[[PubSubEvent], None]] = None
         self._event_receiver_thread: Optional[threading.Thread] = None
         self._event_receiver_stop = threading.Event()
+        # Watch support - map pattern to watch ID
+        self._watches: dict[str, str] = {}
 
     def connect(self) -> None:
         """Connect to the BitBarrel server.
@@ -490,11 +493,8 @@ class Client:
         batch_data = encode_batch_set(items)
         result = self._send_request_binary(Command.BATCH_SET, key="", value=batch_data)
 
-        # Parse response - should be count as string
-        try:
-            return int(result) if result else 0
-        except ValueError:
-            return 0
+        # Parse binary batch set response
+        return decode_batch_set_response(result)
 
     def batch_get(self, keys: List[str]) -> List[Tuple[str, str]]:
         """Retrieve multiple values by their keys in a single request.
@@ -517,8 +517,8 @@ class Client:
         batch_data = encode_batch_get(keys)
         result = self._send_request_binary(Command.BATCH_GET, key="", value=batch_data)
 
-        # Parse response
-        return decode_batch_get_response(result)
+        # Parse response - pass original keys to correlate results
+        return decode_batch_get_response(result, keys)
 
     def batch_delete(self, keys: List[str]) -> int:
         """Delete multiple keys in a single request.
@@ -541,11 +541,8 @@ class Client:
         batch_data = encode_batch_delete(keys)
         result = self._send_request_binary(Command.BATCH_DELETE, key="", value=batch_data)
 
-        # Parse response - should be count as string
-        try:
-            return int(result) if result else 0
-        except ValueError:
-            return 0
+        # Parse binary batch delete response
+        return decode_batch_delete_response(result)
 
     def watch(self, pattern: str, include_values: bool = False) -> bool:
         """Watch for changes to keys matching a pattern.
@@ -567,8 +564,14 @@ class Client:
         self._ensure_barrel()
 
         watch_data = encode_watch_request('', pattern, include_values)
-        self._send_request(Command.WATCH_KEY, '', watch_data)
-        return True
+        watch_id = self._send_request(Command.WATCH_KEY, '', watch_data)
+
+        if watch_id:
+            # Store watch ID for this pattern
+            self._watches[pattern] = watch_id
+            return True
+        else:
+            return False
 
     def unwatch(self, pattern: str) -> bool:
         """Stop watching a previously registered pattern.
@@ -585,8 +588,17 @@ class Client:
         """
         self._ensure_barrel()
 
-        watch_data = encode_watch_request('', pattern, False)
-        self._send_request(Command.UNWATCH_KEY, '', watch_data)
+        # Get watch ID for this pattern
+        if pattern not in self._watches:
+            raise NoBarrelError(f"Watch not found for pattern: {pattern}")
+
+        watch_id = self._watches[pattern]
+
+        # Send unwatch request with watch ID as key
+        self._send_request(Command.UNWATCH_KEY, watch_id, '')
+
+        # Remove from local tracking
+        del self._watches[pattern]
         return True
 
     def delete(self, key: str) -> bool:
@@ -1203,7 +1215,7 @@ class Client:
         self._seq_counter += 1
         return seq
 
-    def _send_request(self, cmd: int, key: str = "", value: Union[str, bytes] = "") -> Optional[str]:
+    def _send_request(self, cmd: int, key: str = "", value: Union[str, bytes] = "", ttl: Optional[int] = None) -> Optional[str]:
         """Internal: send request and get response.
 
         Returns:
@@ -1227,7 +1239,7 @@ class Client:
             self._seq_counter += 1
 
             # Encode request
-            data = encode_request(cmd, seq, key, value)
+            data = encode_request(cmd, seq, key, value, ttl)
 
             # Send request
             self._ws.send_binary(data)

@@ -559,6 +559,7 @@ class PubSubMessageType(IntEnum):
     """PubSub message type."""
     DATA = 0
     PRESENCE = 1
+    mtKvChange = 2
 
 
 class PubSubEvent:
@@ -1002,50 +1003,134 @@ def encode_batch_delete(keys: List[str]) -> bytes:
     return encode_batch_get(keys)
 
 
-def decode_batch_get_response(data: bytes) -> List[Tuple[str, str]]:
-    """Decode batch get response: [count:4][key1Len:2][key1][val1Len:4][val1][status1:1][key2Len:2][key2][val2Len:4][val2][status2:1]..."""
-    if len(data) < 4:
-        raise ProtocolError("Batch response too short")
+def decode_batch_get_response(data: bytes, keys: List[str]) -> List[Tuple[str, str]]:
+    """Decode batch get response.
+
+    Server format: [status:1][seq:4][count:4][status1:1][valLen1:4][val1:N]...[statusN:1][valLenN:4][valN:M]
+
+    Args:
+        data: Raw response bytes
+        keys: Original keys from the request (used to correlate results)
+
+    Returns:
+        List of (key, value) tuples for found keys only
+    """
+    if len(data) < 9:  # Minimum: 1 + 4 + 4
+        raise ProtocolError("Batch get response too short")
 
     offset = 0
+
+    # Status byte (overall response status)
+    status = data[offset]
+    offset += 1
+
+    # Sequence number (4 bytes)
+    seq = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    # Count (4 bytes)
     count = struct.unpack(">I", data[offset:offset+4])[0]
     offset += 4
+
+    if count != len(keys):
+        raise ProtocolError(f"Batch get response count mismatch: got {count}, expected {len(keys)}")
 
     results: List[Tuple[str, str]] = []
 
     for i in range(count):
-        if offset + 2 > len(data):
-            raise ProtocolError("Truncated batch response: missing key length")
+        if offset + 1 > len(data):
+            raise ProtocolError("Truncated batch response: missing status byte")
 
-        # Key length and key
-        key_len = struct.unpack(">H", data[offset:offset+2])[0]
-        offset += 2
-        if offset + key_len > len(data):
-            raise ProtocolError("Truncated batch response: key extends beyond buffer")
-        key = data[offset:offset+key_len].decode("utf-8")
-        offset += key_len
+        # Item status byte
+        item_status = data[offset]
+        offset += 1
 
         # Value length
         if offset + 4 > len(data):
             raise ProtocolError("Truncated batch response: missing value length")
         val_len = struct.unpack(">I", data[offset:offset+4])[0]
         offset += 4
+
         if offset + val_len > len(data):
             raise ProtocolError("Truncated batch response: value extends beyond buffer")
         value = data[offset:offset+val_len].decode("utf-8") if val_len > 0 else ""
         offset += val_len
 
-        # Status byte
-        if offset + 1 > len(data):
-            raise ProtocolError("Truncated batch response: missing status byte")
-        status = data[offset]
-        offset += 1
-
         # Only include found items (status == 0)
-        if status == 0:
-            results.append((key, value))
+        if item_status == 0:
+            results.append((keys[i], value))
 
     return results
+
+
+def decode_batch_set_response(data: bytes) -> int:
+    """Decode batch set response: [status:1][seq:4][count:4][status1:1]...[statusN:1]
+
+    Returns the number of successful writes (status=0).
+    """
+    if len(data) < 9:  # Minimum: 1 + 4 + 4
+        raise ProtocolError("Batch set response too short")
+
+    offset = 0
+
+    # Status byte (overall response status)
+    status = data[offset]
+    offset += 1
+
+    # Sequence number (4 bytes)
+    seq = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    # Count (4 bytes)
+    count = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    if len(data) < 9 + count:
+        raise ProtocolError("Batch set response truncated: missing status bytes")
+
+    # Count successful writes (status == 0)
+    success_count = 0
+    for i in range(count):
+        item_status = data[offset + i]
+        if item_status == 0:
+            success_count += 1
+
+    return success_count
+
+
+def decode_batch_delete_response(data: bytes) -> int:
+    """Decode batch delete response: [status:1][seq:4][count:4][status1:1]...[statusN:1]
+
+    Returns the number of successful deletes (status=0).
+    """
+    if len(data) < 9:  # Minimum: 1 + 4 + 4
+        raise ProtocolError("Batch delete response too short")
+
+    offset = 0
+
+    # Status byte (overall response status)
+    status = data[offset]
+    offset += 1
+
+    # Sequence number (4 bytes)
+    seq = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    # Count (4 bytes)
+    count = struct.unpack(">I", data[offset:offset+4])[0]
+    offset += 4
+
+    if len(data) < 9 + count:
+        raise ProtocolError("Batch delete response truncated: missing status bytes")
+
+    # Count successful deletes (status=0)
+    success_count = 0
+    for i in range(count):
+        item_status = data[offset + i]
+        if item_status == 0:
+            success_count += 1
+
+    return success_count
 
 
 def encode_watch_request(barrel_name: str, pattern: str, include_values: bool = False) -> bytes:
