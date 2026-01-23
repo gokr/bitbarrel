@@ -48,30 +48,25 @@ task checkExamples, "Compile all examples and benchmarks (verification check) - 
 task checkCompilation, "Run all compilation checks (doc examples, examples, benchmarks)":
   exec """
     echo "=== Checking documentation examples ==="
-    nim c -r tools/check_doc_examples.nim
+    nimble checkDocExamples
     echo ""
     echo "=== Checking examples and benchmarks ==="
-    # Exit on first error
-    set -e
-
-    # Compile all examples (excluding utility modules)
-    # Note: pubsub examples require --path:clients/nim/src to find bitbarrel_client
-    find examples -name "*.nim" -type f | grep -v "pubsub/" | while IFS= read -r file; do
-      echo "Compiling $file..."
-      nim c --verbosity:0 --path:src --path:clients/nim/src "$file"
-    done
-
-    # Compile all benchmarks
-    find bench -name "*.nim" -type f | while IFS= read -r file; do
-      echo "Compiling $file..."
-      nim c --verbosity:0 --path:src "$file"
-    done
-
+    nimble checkExamples
     echo "✓ All compilation checks passed!"
   """
 
 task buildWebAdmin, "Build Flutter webadmin":
   exec "cd webadmin && flutter build web --release"
+
+task buildAll, "Run all build tasks (checkCompilation + buildWebAdmin)":
+  exec """
+    echo "=== Running compilation checks ==="
+    nimble checkCompilation
+    echo ""
+    echo "=== Building webadmin ==="
+    nimble buildWebAdmin
+    echo "✓ All build tasks completed successfully!"
+  """
 
 task test, "Run all tests (automatic discovery via testament)":
   exec """
