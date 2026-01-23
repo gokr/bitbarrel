@@ -89,34 +89,31 @@ func main() {
 ### Example 2: Pub/Sub Messaging with Pattern Matching (Python)
 
 ```python
-import asyncio
 from bitbarrel import BitBarrelClient
 
-async def main():
-    # Connect to server with context manager
-    async with BitBarrelClient("localhost", 9876) as client:
-        await client.use_barrel("chat")
+# Connect to server with context manager
+with BitBarrelClient("localhost", 9876) as client:
+    client.use_barrel("chat")
 
-        # Subscribe to user notification patterns
-        await client.subscribe("user:*:notifications")
+    # Subscribe to user notification patterns
+    client.subscribe("user:*:notifications")
 
-        # Set up message handler
-        def on_message(event):
-            print(f"📨 {event.topic}: {event.payload}")
+    # Set up message handler
+    def on_message(event):
+        print(f"📨 {event.topic}: {event.payload}")
 
-        client.on_message = on_message
+    client.on_message = on_message
 
-        # Start receiving messages in background
-        client.start_event_receiver()
+    # Start receiving messages in background
+    client.start_event_receiver()
 
-        # Publish messages to matching topics
-        await client.publish("user:alice:notifications", "Welcome to the platform!")
-        await client.publish("user:bob:notifications", "You have a new message")
+    # Publish messages to matching topics
+    client.publish("user:alice:notifications", "Welcome to the platform!")
+    client.publish("user:bob:notifications", "You have a new message")
 
-        # Wait for messages to be delivered
-        await asyncio.sleep(0.1)
-
-asyncio.run(main())
+    # Keep connection open briefly to receive messages
+    import time
+    time.sleep(0.1)
 ```
 
 ### Example 3: Graph Traversal with References (TypeScript)
@@ -214,15 +211,16 @@ echo "Successfully stored ", successCount, " products"
 
 # Use iterator for memory-efficient traversal of large datasets
 echo "All products:"
-for (key, value) in client.itemsWithPrefix("product:"):
+var productIter = client.newPrefixIterator("product:", pageSize=100)
+for (key, value) in productIter.items():
   echo "  ", key, " = ", value
 
-# Cursor-based pagination example
+# Cursor-based pagination example (manual control)
 var cursor = ""
 var allPrices: seq[float]
 
 while true:
-  let (items, nextCursor, hasMore) = client.prefixQuery("product:", limit=50, cursor=cursor)
+  let (items, nextCursor, hasMore) = client.prefixQuery("product:", 50, cursor)
 
   for (key, value) in items:
     if key.endsWith(":price"):
