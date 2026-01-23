@@ -1690,14 +1690,14 @@ func TestPublishWithHeaders(t *testing.T) {
 }
 
 func TestWatchKey(t *testing.T) {
-	barrelName := uniqueBarrelName("watch")
+	barrelName := fmt.Sprintf("test_barrel_watch_%d", time.Now().UnixNano())
 	client := NewClient(testServerHost, testServerPort)
 	defer client.Close()
 
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
-	if err := client.CreateBarrel(barrelName); err != nil {
+	if err := client.CreateBarrel(barrelName, ""); err != nil {
 		t.Fatalf("CreateBarrel() error = %v", err)
 	}
 	defer client.DropBarrel(barrelName)
@@ -1706,20 +1706,19 @@ func TestWatchKey(t *testing.T) {
 	}
 
 	topic := "kv:testdb:"
-	subCalled := false
 	eventChannel := make(chan PubSubEvent, 10)
 
 	client.SetMessageHandler(func(event PubSubEvent) {
 		if event.MessageType == MessageTypeKvChange {
 			eventChannel <- event
-			subCalled = true
 		}
 	})
 
-	if err := client.Subscribe(topic); err != nil {
+	subId, err := client.SubscribeSimple(topic)
+	if err != nil {
 		t.Fatalf("Subscribe() error = %v", err)
 	}
-	defer client.Unsubscribe(topic)
+	defer client.Unsubscribe(subId)
 
 	// Watch for key changes
 	pattern := "user:*"
@@ -1748,14 +1747,14 @@ func TestWatchKey(t *testing.T) {
 }
 
 func TestWatchKeyWithValues(t *testing.T) {
-	barrelName := uniqueBarrelName("watch_with_values")
+	barrelName := fmt.Sprintf("test_barrel_watch_values_%d", time.Now().UnixNano())
 	client := NewClient(testServerHost, testServerPort)
 	defer client.Close()
 
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
-	if err := client.CreateBarrel(barrelName); err != nil {
+	if err := client.CreateBarrel(barrelName, ""); err != nil {
 		t.Fatalf("CreateBarrel() error = %v", err)
 	}
 	defer client.DropBarrel(barrelName)
@@ -1772,10 +1771,11 @@ func TestWatchKeyWithValues(t *testing.T) {
 		}
 	})
 
-	if err := client.Subscribe(topic); err != nil {
+	subId, err := client.SubscribeSimple(topic)
+	if err != nil {
 		t.Fatalf("Subscribe() error = %v", err)
 	}
-	defer client.Unsubscribe(topic)
+	defer client.Unsubscribe(subId)
 
 	// Watch with value inclusion
 	pattern := "cache:*"
@@ -1805,14 +1805,14 @@ func TestWatchKeyWithValues(t *testing.T) {
 }
 
 func TestUnwatch(t *testing.T) {
-	barrelName := uniqueBarrelName("unwatch")
+	barrelName := fmt.Sprintf("test_barrel_unwatch_%d", time.Now().UnixNano())
 	client := NewClient(testServerHost, testServerPort)
 	defer client.Close()
 
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Connect() error = %v", err)
 	}
-	if err := client.CreateBarrel(barrelName); err != nil {
+	if err := client.CreateBarrel(barrelName, ""); err != nil {
 		t.Fatalf("CreateBarrel() error = %v", err)
 	}
 	defer client.DropBarrel(barrelName)
@@ -1830,10 +1830,11 @@ func TestUnwatch(t *testing.T) {
 		mu.Unlock()
 	})
 
-	if err := client.Subscribe(topic); err != nil {
+	subId, err := client.SubscribeSimple(topic)
+	if err != nil {
 		t.Fatalf("Subscribe() error = %v", err)
 	}
-	defer client.Unsubscribe(topic)
+	defer client.Unsubscribe(subId)
 
 	// Set up watch
 	pattern := "temp:*"

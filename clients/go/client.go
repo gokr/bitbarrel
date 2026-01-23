@@ -1269,7 +1269,7 @@ func (c *Client) receivePubSubEvent() {
 // patterns use * as wildcard (e.g., "user:*" or "cache:*")
 func (c *Client) Watch(pattern string, includeValues bool) error {
 	if c.currentBarrel == "" {
-		return NoBarrelError("no barrel selected")
+		return ErrNoBarrel
 	}
 
 	watchData, err := EncodeWatchRequest("", pattern, includeValues)
@@ -1277,7 +1277,9 @@ func (c *Client) Watch(pattern string, includeValues bool) error {
 		return err
 	}
 
-	if err = c.sendRequest(CmdWatchKey, "", string(watchData)); err != nil {
+	req := NewRequest(CmdWatchKey, "", string(watchData))
+	_, err = c.sendRequest(req)
+	if err != nil {
 		return err
 	}
 
@@ -1287,7 +1289,7 @@ func (c *Client) Watch(pattern string, includeValues bool) error {
 // Unwatch stops watching a previously registered pattern
 func (c *Client) Unwatch(pattern string) error {
 	if c.currentBarrel == "" {
-		return NoBarrelError("no barrel selected")
+		return ErrNoBarrel
 	}
 
 	watchData, err := EncodeWatchRequest("", pattern, false)
@@ -1295,7 +1297,9 @@ func (c *Client) Unwatch(pattern string) error {
 		return err
 	}
 
-	if err = c.sendRequest(CmdUnwatchKey, "", string(watchData)); err != nil {
+	req := NewRequest(CmdUnwatchKey, "", string(watchData))
+	_, err = c.sendRequest(req)
+	if err != nil {
 		return err
 	}
 
