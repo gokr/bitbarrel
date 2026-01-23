@@ -1334,9 +1334,9 @@ proc handleWebSocketMessage*(
           withLock server.sessionsLock:
             if ws.clientId in server.sessions:
               # Store watch entry: watchId -> (subscriptionId, topicPattern)
-              if session.watches == nil:
-                session.watches = new(Table[string, tuple[subId: string, topic: string]])
-              session.watches[watchId] = (subId: subId, topic: topicPattern)
+              if server.sessions[ws.clientId].watches == nil:
+                server.sessions[ws.clientId].watches = new(Table[string, tuple[subId: string, topic: string]])
+              server.sessions[ws.clientId].watches[watchId] = (subId: subId, topic: topicPattern)
 
           resp.status = statusOk
           resp.value = watchId
@@ -1357,13 +1357,13 @@ proc handleWebSocketMessage*(
         # Find and remove the watch subscription
         var found = false
         withLock server.sessionsLock:
-          if ws.clientId in server.sessions and session.watches != nil:
-            if watchId in session.watches:
-              let watchEntry = session.watches[watchId]
+          if ws.clientId in server.sessions and server.sessions[ws.clientId].watches != nil:
+            if watchId in server.sessions[ws.clientId].watches:
+              let watchEntry = server.sessions[ws.clientId].watches[watchId]
               # Unsubscribe from the Pub/Sub pattern
               discard server.pubSubManager.unsubscribe(ws.clientId, watchEntry.topic)
               # Remove from session
-              session.watches.del(watchId)
+              server.sessions[ws.clientId].watches.del(watchId)
               found = true
 
         if found:
@@ -2054,10 +2054,14 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
         headers["changeType"] = %ord(changeType)
 
         let headerStr = $headers
+        {.gcsafe.}:
+          echo fmt"[DEBUG KvHook] Topic: {topic}, subscribers: {subscribers.len}, value: {payload}"
         for sub in subscribers:
           if sub.options.enableKvEvents:
             let encoded = brokerRef.sendToClient(sub.clientId, topic, mtKvChange,
                                                  payload, headerStr)
+            {.gcsafe.}:
+              echo fmt"[DEBUG KvHook] Sending to client {sub.clientId}, encoded.len: {encoded.len}"
             if encoded.len > 0:
               withLock serverRef[].sessionsLock:
                 if sub.clientId in serverRef[].webSockets:
