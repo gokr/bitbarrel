@@ -51,6 +51,11 @@ type
     extractArrays*: bool      ## Extract array elements individually
     firstOnly*: bool          ## Stop after first result
 
+  BarrelMode* = enum
+    ## Index mode for a barrel
+    bmHash       ## Hash table index with O(1) lookups (default)
+    bmCritBit    ## CritBit tree for ordered keys and range queries
+
 const
   DefaultHost* = "localhost"
   DefaultPort* = 9876.Port
@@ -331,6 +336,23 @@ proc createBarrel*(client: var BitBarrelClient, name: string, config: string = "
   let req = Request(command: cmdCreateBarrel, key: name, value: config)
   let resp = client.sendAndWait(req)
   return resp.status == statusOk
+
+proc createBarrel*(client: var BitBarrelClient, name: string, mode: BarrelMode): bool =
+  ## Create a new barrel on the server with specified mode
+  ##
+  ## Returns true if successful, false if barrel already exists.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.connect()
+  ## discard client.createBarrel("mydb", bmHash)
+  ## discard client.createBarrel("ordered", bmCritBit)
+  ## ```
+  let config = case mode
+    of bmHash: """{"mode": "bmHash"}"""
+    of bmCritBit: """{"mode": "bmCritBit"}"""
+  client.createBarrel(name, config)
 
 proc openBarrel*(client: var BitBarrelClient, name: string): bool =
   ## Open an existing barrel on the server
@@ -1488,7 +1510,8 @@ proc watch*(client: var BitBarrelClient, pattern: string, includeValues = false)
     raise newException(ClientError, "No barrel selected")
 
   let watchData = encodeWatchRequest("", pattern, includeValues)
-  discard client.sendRequest(cmdWatchKey, "", watchData)
+  let req = Request(command: cmdWatchKey, key: "", value: watchData)
+  discard client.sendAndWait(req)
 
 proc unwatch*(client: var BitBarrelClient, pattern: string) =
   ## Stop watching a previously registered pattern.
@@ -1496,5 +1519,6 @@ proc unwatch*(client: var BitBarrelClient, pattern: string) =
     raise newException(ClientError, "No barrel selected")
 
   let watchData = encodeWatchRequest("", pattern, false)
-  discard client.sendRequest(cmdUnwatchKey, "", watchData)
+  let req = Request(command: cmdUnwatchKey, key: "", value: watchData)
+  discard client.sendAndWait(req)
 

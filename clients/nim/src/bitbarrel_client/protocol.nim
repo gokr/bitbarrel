@@ -775,14 +775,13 @@ proc encodePresenceRequest*(req: PresenceRequest): string =
 ## Batch operation encoding/decoding
 
 proc encodeBatchGetRequest*(req: BatchGetRequest): string =
-  ## Encode a batch get request
-  ## Format: ``[type:1=0x26][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Encode a batch get request for use as the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Note: Command byte and sequence should be in the outer Request, not here.
   if req.keys.len > MaxBatchItems:
     raise newException(ProtocolError, "Too many keys in batch get: " & $req.keys.len)
 
-  result = newStringOfCap(1 + 4 + 4)
-  result.writeByte(byte(ord(cmdBatchGet)))
-  result.writeUint32BE(req.seq)
+  result = newStringOfCap(4)
   result.writeUint32BE(uint32(req.keys.len))
 
   for key in req.keys:
@@ -847,14 +846,13 @@ proc decodeBatchGetResponse*(data: string): BatchGetResponse =
     result.results[i].value = readString(data, pos, int(valLen))
 
 proc encodeBatchSetRequest*(req: BatchSetRequest): string =
-  ## Encode a batch set request
-  ## Format: ``[type:1=0x27][seq:4][count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...``
+  ## Encode a batch set request for use as the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N][valLen1:4][val1:M]...``
+  ## Note: Command byte and sequence should be in the outer Request, not here.
   if req.pairs.len > MaxBatchItems:
     raise newException(ProtocolError, "Too many pairs in batch set: " & $req.pairs.len)
 
-  result = newStringOfCap(1 + 4 + 4)
-  result.writeByte(byte(ord(cmdBatchSet)))
-  result.writeUint32BE(req.seq)
+  result = newStringOfCap(4)
   result.writeUint32BE(uint32(req.pairs.len))
 
   for (key, value) in req.pairs:
@@ -920,14 +918,13 @@ proc decodeBatchSetResponse*(data: string): BatchSetResponse =
     result.statuses[i] = readByte(data, pos)
 
 proc encodeBatchDeleteRequest*(req: BatchDeleteRequest): string =
-  ## Encode a batch delete request
-  ## Format: ``[type:1=0x28][seq:4][count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Encode a batch delete request for use as the value field of a Request.
+  ## Format: ``[count:4][keyLen1:2][key1:N]...[keyLenN:2][keyN:M]``
+  ## Note: Command byte and sequence should be in the outer Request, not here.
   if req.keys.len > MaxBatchItems:
     raise newException(ProtocolError, "Too many keys in batch delete: " & $req.keys.len)
 
-  result = newStringOfCap(1 + 4 + 4)
-  result.writeByte(byte(ord(cmdBatchDelete)))
-  result.writeUint32BE(req.seq)
+  result = newStringOfCap(4)
   result.writeUint32BE(uint32(req.keys.len))
 
   for key in req.keys:
