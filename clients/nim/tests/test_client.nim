@@ -6,7 +6,7 @@
 ## Run all tests:
 ##   nim c -r tests/test_client.nim
 
-import std/[unittest, net, strformat, times, random, strutils]
+import std/[unittest, net, strformat, times, random, strutils, os]
 import ../src/bitbarrel_client
 
 const 
@@ -726,7 +726,7 @@ suite "Key Watching":
       client.connect()
 
       # Try watch without selecting a barrel
-      expect NoBarrelError:
+      expect ClientError:
         client.watch("user:*", includeValues=false)
 
     except CatchableError as e:
@@ -742,19 +742,19 @@ suite "Key Watching":
       client.connect()
 
       let barrelName = uniqueBarrelName("watch_test")
-      client.createBarrel(barrelName, bmHash)
-      defer: client.dropBarrel(barrelName)
+      discard client.createBarrel(barrelName, bmHash)
+      defer: discard client.dropBarrel(barrelName)
 
-      client.useBarrel(barrelName)
+      discard client.useBarrel(barrelName)
 
       # Set up message handler
-      client.setMessageHandler(proc(event: PubSubEvent) =
-        events.add(event)
-      )
+      client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+        {.gcsafe.}:
+          events.add(event)
 
       # Subscribe to key events
-      client.subscribe("kv:")
-      defer: client.unsubscribe("kv:")
+      let subId = client.subscribe("kv:")
+      defer: discard client.unsubscribe(subId)
 
       # Watch pattern
       client.watch("user:*", includeValues=false)
@@ -763,7 +763,7 @@ suite "Key Watching":
       sleep(100)
 
       # Set a matching key
-      client.set("user:1", "Alice")
+      discard client.set("user:1", "Alice")
 
       # Wait for event
       sleep(500)
@@ -788,19 +788,19 @@ suite "Key Watching":
       client.connect()
 
       let barrelName = uniqueBarrelName("watch_values_test")
-      client.createBarrel(barrelName, bmHash)
-      defer: client.dropBarrel(barrelName)
+      discard client.createBarrel(barrelName, bmHash)
+      defer: discard client.dropBarrel(barrelName)
 
-      client.useBarrel(barrelName)
+      discard client.useBarrel(barrelName)
 
       # Set up message handler
-      client.setMessageHandler(proc(event: PubSubEvent) =
-        events.add(event)
-      )
+      client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+        {.gcsafe.}:
+          events.add(event)
 
       # Subscribe to key events
-      client.subscribe("kv:")
-      defer: client.unsubscribe("kv:")
+      let subId = client.subscribe("kv:")
+      defer: discard client.unsubscribe(subId)
 
       # Watch with values
       client.watch("cache:*", includeValues=true)
@@ -809,7 +809,7 @@ suite "Key Watching":
       sleep(100)
 
       # Set a matching key
-      client.set("cache:item1", "value1")
+      discard client.set("cache:item1", "value1")
 
       # Wait for event
       sleep(500)
@@ -833,19 +833,19 @@ suite "Key Watching":
       client.connect()
 
       let barrelName = uniqueBarrelName("unwatch_test")
-      client.createBarrel(barrelName, bmHash)
-      defer: client.dropBarrel(barrelName)
+      discard client.createBarrel(barrelName, bmHash)
+      defer: discard client.dropBarrel(barrelName)
 
-      client.useBarrel(barrelName)
+      discard client.useBarrel(barrelName)
 
       # Set up message handler
-      client.setMessageHandler(proc(event: PubSubEvent) =
-        events.add(event)
-      )
+      client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+        {.gcsafe.}:
+          events.add(event)
 
       # Subscribe to key events
-      client.subscribe("kv:")
-      defer: client.unsubscribe("kv:")
+      let subId = client.subscribe("kv:")
+      defer: discard client.unsubscribe(subId)
 
       # Set up watch
       client.watch("temp:*", includeValues=false)
@@ -856,7 +856,7 @@ suite "Key Watching":
       sleep(100)
 
       # Set a key that would match the old pattern
-      client.set("temp:1", "value1")
+      discard client.set("temp:1", "value1")
 
       # Wait to ensure no event comes
       sleep(500)
