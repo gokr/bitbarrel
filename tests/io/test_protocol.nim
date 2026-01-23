@@ -201,6 +201,7 @@ suite "Binary Protocol Tests":
   # Batch operation tests
 
   test "BatchGet request encode/decode roundtrip":
+    # Note: seq is now in outer Request, not in batch value
     let req = BatchGetRequest(
       seq: 1234,
       keys: @["key1", "key2", "key3"]
@@ -208,7 +209,6 @@ suite "Binary Protocol Tests":
     let encoded = encodeBatchGetRequest(req)
     let decoded = decodeBatchGetRequest(encoded)
 
-    check decoded.seq == 1234
     check decoded.keys.len == 3
     check decoded.keys[0] == "key1"
     check decoded.keys[1] == "key2"
@@ -234,6 +234,7 @@ suite "Binary Protocol Tests":
     check decoded.results[2].value == "value3"
 
   test "BatchSet request encode/decode roundtrip":
+    # Note: seq is now in outer Request, not in batch value
     let req = BatchSetRequest(
       seq: 9999,
       pairs: @[("key1", "value1"), ("key2", "value2")]
@@ -241,7 +242,6 @@ suite "Binary Protocol Tests":
     let encoded = encodeBatchSetRequest(req)
     let decoded = decodeBatchSetRequest(encoded)
 
-    check decoded.seq == 9999
     check decoded.pairs.len == 2
     check decoded.pairs[0].key == "key1"
     check decoded.pairs[0].value == "value1"
@@ -263,6 +263,7 @@ suite "Binary Protocol Tests":
     check decoded.statuses[2] == uint8(ord(statusOk))
 
   test "BatchDelete request encode/decode roundtrip":
+    # Note: seq is now in outer Request, not in batch value
     let req = BatchDeleteRequest(
       seq: 2222,
       keys: @["key1", "key2", "key3", "key4"]
@@ -270,7 +271,6 @@ suite "Binary Protocol Tests":
     let encoded = encodeBatchDeleteRequest(req)
     let decoded = decodeBatchDeleteRequest(encoded)
 
-    check decoded.seq == 2222
     check decoded.keys.len == 4
     check decoded.keys[0] == "key1"
     check decoded.keys[1] == "key2"
@@ -292,11 +292,11 @@ suite "Binary Protocol Tests":
     check decoded.statuses[2] == uint8(ord(statusError))
 
   test "BatchGet request with empty keys":
+    # Note: seq is now in outer Request, not in batch value
     let req = BatchGetRequest(seq: 4444, keys: @[])
     let encoded = encodeBatchGetRequest(req)
     let decoded = decodeBatchGetRequest(encoded)
 
-    check decoded.seq == 4444
     check decoded.keys.len == 0
 
   test "Batch operations validate MaxBatchItems limit":
