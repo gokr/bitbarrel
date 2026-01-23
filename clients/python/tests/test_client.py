@@ -540,32 +540,32 @@ class TestKeyWatching:
                 events.append(event)
 
         client.set_message_handler(handler)
+        # Start event receiver to process incoming pub/sub events
+        client.start_event_receiver()
 
-        # Subscribe to kv events
-        topic = "kv:"
-        client.subscribe(topic)
-
-        # Watch for key changes
+        # Watch for key changes (creates subscription internally with enableKvEvents=True)
         pattern = "user:*"
-        client.watch(pattern, include_values=False)
+        watch_result = client.watch(pattern, include_values=False)
+        assert watch_result  # Ensure watch was successful
 
         # Give some time for subscription to register
-        time.sleep(0.1)
+        time.sleep(1.0)
 
         # Set a matching key
         client.set("user:1", "Alice")
 
         # Wait for event
-        time.sleep(0.5)
+        time.sleep(2.0)
 
         # Should have received an event
-        assert len(events) >= 1
+        assert len(events) >= 1, f"Expected key change events but got none. Events: {events}"
         event = events[0]
-        assert event.topic == topic + "user:1"
+        # Topic format: kv:{barrelName}:user:1
+        assert "user:1" in event.topic
         assert event.message_type == PubSubMessageType.mtKvChange
         assert event.payload == ""  # No values included
 
-        client.unsubscribe(topic)
+        client.unwatch(pattern)
 
     def test_watch_with_values(self, client, temp_barrel):
         """Test watch with value inclusion."""
@@ -577,28 +577,27 @@ class TestKeyWatching:
                 events.append(event)
 
         client.set_message_handler(handler)
-
-        topic = "kv:"
-        client.subscribe(topic)
+        client.start_event_receiver()
 
         # Watch with values
         pattern = "cache:*"
-        client.watch(pattern, include_values=True)
+        watch_result = client.watch(pattern, include_values=True)
+        assert watch_result
 
-        time.sleep(0.1)
+        time.sleep(1.0)
 
         # Set a matching key
         client.set("cache:item1", "value1")
 
-        time.sleep(0.5)
+        time.sleep(2.0)
 
         # Check event received with value
-        assert len(events) >= 1
+        assert len(events) >= 1, f"Expected key change events but got none. Events: {events}"
         event = events[0]
-        assert event.topic == topic + "cache:item1"
+        assert "cache:item1" in event.topic
         assert event.payload == "value1"  # Value included
 
-        client.unsubscribe(topic)
+        client.unwatch(pattern)
 
     def test_unwatch(self, client, temp_barrel):
         """Test unwatch functionality."""
@@ -610,27 +609,24 @@ class TestKeyWatching:
                 events.append(event)
 
         client.set_message_handler(handler)
-
-        topic = "kv:"
-        client.subscribe(topic)
+        client.start_event_receiver()
 
         # Set up watch
         pattern = "temp:*"
-        client.watch(pattern, include_values=False)
-        time.sleep(0.1)
+        watch_result = client.watch(pattern, include_values=False)
+        assert watch_result
+        time.sleep(1.0)
 
         # Now unwatch
         client.unwatch(pattern)
-        time.sleep(0.1)
+        time.sleep(1.0)
 
         # Set a key that would match
         client.set("temp:1", "value1")
-        time.sleep(0.5)
+        time.sleep(2.0)
 
         # Should not have received any events
-        assert len(events) == 0
-
-        client.unsubscribe(topic)
+        assert len(events) == 0, f"Expected no events after unwatch but got: {events}"
 
     def test_watch_without_barrel(self, client):
         """Test watch without selecting a barrel raises error."""
