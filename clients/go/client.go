@@ -1266,27 +1266,29 @@ func (c *Client) receivePubSubEvent() {
 // Watch watches for changes to keys matching a pattern via Pub/Sub
 // When keys matching the pattern change (set or delete), you'll receive
 // PubSub events with MessageType KvChange.
-// patterns use * as wildcard (e.g., "user:*" or "cache:*")
-func (c *Client) Watch(pattern string, includeValues bool) error {
+// Patterns use * as wildcard (e.g., "user:*" or "cache:*")
+// Returns the watch ID which can be used with UnwatchById for efficient unwatch.
+func (c *Client) Watch(pattern string, includeValues bool) (string, error) {
 	if c.currentBarrel == "" {
-		return ErrNoBarrel
+		return "", ErrNoBarrel
 	}
 
 	watchData, err := EncodeWatchRequest("", pattern, includeValues)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	req := NewRequest(CmdWatchKey, "", string(watchData))
-	_, err = c.sendRequest(req)
+	resp, err := c.sendRequest(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return resp.Value, nil
 }
 
 // Unwatch stops watching a previously registered pattern
+// This searches for watches by pattern. For more efficient unwatch, use UnwatchById.
 func (c *Client) Unwatch(pattern string) error {
 	if c.currentBarrel == "" {
 		return ErrNoBarrel
@@ -1299,6 +1301,22 @@ func (c *Client) Unwatch(pattern string) error {
 
 	req := NewRequest(CmdUnwatchKey, "", string(watchData))
 	_, err = c.sendRequest(req)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UnwatchById stops watching by the watch ID returned from Watch()
+// This is more efficient than Unwatch which searches by pattern.
+func (c *Client) UnwatchById(watchId string) error {
+	if c.currentBarrel == "" {
+		return ErrNoBarrel
+	}
+
+	req := NewRequest(CmdUnwatchKey, watchId, "")
+	_, err := c.sendRequest(req)
 	if err != nil {
 		return err
 	}
