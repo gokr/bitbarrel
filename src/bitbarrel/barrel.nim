@@ -37,7 +37,8 @@ type
   BarrelObj {.acyclic.} = object
     ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes
     ## when using threaded compaction. CompactController also marked acyclic.
-    path*: string
+    name*: string           # Barrel name (short, without path)
+    path*: string           # Full file path
     dataFile: DataFile
     dataFiles: Table[uint32, DataFile]  # All open files by ID (for multi-file compaction)
     fileId: uint32
@@ -263,6 +264,9 @@ proc openBarrel*(path: string, fileId: uint32 = 1'u32, config: BarrelConfig = de
   result = Barrel()
   result.path = path
   result.fileId = fileId
+
+  # Extract barrel name from path (remove directory and extension)
+  result.name = splitFile(path).name
 
   # Load persisted config if it exists, otherwise use provided config
   let persistedConfig = loadBarrelConfigYaml(path)
@@ -504,7 +508,7 @@ proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
     )
     if barrel.indexAdd(key, entry):
       # Trigger pub/sub k/v change event
-      triggerBarrelHooks(barrel.path, key, pubsub_types.kvSet, value)
+      triggerBarrelHooks(barrel.name, key, pubsub_types.kvSet, value)
       return true
     return false
   except:
@@ -620,7 +624,7 @@ proc delete*(barrel: Barrel, key: string): bool =
     )
     if barrel.indexAdd(key, entry):
       # Trigger pub/sub k/v change event
-      triggerBarrelHooks(barrel.path, key, pubsub_types.kvDelete, "")
+      triggerBarrelHooks(barrel.name, key, pubsub_types.kvDelete, "")
       return true
     return false
   except:
