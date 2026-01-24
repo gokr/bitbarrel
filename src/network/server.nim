@@ -496,101 +496,111 @@ proc handleWebSocketMessage*(
 
   of cmdGet, cmdSet, cmdDelete, cmdExists, cmdCount, cmdListKeys:
     # These require a current barrel
+    # Extract session info while holding lock, then release before operations
+    # This prevents deadlock when KV hooks try to acquire sessionsLock
+    var barrelName = ""
+    var authSess: authjwt.AuthSession
+    var hasBarrel = false
+
     withLock server.sessionsLock:
       if not server.sessions[ws.clientId].hasCurrentBarrel():
         resp.status = statusNoBarrel
       else:
-        let barrelName = server.sessions[ws.clientId].getCurrentBarrel()
-        let barrel = server.registry.getBarrel(barrelName)
+        barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+        authSess = server.sessions[ws.clientId].authSession
+        hasBarrel = true
 
-        if barrel.isNone():
-          resp.status = statusBarrelNotFound
-        else:
-          var wrapper = barrel.get()
-          let authSess = server.sessions[ws.clientId].authSession
+    # Now perform operations outside the lock to avoid deadlock with KV hooks
+    if hasBarrel:
+      let barrel = server.registry.getBarrel(barrelName)
 
-          case req.command:
-          of cmdGet:
-            let start = epochTime()
-            if not authSess.canReadData():
-              resp.status = statusUnauthorized
-              resp.value = "Unauthorized: read access required"
+      if barrel.isNone():
+        resp.status = statusBarrelNotFound
+      else:
+        var wrapper = barrel.get()
+
+        case req.command:
+        of cmdGet:
+          let start = epochTime()
+          if not authSess.canReadData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: read access required"
+          else:
+            let value = wrapperGet(wrapper, req.key)
+            if value.len > 0:
+              server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
+              resp.status = statusOk
+              resp.value = value
             else:
-              let value = wrapperGet(wrapper, req.key)
-              if value.len > 0:
-                server.metrics.recordOperation(opGet, stSuccess, (epochTime() - start) * 1000.0)
-                resp.status = statusOk
-                resp.value = value
-              else:
-                server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
-                resp.status = statusNotFound
+              server.metrics.recordOperation(opGet, stFailure, (epochTime() - start) * 1000.0)
+              resp.status = statusNotFound
 
-          of cmdSet:
-            let start = epochTime()
-            if not authSess.canWriteData():
-              resp.status = statusUnauthorized
-              resp.value = "Unauthorized: write access required"
-            else:
-              # Extract TTL from v1.1 request (via flags byte)
-              let ttl = if (ord(req.flags) and ord(rfHasTtl)) != 0: req.ttl else: -1
-              if wrapperSet(wrapper, req.key, req.value, ttl):
-                server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
-                resp.status = statusOk
-              else:
-                server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
-                resp.status = statusError
-
-          of cmdDelete:
-            let start = epochTime()
-            if not authSess.canWriteData():
-              resp.status = statusUnauthorized
-              resp.value = "Unauthorized: write access required"
-            elif wrapperDelete(wrapper, req.key):
-              server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
+        of cmdSet:
+          let start = epochTime()
+          if not authSess.canWriteData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: write access required"
+          else:
+            # Extract TTL from v1.1 request (via flags byte)
+            let ttl = if (ord(req.flags) and ord(rfHasTtl)) != 0: req.ttl else: -1
+            if wrapperSet(wrapper, req.key, req.value, ttl):
+              server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
               resp.status = statusOk
             else:
-              server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
+              server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
               resp.status = statusError
 
-          of cmdExists:
-            if wrapperExists(wrapper, req.key):
-              resp.status = statusOk
-              resp.value = "true"
-            else:
-              resp.status = statusOk
-              resp.value = "false"
-
-          of cmdCount:
+        of cmdDelete:
+          let start = epochTime()
+          if not authSess.canWriteData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: write access required"
+          elif wrapperDelete(wrapper, req.key):
+            server.metrics.recordOperation(opDelete, stSuccess, (epochTime() - start) * 1000.0)
             resp.status = statusOk
-            resp.value = $wrapperCount(wrapper)
+          else:
+            server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
+            resp.status = statusError
 
-          of cmdListKeys:
-            # TODO: Support pagination via req.value
-            let keys = wrapperListKeys(wrapper)
+        of cmdExists:
+          if wrapperExists(wrapper, req.key):
             resp.status = statusOk
-            resp.value = keys.join(",")
+            resp.value = "true"
+          else:
+            resp.status = statusOk
+            resp.value = "false"
 
-          of cmdPing, cmdCreateBarrel, cmdOpenBarrel, cmdUseBarrel, cmdCloseBarrel, cmdListBarrels, cmdDropBarrel:
-            # These commands are handled at the outer level
-            discard
+        of cmdCount:
+          resp.status = statusOk
+          resp.value = $wrapperCount(wrapper)
 
-          of cmdGetBarrelConfig, cmdSetBarrelConfig, cmdGetBarrelStats:
-            # These commands are handled at the outer level
-            discard
+        of cmdListKeys:
+          # TODO: Support pagination via req.value
+          let keys = wrapperListKeys(wrapper)
+          resp.status = statusOk
+          resp.value = keys.join(",")
 
-          of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount, cmdRangeKeys, cmdPrefixKeys:
-            # These commands are handled at the outer level
-            discard
+        of cmdPing, cmdCreateBarrel, cmdOpenBarrel, cmdUseBarrel, cmdCloseBarrel, cmdListBarrels, cmdDropBarrel:
+          # These commands are handled at the outer level
+          discard
 
-          of cmdBatchGet, cmdBatchSet, cmdBatchDelete:
-            # Batch commands are handled at the outer level
-            discard
+        of cmdGetBarrelConfig, cmdSetBarrelConfig, cmdGetBarrelStats:
+          # These commands are handled at the outer level
+          discard
 
-          of cmdSubscribe, cmdUnsubscribe, cmdPublish, cmdListSubscribers, cmdHistory, cmdListTopics, cmdPresence, cmdWatchKey, cmdUnwatchKey:
-            # Pub/sub commands are handled at the outer level
-            discard
+        of cmdRangeQuery, cmdPrefixQuery, cmdRangeCount, cmdRangeKeys, cmdPrefixKeys:
+          # These commands are handled at the outer level
+          discard
 
-          of cmdTraverse:
+        of cmdBatchGet, cmdBatchSet, cmdBatchDelete:
+          # Batch commands are handled at the outer level
+          discard
+
+        of cmdSubscribe, cmdUnsubscribe, cmdPublish, cmdListSubscribers, cmdHistory, cmdListTopics, cmdPresence, cmdWatchKey, cmdUnwatchKey:
+          # Pub/sub commands are handled at the outer level
+          discard
+
+        of cmdTraverse:
             # Decode traversal request
             try:
               let tReq = decodeTraverseRequest(req.value)
@@ -1234,7 +1244,11 @@ proc handleWebSocketMessage*(
           msgJson["timestamp"] = %msg.timestamp
           msgJson["sequence"] = %msg.sequence
           if msg.headers.string.len > 0 and msg.headers.string != "{}":
-            msgJson["headers"] = %msg.headers.string
+            # Parse headers JSON string to embed as object, not escaped string
+            try:
+              msgJson["headers"] = parseJson(msg.headers.string)
+            except JsonParsingError:
+              msgJson["headers"] = newJObject()
           else:
             msgJson["headers"] = newJObject()
           respArray.add(msgJson)
@@ -1315,6 +1329,8 @@ proc handleWebSocketMessage*(
           # Topic format: kv:{barrelName}:{pattern}
           const KvTopicPrefix = "kv:"
           let topicPattern = KvTopicPrefix & barrelName & ":" & watchReq.pattern
+          {.gcsafe.}:
+            echo fmt"[DEBUG WATCH] Barrel: {barrelName}, pattern: {watchReq.pattern}, topicPattern: {topicPattern}"
 
           # Create Pub/Sub subscription with KV events enabled
           let subOptions = pubsub.SubscriptionOptions(
@@ -1346,25 +1362,53 @@ proc handleWebSocketMessage*(
         resp.value = "Watch error: " & e.msg
 
   of cmdUnwatchKey:
-    ## Stop watching keys by watch ID
+    ## Stop watching keys by watch ID or pattern
     if not server.pubSubEnabled or server.pubSubManager == nil:
       resp.status = statusError
       resp.value = "Pub/sub not enabled"
     else:
       try:
-        let watchId = req.key  # Watch ID passed as key
+        var watchIdsToRemove: seq[string]
+        var targetTopic = ""
 
-        # Find and remove the watch subscription
+        # Support two modes:
+        # 1. If req.key is set, it's a watchId (direct lookup)
+        # 2. If req.key is empty but req.value has data, decode pattern and search
+        if req.key.len > 0:
+          watchIdsToRemove.add(req.key)
+        elif req.value.len > 0:
+          # Decode watch request to get pattern
+          let watchReq = protocol.decodeWatchRequest(req.value)
+          var barrelName = watchReq.barrelName
+          if barrelName.len == 0:
+            withLock server.sessionsLock:
+              if ws.clientId in server.sessions:
+                barrelName = server.sessions[ws.clientId].getCurrentBarrel()
+
+          if barrelName.len > 0:
+            # Build the topic pattern that would have been created
+            const KvTopicPrefix = "kv:"
+            targetTopic = KvTopicPrefix & barrelName & ":" & watchReq.pattern
+
+            # Find watches matching this topic
+            withLock server.sessionsLock:
+              if ws.clientId in server.sessions and server.sessions[ws.clientId].watches != nil:
+                for watchId, watchEntry in server.sessions[ws.clientId].watches.pairs():
+                  if watchEntry.topic == targetTopic:
+                    watchIdsToRemove.add(watchId)
+
+        # Remove the found watches
         var found = false
-        withLock server.sessionsLock:
-          if ws.clientId in server.sessions and server.sessions[ws.clientId].watches != nil:
-            if watchId in server.sessions[ws.clientId].watches:
-              let watchEntry = server.sessions[ws.clientId].watches[watchId]
-              # Unsubscribe from the Pub/Sub pattern
-              discard server.pubSubManager.unsubscribe(ws.clientId, watchEntry.topic)
-              # Remove from session
-              server.sessions[ws.clientId].watches.del(watchId)
-              found = true
+        for watchId in watchIdsToRemove:
+          withLock server.sessionsLock:
+            if ws.clientId in server.sessions and server.sessions[ws.clientId].watches != nil:
+              if watchId in server.sessions[ws.clientId].watches:
+                let watchEntry = server.sessions[ws.clientId].watches[watchId]
+                # Unsubscribe from the Pub/Sub pattern
+                discard server.pubSubManager.unsubscribe(ws.clientId, watchEntry.topic)
+                # Remove from session
+                server.sessions[ws.clientId].watches.del(watchId)
+                found = true
 
         if found:
           resp.status = statusOk
@@ -2066,7 +2110,13 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
               withLock serverRef[].sessionsLock:
                 if sub.clientId in serverRef[].webSockets:
                   let ws = serverRef[].webSockets[sub.clientId]
-                  ws.send(encoded, BinaryMessage)
+                  try:
+                    ws.send(encoded, BinaryMessage)
+                    {.gcsafe.}:
+                      echo fmt"[DEBUG KvHook] WebSocket.send SUCCESS for client {sub.clientId}"
+                  except CatchableError as e:
+                    {.gcsafe.}:
+                      echo fmt"[DEBUG KvHook] WebSocket.send FAILED for client {sub.clientId}: {e.msg}"
     )
 
     managerRef.kvHookId = registerBarrelHook(
