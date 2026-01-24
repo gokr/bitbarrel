@@ -1705,7 +1705,7 @@ func TestWatchKey(t *testing.T) {
 		t.Fatalf("UseBarrel() error = %v", err)
 	}
 
-	topic := "kv:testdb:"
+	topic := "kv:" + barrelName + ":"
 	eventChannel := make(chan PubSubEvent, 10)
 
 	client.SetMessageHandler(func(event PubSubEvent) {
@@ -1722,8 +1722,12 @@ func TestWatchKey(t *testing.T) {
 
 	// Watch for key changes
 	pattern := "user:*"
-	if err := client.Watch(pattern, false); err != nil {
+	watchId, err := client.Watch(pattern, false)
+	if err != nil {
 		t.Fatalf("Watch() error = %v", err)
+	}
+	if watchId == "" {
+		t.Error("Watch() returned empty watch ID")
 	}
 
 	// Wait a bit for subscription to register
@@ -1762,7 +1766,7 @@ func TestWatchKeyWithValues(t *testing.T) {
 		t.Fatalf("UseBarrel() error = %v", err)
 	}
 
-	topic := "kv:testdb:"
+	topic := "kv:" + barrelName + ":"
 	eventChannel := make(chan PubSubEvent, 10)
 
 	client.SetMessageHandler(func(event PubSubEvent) {
@@ -1779,7 +1783,7 @@ func TestWatchKeyWithValues(t *testing.T) {
 
 	// Watch with value inclusion
 	pattern := "cache:*"
-	if err := client.Watch(pattern, true); err != nil {
+	if _, err := client.Watch(pattern, true); err != nil {
 		t.Fatalf("Watch() error = %v", err)
 	}
 
@@ -1820,7 +1824,7 @@ func TestUnwatch(t *testing.T) {
 		t.Fatalf("UseBarrel() error = %v", err)
 	}
 
-	topic := "kv:testdb:"
+	topic := "kv:" + barrelName + ":"
 	eventCalled := false
 	mu := sync.Mutex{}
 
@@ -1838,7 +1842,7 @@ func TestUnwatch(t *testing.T) {
 
 	// Set up watch
 	pattern := "temp:*"
-	if err := client.Watch(pattern, false); err != nil {
+	if _, err := client.Watch(pattern, false); err != nil {
 		t.Fatalf("Watch() error = %v", err)
 	}
 
@@ -1878,7 +1882,7 @@ func TestWatchWithoutBarrel(t *testing.T) {
 
 	// Try to watch without selecting a barrel
 	pattern := "user:*"
-	err := client.Watch(pattern, false)
+	_, err := client.Watch(pattern, false)
 	if err == nil {
 		t.Error("Expected error when watching without a barrel")
 	}
