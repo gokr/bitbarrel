@@ -104,8 +104,14 @@ proc encodeMessage(message: Message): string =
   data["timestamp"] = %message.timestamp
   data["sequence"] = %message.sequence
 
-  if message.headers.string.len > 0:
-    data["headers"] = %message.headers.string
+  if message.headers.string.len > 0 and message.headers.string != "{}":
+    # Parse headers JSON and embed as object, not escaped string
+    try:
+      data["headers"] = parseJson(message.headers.string)
+    except JsonParsingError:
+      data["headers"] = newJObject()
+  else:
+    data["headers"] = newJObject()
 
   result = $data
 
@@ -122,7 +128,14 @@ proc decodeMessage(data: string): Message =
   result.sequence = uint64(jsonNode["sequence"].getBiggestInt())
 
   if "headers" in jsonNode:
-    result.headers = RawJson($jsonNode["headers"])
+    # Handle both object and string format for backward compatibility
+    let h = jsonNode["headers"]
+    if h.kind == JObject:
+      result.headers = RawJson($h)
+    elif h.kind == JString:
+      result.headers = RawJson(h.getStr())
+    else:
+      result.headers = RawJson("{}")
   else:
     result.headers = RawJson("{}")
 
