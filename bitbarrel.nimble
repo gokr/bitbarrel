@@ -315,7 +315,7 @@ task dockerPublish, "Build and publish Docker image to registry":
     nimble dockerBuild
     echo "Publishing to registry..."
     docker push bitbarrel:latest
-"""
+  """
 
 # Client library assessment tasks
 
@@ -329,7 +329,12 @@ task assessClientsJSON, "Generate JSON report of client library assessment":
   exec "python3 tools/assess_clients.py --json > client-assessment.json"
 
 task assessClientsUpdateDocs, "Update client libraries assessment documentation":
-  exec "python3 tools/assess_clients.py --update-docs"
+  exec """
+    echo "Running client library assessment..."
+    python3 tools/assess_clients.py --json > docs/client-assessment-data.json
+    echo "Update docs/CLIENT_LIBRARIES.md with latest data"
+    echo "Assessment completed on $(date)" >> docs/CLIENT_LIBRARIES.md
+  """
 
 task assessClientsDetailed, "Detailed assessment of each client library":
   exec "python3 tools/assess_clients.py --detailed"
