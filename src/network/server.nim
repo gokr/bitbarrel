@@ -1330,13 +1330,14 @@ proc handleWebSocketMessage*(
           const KvTopicPrefix = "kv:"
           let topicPattern = KvTopicPrefix & barrelName & ":" & watchReq.pattern
           {.gcsafe.}:
-            echo fmt"[DEBUG WATCH] Barrel: {barrelName}, pattern: {watchReq.pattern}, topicPattern: {topicPattern}"
+            echo fmt"[DEBUG WATCH] Barrel: {barrelName}, pattern: {watchReq.pattern}, topicPattern: {topicPattern}, includeValues: {watchReq.includeValues}"
 
           # Create Pub/Sub subscription with KV events enabled
           let subOptions = pubsub.SubscriptionOptions(
             enableKvEvents: true,
             enablePresence: false,
-            replayHistory: false
+            replayHistory: false,
+            includeValues: watchReq.includeValues
           )
 
           let subId = server.pubSubManager.subscribe(
@@ -2102,10 +2103,15 @@ proc newServer*(config: ServerConfig): BitBarrelServer =
           echo fmt"[DEBUG KvHook] Topic: {topic}, subscribers: {subscribers.len}, value: {payload}"
         for sub in subscribers:
           if sub.options.enableKvEvents:
+            # Filter payload based on subscriber's includeValues preference
+            var subscriberPayload = payload
+            if not sub.options.includeValues:
+              subscriberPayload = ""  # Don't include value if subscriber disabled it
+
             let encoded = brokerRef.sendToClient(sub.clientId, topic, mtKvChange,
-                                                 payload, headerStr)
+                                                 subscriberPayload, headerStr)
             {.gcsafe.}:
-              echo fmt"[DEBUG KvHook] Sending to client {sub.clientId}, encoded.len: {encoded.len}"
+              echo fmt"[DEBUG KvHook] Sending to client {sub.clientId}, includeValues: {sub.options.includeValues}, payloadLen: {subscriberPayload.len}, encoded.len: {encoded.len}"
             if encoded.len > 0:
               withLock serverRef[].sessionsLock:
                 if sub.clientId in serverRef[].webSockets:
