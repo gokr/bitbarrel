@@ -1,14 +1,14 @@
 # BitBarrel - Bitcask-style Key/Value Store with Extras
 
-BitBarrel is a high-performance key/value database built in Nim, using the Bitcask storage model at the core. Bitcask implies **append only updates** and keeping **keys with file offsets in memory** for really fast one-seek reads. BitBarrel goes beyond this model in several aspects and it can be used both compiled-in similar to Sqlite or as a traditional network server using a native threading model.
+BitBarrel is a high-performance key/value database built in Nim, using the Bitcask storage model at the core. Bitcask is based on **append-only updates on disk** and keeping **keys with file offsets in memory** for fast one-seek reads. BitBarrel expands on this model in several aspects and can be used both as a library similar to Sqlite or as a traditional multithreaded network server using a binary websocket protocol.
 
-BitBarrel offers fast writes, efficient reads, and robust crash recovery. It offers a mix of key/value benefits (fast), range queries, batch operations, JSON document features like server side graph traversal, TTL support per key and last but not least - a builtin pubsub system including watchable keys. Given that it uses websockets it can also be used directly from frontends.
+BitBarrel offers fast writes, efficient reads, and robust crash recovery. It has a mix of key/value benefits (fast), range queries, batch operations, JSON document features like server side graph traversal, TTL support per key and last but not least - a builtin pubsub system including watchable keys. Given that it uses websockets it can also be used directly from frontends.
 
 **Some Features:**
 - Three index modes: hash‑based (O(1)), sorted CritBit trees (range queries), and two‑tier partitioned indexes for massive datasets
 - Cursor-based pagination for efficient range queries and prefix searches without offset overhead
 - Non-blocking background thread compaction — writes continue uninterrupted during background compaction
-- Network enabled with WebSockets and basic REST APIs, plus clients for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig
+- WebSocket based client libraries for Nim, Go, Dart/Flutter, Python, TypeScript, C, and Zig
 - JWT authentication with role-based access control (admin, readwrite, readonly) for secure network access
 - Web Admin UI written in Flutter using the Dart client library
 - Simple to use Docker container including Web Admin UI
