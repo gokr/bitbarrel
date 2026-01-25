@@ -104,7 +104,7 @@ Sync Mode: sync
 ```
 
 ### Barrel API
-```nim
+```nim.compilable
 import bitbarrel
 
 var barrel = openBarrel("data.db")
