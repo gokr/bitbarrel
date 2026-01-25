@@ -111,7 +111,10 @@ Hooks receive four parameters:
 
 Filter results to only include values containing specific keywords:
 
-```nim
+```nim.compilable
+import hooks/query_result_hooks
+import std/[sequtils, strutils]
+
 proc filterByKeyword(metadata: HookMetadata,
                      items: var seq[(string, string)],
                      nextCursor: var string,
