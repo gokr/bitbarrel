@@ -280,7 +280,7 @@ docker run -d --name bitbarrel -p 8080:8080 -v bitbarrel-data:/data ghcr.io/gokr
 - [Examples Directory](examples/README.md) - Runnable example programs
 
 ### Advanced Features
-- [Features Overview](FEATURES.md) - Barrel modes, compression, networking, and more
+- [Features Overview](docs/FEATURES/) - Barrel modes, compression, networking, and more
 - [Pub/Sub Messaging](docs/USER_GUIDE/pubsub.md) - Real-time messaging guide
 - [Network Guide](docs/networking-guide.md) - Client/server setup with JWT auth
 - [Configuration Guide](docs/USER_GUIDE/configuration.md) - Tuning for your use case

@@ -78,7 +78,7 @@ Total: 35 bytes fixed + key length variable
 ### Core Module
 Hint files are implemented in `src/storage/hintfile.nim`:
 
-```nim
+```nim.compilable
 type
   HintHeader* = object
     magic*: array[4, char]      # "HINT"
