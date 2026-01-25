@@ -17,6 +17,9 @@ from .errors import (
     InvalidRequestError,
     ServerError,
 )
+from .protocol import (
+    PubSubMessageType,
+)
 from .helpers import (
     paginate_range_result,
     iterate_range,
@@ -41,6 +44,7 @@ __all__ = [
     "BarrelNotFoundError",
     "InvalidRequestError",
     "ServerError",
+    "PubSubMessageType",
     "paginate_range_result",
     "iterate_range",
     "get_all_with_prefix",

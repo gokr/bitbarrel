@@ -6,8 +6,7 @@ These tests require a BitBarrel server running on localhost:9876 with pub/sub en
 import time
 import threading
 import pytest
-from bitbarrel import Client
-from bitbarrel.protocol import PubSubMessageType
+from bitbarrel import Client, PubSubMessageType
 
 
 def is_server_available():
