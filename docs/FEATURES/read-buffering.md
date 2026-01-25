@@ -187,21 +187,24 @@ Monitor cache statistics:
 ## API Reference
 
 ### Read Buffer API (`src/storage/readbuffer.nim`)
-```nim
+```nim.compilable
+import storage/readbuffer
+import std/options
+
 # Create a read buffer
-var buffer = newReadBuffer(maxSize = 10000, maxMemory = 256 * 1024 * 1024)
+var buffer = initReadBuffer(maxSize = 10000, maxMemory = 256 * 1024 * 1024)
 
 # Store data in cache
 buffer.put(fileId = 1'u32, offset = 1024'u64, data = "cached value")
 
 # Retrieve from cache
 let cached = buffer.get(fileId = 1'u32, offset = 1024'u64)
-if cached.isSome:
+if cached.isSome():
   echo "Cache hit: ", cached.get()
 
 # Get statistics
 let stats = buffer.getStats()
-echo "Hits: ", stats.hits, " Misses: ", stats.misses, " Hit rate: ", stats.hitRate
+echo "Hits: ", stats.hits, " Misses: ", stats.misses
 
 # Clear cache
 buffer.clear()
