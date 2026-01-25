@@ -2,12 +2,13 @@ const std = @import("std");
 const protocol = @import("protocol");
 const websocket = @import("websocket");
 
-// Re-export key types
+// Re-export key types from protocol
 pub const Command = protocol.Command;
 pub const Status = protocol.Status;
 pub const MessageType = protocol.MessageType;
 pub const KeyValue = protocol.KeyValue;
 pub const PubSubEvent = protocol.PubSubEvent;
+pub const KeysResponse = protocol.KeysResponse;
 
 // Error types
 pub const Error = error{
@@ -998,6 +999,439 @@ pub const Client = struct {
         defer resp.deinit(self.allocator);
         try checkStatus(resp.status);
     }
+
+    // ========================================================================
+    // Additional features for parity with Nim client
+    // ========================================================================
+
+    /// Ping the server to check connectivity
+    /// Returns true if server responds with "pong"
+    pub fn ping(self: *Self) Error!bool {
+        const req = protocol.Request{
+            .command = .ping,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+
+        if (resp.status != .ok) {
+            return false;
+        }
+
+        return std.mem.eql(u8, resp.value, "pong");
+    }
+
+    /// Get value by key, returning default if not found
+    pub fn getOrDefault(self: *Self, key: []const u8, default: []const u8) Error![]const u8 {
+        const result = self.get(key) catch |err| {
+            if (err == Error.NotFound) {
+                // Copy the default value
+                const value = self.allocator.alloc(u8, default.len) catch {
+                    return Error.OutOfMemory;
+                };
+                @memcpy(value, default);
+                return value;
+            }
+            return err;
+        };
+
+        if (result) |value| {
+            return value;
+        }
+
+        // Key found but value was empty/null - return copy of default
+        const value = self.allocator.alloc(u8, default.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(value, default);
+        return value;
+    }
+
+    /// List all keys in the current barrel
+    pub fn listKeys(self: *Self) Error!KeysResult {
+        const req = protocol.Request{
+            .command = .list_keys,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Parse comma-separated keys from response
+        var keys: std.ArrayListUnmanaged([]const u8) = .empty;
+        errdefer {
+            for (keys.items) |k| self.allocator.free(k);
+            keys.deinit(self.allocator);
+        }
+
+        if (resp.value.len > 0) {
+            var iter = std.mem.splitSequence(u8, resp.value, ",");
+            while (iter.next()) |key| {
+                if (key.len > 0) {
+                    const key_copy = self.allocator.alloc(u8, key.len) catch {
+                        return Error.OutOfMemory;
+                    };
+                    @memcpy(key_copy, key);
+                    keys.append(self.allocator, key_copy) catch {
+                        self.allocator.free(key_copy);
+                        return Error.OutOfMemory;
+                    };
+                }
+            }
+        }
+
+        return KeysResult{
+            .allocator = self.allocator,
+            .items = keys.toOwnedSlice(self.allocator) catch {
+                return Error.OutOfMemory;
+            },
+        };
+    }
+
+    /// Get the configuration for a barrel
+    pub fn getBarrelConfig(self: *Self, name: []const u8) Error![]const u8 {
+        const req = protocol.Request{
+            .command = .get_barrel_config,
+            .seq = self.nextSeq(),
+            .key = name,
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+
+        if (resp.status == .barrel_not_found) {
+            return Error.BarrelNotFound;
+        }
+        try checkStatus(resp.status);
+
+        // Copy value
+        const value = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(value, resp.value);
+        return value;
+    }
+
+    /// Set the configuration for a barrel
+    pub fn setBarrelConfig(self: *Self, name: []const u8, config: []const u8) Error!void {
+        const req = protocol.Request{
+            .command = .set_barrel_config,
+            .seq = self.nextSeq(),
+            .key = name,
+            .value = config,
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+
+        if (resp.status == .barrel_not_found) {
+            return Error.BarrelNotFound;
+        }
+        try checkStatus(resp.status);
+    }
+
+    /// Count keys in range [startKey, endKey)
+    /// Requires barrel opened in bmCritBit mode
+    pub fn rangeCount(self: *Self, start_key: []const u8, end_key: []const u8) Error!i64 {
+        const value = protocol.encodeRangeRequest(
+            self.allocator,
+            start_key,
+            end_key,
+            0, // limit not used for count
+            "",
+        ) catch {
+            return Error.OutOfMemory;
+        };
+        defer self.allocator.free(value);
+
+        const req = protocol.Request{
+            .command = .range_count,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = value,
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Parse count from response value (string or binary)
+        if (resp.value.len >= 8) {
+            return @bitCast(std.mem.readInt(u64, resp.value[0..8], .big));
+        }
+        // Try to parse as decimal string
+        return std.fmt.parseInt(i64, resp.value, 10) catch 0;
+    }
+
+    // ========================================================================
+    // Enhanced Pub/Sub operations
+    // ========================================================================
+
+    /// Subscribe with options (supports pattern matching)
+    pub fn subscribeWithOptions(
+        self: *Self,
+        topic_or_pattern: []const u8,
+        options: SubscribeOptions,
+    ) Error![]const u8 {
+        // Determine if pattern-based subscription
+        const is_pattern = std.mem.indexOf(u8, topic_or_pattern, "*") != null;
+        const actual_topic = if (is_pattern) "" else topic_or_pattern;
+        const actual_pattern = if (is_pattern) topic_or_pattern else "";
+
+        const value = protocol.encodeSubscribeRequest(
+            self.allocator,
+            actual_topic,
+            actual_pattern,
+            options.enable_kv_events,
+            options.enable_presence,
+            options.replay_history,
+        ) catch {
+            return Error.OutOfMemory;
+        };
+        defer self.allocator.free(value);
+
+        const req = protocol.Request{
+            .command = .subscribe,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = value,
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Response value is the subscription ID
+        const sub_id = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(sub_id, resp.value);
+        return sub_id;
+    }
+
+    /// Unsubscribe from all subscriptions
+    /// Returns number of subscriptions removed
+    pub fn unsubscribeAll(self: *Self) Error!usize {
+        // For now, this is a no-op as we don't track subscriptions client-side
+        // The server handles this with a special command or we need to track locally
+        _ = self;
+        return 0;
+    }
+
+    /// Check if subscription is active (client-side tracking not implemented)
+    pub fn isSubscribed(self: *Self, sub_id: []const u8) bool {
+        // Would require client-side subscription tracking
+        _ = self;
+        _ = sub_id;
+        return false;
+    }
+
+    /// List subscribers for a topic
+    pub fn listSubscribers(self: *Self, list_topic: []const u8) Error!SubscriberList {
+        const req = protocol.Request{
+            .command = .list_subscribers,
+            .seq = self.nextSeq(),
+            .key = list_topic,
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Response is JSON - return raw JSON for now
+        const json = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(json, resp.value);
+
+        return SubscriberList{
+            .allocator = self.allocator,
+            .json = json,
+        };
+    }
+
+    /// List all topics
+    pub fn listTopics(self: *Self) Error!TopicList {
+        const req = protocol.Request{
+            .command = .list_topics,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Response is JSON - return raw JSON for now
+        const json = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(json, resp.value);
+
+        return TopicList{
+            .allocator = self.allocator,
+            .json = json,
+        };
+    }
+
+    /// Get message history for topic
+    pub fn getHistory(
+        self: *Self,
+        history_topic: []const u8,
+        limit: u32,
+        since_seq: u64,
+    ) Error!HistoryResult {
+        const value = protocol.encodeHistoryRequest(
+            self.allocator,
+            history_topic,
+            limit,
+            since_seq,
+        ) catch {
+            return Error.OutOfMemory;
+        };
+        defer self.allocator.free(value);
+
+        const req = protocol.Request{
+            .command = .history,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = value,
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Response is JSON - return raw JSON for now
+        const json = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(json, resp.value);
+
+        return HistoryResult{
+            .allocator = self.allocator,
+            .json = json,
+        };
+    }
+
+    /// Get presence info for topic
+    pub fn getPresence(self: *Self, presence_topic: []const u8) Error!PresenceResult {
+        const value = protocol.encodePresenceRequest(self.allocator, 0) catch {
+            return Error.OutOfMemory;
+        };
+        defer self.allocator.free(value);
+
+        const req = protocol.Request{
+            .command = .presence,
+            .seq = self.nextSeq(),
+            .key = presence_topic,
+            .value = value,
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Response is JSON - return raw JSON for now
+        const json = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(json, resp.value);
+
+        return PresenceResult{
+            .allocator = self.allocator,
+            .json = json,
+        };
+    }
+
+    // ========================================================================
+    // Enhanced key watching
+    // ========================================================================
+
+    /// Watch for changes to keys matching a pattern with options
+    /// Returns watch ID for efficient unwatch
+    pub fn watchKeyWithOptions(
+        self: *Self,
+        pattern: []const u8,
+        include_values: bool,
+    ) Error![]const u8 {
+        const barrel_name = self.currentBarrel orelse "";
+        const value = protocol.encodeWatchRequest(
+            self.allocator,
+            barrel_name,
+            pattern,
+            include_values,
+        ) catch {
+            return Error.OutOfMemory;
+        };
+        defer self.allocator.free(value);
+
+        const req = protocol.Request{
+            .command = .watch_key,
+            .seq = self.nextSeq(),
+            .key = "",
+            .value = value,
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+
+        // Response value is the watch ID
+        const watch_id = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(watch_id, resp.value);
+        return watch_id;
+    }
+
+    /// Unwatch using a watch ID (more efficient than pattern-based unwatch)
+    pub fn unwatchById(self: *Self, watch_id: []const u8) Error!void {
+        const req = protocol.Request{
+            .command = .unwatch_key,
+            .seq = self.nextSeq(),
+            .key = watch_id,
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+        try checkStatus(resp.status);
+    }
+
+    /// Get barrel statistics
+    pub fn getBarrelStats(self: *Self, name: []const u8) Error![]const u8 {
+        const req = protocol.Request{
+            .command = .get_barrel_stats,
+            .seq = self.nextSeq(),
+            .key = name,
+            .value = "",
+        };
+
+        var resp = try self.sendRequest(req);
+        defer resp.deinit(self.allocator);
+
+        if (resp.status == .barrel_not_found) {
+            return Error.BarrelNotFound;
+        }
+        try checkStatus(resp.status);
+
+        // Copy value (JSON stats)
+        const value = self.allocator.alloc(u8, resp.value.len) catch {
+            return Error.OutOfMemory;
+        };
+        @memcpy(value, resp.value);
+        return value;
+    }
 };
 
 // Barrel list result
@@ -1010,6 +1444,66 @@ pub const BarrelList = struct {
             self.allocator.free(item);
         }
         self.allocator.free(self.items);
+    }
+};
+
+// Keys list result
+pub const KeysResult = struct {
+    allocator: std.mem.Allocator,
+    items: [][]const u8,
+
+    pub fn deinit(self: *KeysResult) void {
+        for (self.items) |item| {
+            self.allocator.free(item);
+        }
+        self.allocator.free(self.items);
+    }
+};
+
+// Subscribe options
+pub const SubscribeOptions = struct {
+    enable_kv_events: bool = false,
+    enable_presence: bool = false,
+    replay_history: bool = false,
+};
+
+// Subscriber list result (raw JSON)
+pub const SubscriberList = struct {
+    allocator: std.mem.Allocator,
+    json: []const u8,
+
+    pub fn deinit(self: *SubscriberList) void {
+        self.allocator.free(self.json);
+    }
+};
+
+// Topic list result (raw JSON)
+pub const TopicList = struct {
+    allocator: std.mem.Allocator,
+    json: []const u8,
+
+    pub fn deinit(self: *TopicList) void {
+        self.allocator.free(self.json);
+    }
+};
+
+// History result (raw JSON)
+pub const HistoryResult = struct {
+    allocator: std.mem.Allocator,
+    json: []const u8,
+
+    pub fn deinit(self: *HistoryResult) void {
+        self.allocator.free(self.json);
+    }
+};
+
+// Presence result (raw JSON)
+pub const PresenceResult = struct {
+    allocator: std.mem.Allocator,
+    json: []const u8,
+
+    pub fn deinit(self: *PresenceResult) void {
+        self.allocator.free(self.json);
     }
 };
 

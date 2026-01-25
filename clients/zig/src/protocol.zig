@@ -769,6 +769,17 @@ pub fn encodeHistoryRequest(
     return buf;
 }
 
+// Presence request encoding
+// Format: [operation:1]
+pub fn encodePresenceRequest(
+    allocator: std.mem.Allocator,
+    operation: u8,
+) ![]u8 {
+    var buf = try allocator.alloc(u8, 1);
+    buf[0] = operation;
+    return buf;
+}
+
 // Convert status to error
 pub fn statusToError(status: Status) ?anyerror {
     return switch (status) {
