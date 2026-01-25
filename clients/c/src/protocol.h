@@ -56,6 +56,10 @@ typedef enum {
     CMD_LIST_TOPICS = 0x45,
     CMD_PRESENCE = 0x46,
 
+    // Key watching commands
+    CMD_WATCH_KEY = 0x60,
+    CMD_UNWATCH_KEY = 0x61,
+
     // Pub/Sub events (response only)
     CMD_PUBSUB_EVENT = 0xFF
 } CommandType;

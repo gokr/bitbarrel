@@ -288,11 +288,41 @@ static BBResult send_request(BBClient* client, const ProtocolRequest* req,
         return BB_CONNECTION_ERROR;
     }
 
-    // Receive response
+    // Skip pub/sub events that arrive before the response
     uint8_t* response_data = NULL;
-    ssize_t response_len = ws_recv_binary(client->ws, &response_data, timeout_ms);
-    if (response_len <= 0) {
-        strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+    ssize_t response_len = 0;
+    int max_attempts = 10;  // Prevent infinite loop
+
+    while (max_attempts-- > 0) {
+        response_data = NULL;
+        response_len = ws_recv_binary(client->ws, &response_data, timeout_ms);
+        if (response_len <= 0) {
+            // Check if connection was closed
+            if (!ws_is_connected(client->ws)) {
+                const char* ws_error = ws_get_error(client->ws);
+                snprintf(client->last_error, sizeof(client->last_error), "Connection closed: %s", ws_error);
+            } else {
+                const char* ws_error = ws_get_error(client->ws);
+                snprintf(client->last_error, sizeof(client->last_error), "Receive error: %s", ws_error);
+            }
+            pthread_mutex_unlock(&client->request_lock);
+            return BB_CONNECTION_ERROR;
+        }
+
+        // Skip pub/sub events (command byte 0xFF)
+        if (is_pubsub_event(response_data, response_len)) {
+            free(response_data);
+            response_data = NULL;
+            continue;
+        }
+
+        // This is a regular response
+        break;
+    }
+
+    if (max_attempts == 0) {
+        if (response_data) free(response_data);
+        strncpy(client->last_error, "Too many events before response", sizeof(client->last_error) - 1);
         pthread_mutex_unlock(&client->request_lock);
         return BB_TIMEOUT;
     }

@@ -729,6 +729,8 @@ suite "Key Watching":
       expect ClientError:
         discard client.watch("user:*", includeValues=false)
 
+    except AssertionError, AssertionDefect:
+      raise  # Test assertion failure, not a server issue
     except CatchableError:
       skip()  # Server not available
 
@@ -775,6 +777,8 @@ suite "Key Watching":
       check event.messageType == mtKvChange
       check event.payload == ""
 
+    except AssertionError, AssertionDefect:
+      raise  # Test assertion failure, not a server issue
     except CatchableError:
       skip()  # Server not available
 
@@ -820,6 +824,8 @@ suite "Key Watching":
       check event.topic.contains("cache:item1")
       check event.payload == "value1"
 
+    except AssertionError, AssertionDefect:
+      raise  # Test assertion failure, not a server issue
     except CatchableError:
       skip()  # Server not available
 
@@ -864,5 +870,7 @@ suite "Key Watching":
       # Should not have received any events
       check events.len == 0
 
+    except AssertionError, AssertionDefect:
+      raise  # Test assertion failure, not a server issue
     except CatchableError:
       skip()  # Server not available

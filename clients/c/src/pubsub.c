@@ -381,32 +381,373 @@ void bb_free_message(BBMessage* msg) {
     free(msg);
 }
 
+// Buffered event structure (must match the one in bitbarrel.c)
+typedef struct BufferedEvent {
+    char* topic;
+    char* data;
+    struct BufferedEvent* next;
+} BufferedEvent;
+
+// Helper to receive response, buffering any pub/sub events that arrive first.
+// Callback is called after response is received with buffered events.
+static BBResult recv_response_and_buffer_events(BBClient* client, uint8_t** response_data,
+                                                  ssize_t* response_len, BufferedEvent** events) {
+    *events = NULL;
+    *response_data = NULL;
+    *response_len = 0;
+
+    int max_attempts = 10;  // Prevent infinite loop
+
+    while (max_attempts-- > 0) {
+        *response_data = NULL;
+        *response_len = ws_recv_binary(client->ws, response_data, client->config.timeout_ms);
+
+        if (*response_len <= 0) {
+            // Free buffered events
+            while (*events) {
+                BufferedEvent* ev = *events;
+                *events = ev->next;
+                free(ev->topic);
+                if (ev->data) free(ev->data);
+                free(ev);
+            }
+            strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+            return BB_TIMEOUT;
+        }
+
+        // Check if this is a pub/sub event (command byte 0xFF)
+        if (is_pubsub_event(*response_data, *response_len)) {
+            // Pub/Sub event format:
+            // [cmd:1=0xFF][seq:4][topicLen:2][topic:N][msgType:1][seq:8][ts:8][headersLen:4][headers:M][payloadLen:4][payload:P]
+
+            size_t offset = 1;  // Skip command byte 0xFF
+            offset += 4;  // Skip 4-byte sequence placeholder
+
+            // Parse topic length (2 bytes, big-endian)
+            if (offset + 2 > (size_t)*response_len) {
+                free(*response_data);
+                continue;
+            }
+            uint16_t topic_len = ((*response_data)[offset] << 8) | (*response_data)[offset + 1];
+            offset += 2;
+
+            // Parse topic
+            if (offset + topic_len > (size_t)*response_len) {
+                free(*response_data);
+                continue;
+            }
+            char* topic_buf = malloc(topic_len + 1);
+            if (!topic_buf) {
+                free(*response_data);
+                continue;
+            }
+            memcpy(topic_buf, *response_data + offset, topic_len);
+            topic_buf[topic_len] = '\0';
+            offset += topic_len;
+
+            // Skip msgType (1), seq (8), ts (8)
+            offset += 1 + 8 + 8;
+
+            // Parse headers length (4 bytes, big-endian)
+            if (offset + 4 > (size_t)*response_len) {
+                free(topic_buf);
+                free(*response_data);
+                continue;
+            }
+            uint32_t headers_len = ((uint32_t)(*response_data)[offset] << 24) |
+                                   ((uint32_t)(*response_data)[offset + 1] << 16) |
+                                   ((uint32_t)(*response_data)[offset + 2] << 8) |
+                                   (*response_data)[offset + 3];
+            offset += 4;
+            offset += headers_len;
+
+            // Parse payload length (4 bytes, big-endian)
+            if (offset + 4 > (size_t)*response_len) {
+                free(topic_buf);
+                free(*response_data);
+                continue;
+            }
+            uint32_t payload_len = ((uint32_t)(*response_data)[offset] << 24) |
+                                   ((uint32_t)(*response_data)[offset + 1] << 16) |
+                                   ((uint32_t)(*response_data)[offset + 2] << 8) |
+                                   (*response_data)[offset + 3];
+            offset += 4;
+
+            // Parse payload
+            char* payload_buf = NULL;
+            if (offset + payload_len <= (size_t)*response_len && payload_len > 0) {
+                payload_buf = malloc(payload_len + 1);
+                if (payload_buf) {
+                    memcpy(payload_buf, *response_data + offset, payload_len);
+                    payload_buf[payload_len] = '\0';
+                }
+            }
+
+            // Add event to buffered list
+            BufferedEvent* ev = malloc(sizeof(BufferedEvent));
+            if (ev) {
+                ev->topic = topic_buf;
+                ev->data = payload_buf;
+                ev->next = NULL;
+                if (!*events) {
+                    *events = ev;
+                } else {
+                    // Find tail - simple approach, could be optimized
+                    BufferedEvent* curr = *events;
+                    while (curr->next) curr = curr->next;
+                    curr->next = ev;
+                }
+            } else {
+                free(topic_buf);
+                if (payload_buf) free(payload_buf);
+            }
+
+            free(*response_data);
+            *response_data = NULL;
+            *response_len = 0;
+            // Continue to read next message
+            continue;
+        }
+
+        // This is a regular response
+        return BB_OK;
+    }
+
+    // Too many attempts
+    while (*events) {
+        BufferedEvent* ev = *events;
+        *events = ev->next;
+        free(ev->topic);
+        if (ev->data) free(ev->data);
+        free(ev);
+    }
+    if (*response_data) free(*response_data);
+    *response_data = NULL;
+    strncpy(client->last_error, "Too many events before response", sizeof(client->last_error) - 1);
+    return BB_TIMEOUT;
+}
+
+// Helper to process buffered events
+static void process_buffered_events(BBClient* client, BufferedEvent* events) {
+    if (!events || !client->message_callback) return;
+
+    pthread_mutex_lock(&client->callback_lock);
+    BufferedEvent* ev = events;
+    while (ev) {
+        BBMessage msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.topic = ev->topic;
+        msg.data = ev->data ? ev->data : "";
+        msg.timestamp = 0;
+
+        client->message_callback(&msg, client->callback_userdata);
+        ev = ev->next;
+    }
+    pthread_mutex_unlock(&client->callback_lock);
+}
+
+// Helper to free buffered events
+static void free_buffered_events(BufferedEvent* events) {
+    while (events) {
+        BufferedEvent* ev = events;
+        events = ev->next;
+        free(ev->topic);
+        if (ev->data) free(ev->data);
+        free(ev);
+    }
+}
+
 BBResult bb_watch_key(BBClient* client, const char* pattern) {
     if (!client || !pattern) return BB_ERROR;
 
-    // Key watching uses subscribe with pattern
+    // Get current barrel name
+    const char* barrel_name = client->current_barrel ? client->current_barrel : "";
+    size_t barrel_len = strlen(barrel_name);
+    size_t pattern_len = strlen(pattern);
+
+    // Watch request payload format: [barrelLen:2][barrel][patternLen:2][pattern][options:1]
+    size_t payload_len = 2 + barrel_len + 2 + pattern_len + 1;
+
     uint8_t buffer[BUFFER_SIZE];
     size_t offset = 0;
+    uint32_t seq = client->next_seq++;
 
-    buffer[offset++] = CMD_SUBSCRIBE;
-    buffer[offset++] = 1;  // Pattern mode
+    // Command
+    buffer[offset++] = CMD_WATCH_KEY;
 
-    size_t pattern_len = strlen(pattern);
+    // Sequence (4 bytes, big-endian)
+    buffer[offset++] = (seq >> 24) & 0xFF;
+    buffer[offset++] = (seq >> 16) & 0xFF;
+    buffer[offset++] = (seq >> 8) & 0xFF;
+    buffer[offset++] = seq & 0xFF;
+
+    // Flags (1 byte)
+    buffer[offset++] = 0;
+
+    // Key length (2 bytes) - empty key for watch
+    buffer[offset++] = 0;
+    buffer[offset++] = 0;
+
+    // Value length (4 bytes, big-endian)
+    buffer[offset++] = (payload_len >> 24) & 0xFF;
+    buffer[offset++] = (payload_len >> 16) & 0xFF;
+    buffer[offset++] = (payload_len >> 8) & 0xFF;
+    buffer[offset++] = payload_len & 0xFF;
+
+    // Payload: barrel name length (2 bytes, big-endian)
+    buffer[offset++] = (barrel_len >> 8) & 0xFF;
+    buffer[offset++] = barrel_len & 0xFF;
+
+    // Payload: barrel name
+    memcpy(buffer + offset, barrel_name, barrel_len);
+    offset += barrel_len;
+
+    // Payload: pattern length (2 bytes, big-endian)
+    buffer[offset++] = (pattern_len >> 8) & 0xFF;
+    buffer[offset++] = pattern_len & 0xFF;
+
+    // Payload: pattern
     memcpy(buffer + offset, pattern, pattern_len);
     offset += pattern_len;
-    buffer[offset++] = 0;  // Null terminator
 
+    // Payload: options (1 = include values, 0 = keys only)
+    buffer[offset++] = 0;  // Default: keys only
+
+    // Send request
     if (ws_send_binary(client->ws, buffer, offset) < 0) {
+        strncpy(client->last_error, ws_get_error(client->ws), sizeof(client->last_error) - 1);
         return BB_CONNECTION_ERROR;
     }
 
-    return BB_OK;
+    // Receive response, skipping any pub/sub events
+    uint8_t* response_data = NULL;
+    ssize_t response_len = 0;
+    int max_attempts = 10;
+
+    while (max_attempts-- > 0) {
+        response_data = NULL;
+        response_len = ws_recv_binary(client->ws, &response_data, client->config.timeout_ms);
+        if (response_len <= 0) {
+            strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+            return BB_TIMEOUT;
+        }
+        // Skip pub/sub events
+        if (is_pubsub_event(response_data, response_len)) {
+            free(response_data);
+            response_data = NULL;
+            continue;
+        }
+        break;
+    }
+
+    if (max_attempts == 0 || !response_data) {
+        if (response_data) free(response_data);
+        strncpy(client->last_error, "Too many events before response", sizeof(client->last_error) - 1);
+        return BB_TIMEOUT;
+    }
+
+    // Parse response
+    uint8_t status = response_data[0];
+    free(response_data);
+
+    return (status == STATUS_OK) ? BB_OK : BB_ERROR;
 }
 
 BBResult bb_unwatch_key(BBClient* client, const char* pattern) {
     if (!client || !pattern) return BB_ERROR;
 
-    return bb_unsubscribe(client, pattern);
+    // Get current barrel name
+    const char* barrel_name = client->current_barrel ? client->current_barrel : "";
+    size_t barrel_len = strlen(barrel_name);
+    size_t pattern_len = strlen(pattern);
+
+    // Unwatch request payload format: [barrelLen:2][barrel][patternLen:2][pattern][options:1]
+    // Same as watch, server finds matching watches by this payload
+    size_t payload_len = 2 + barrel_len + 2 + pattern_len + 1;
+
+    uint8_t buffer[BUFFER_SIZE];
+    size_t offset = 0;
+    uint32_t seq = client->next_seq++;
+
+    // Command
+    buffer[offset++] = CMD_UNWATCH_KEY;
+
+    // Sequence (4 bytes, big-endian)
+    buffer[offset++] = (seq >> 24) & 0xFF;
+    buffer[offset++] = (seq >> 16) & 0xFF;
+    buffer[offset++] = (seq >> 8) & 0xFF;
+    buffer[offset++] = seq & 0xFF;
+
+    // Flags (1 byte)
+    buffer[offset++] = 0;
+
+    // Key length (2 bytes) - empty key for unwatch by pattern
+    buffer[offset++] = 0;
+    buffer[offset++] = 0;
+
+    // Value length (4 bytes, big-endian)
+    buffer[offset++] = (payload_len >> 24) & 0xFF;
+    buffer[offset++] = (payload_len >> 16) & 0xFF;
+    buffer[offset++] = (payload_len >> 8) & 0xFF;
+    buffer[offset++] = payload_len & 0xFF;
+
+    // Payload: barrel name length (2 bytes, big-endian)
+    buffer[offset++] = (barrel_len >> 8) & 0xFF;
+    buffer[offset++] = barrel_len & 0xFF;
+
+    // Payload: barrel name
+    memcpy(buffer + offset, barrel_name, barrel_len);
+    offset += barrel_len;
+
+    // Payload: pattern length (2 bytes, big-endian)
+    buffer[offset++] = (pattern_len >> 8) & 0xFF;
+    buffer[offset++] = pattern_len & 0xFF;
+
+    // Payload: pattern
+    memcpy(buffer + offset, pattern, pattern_len);
+    offset += pattern_len;
+
+    // Payload: options (1 = include values, 0 = keys only)
+    buffer[offset++] = 0;  // Default: keys only
+
+    // Send request
+    if (ws_send_binary(client->ws, buffer, offset) < 0) {
+        strncpy(client->last_error, ws_get_error(client->ws), sizeof(client->last_error) - 1);
+        return BB_CONNECTION_ERROR;
+    }
+
+    // Receive response, skipping any pub/sub events
+    uint8_t* response_data = NULL;
+    ssize_t response_len = 0;
+    int max_attempts = 10;
+
+    while (max_attempts-- > 0) {
+        response_data = NULL;
+        response_len = ws_recv_binary(client->ws, &response_data, client->config.timeout_ms);
+        if (response_len <= 0) {
+            strncpy(client->last_error, "No response from server", sizeof(client->last_error) - 1);
+            return BB_TIMEOUT;
+        }
+        // Skip pub/sub events
+        if (is_pubsub_event(response_data, response_len)) {
+            free(response_data);
+            response_data = NULL;
+            continue;
+        }
+        break;
+    }
+
+    if (max_attempts == 0 || !response_data) {
+        if (response_data) free(response_data);
+        strncpy(client->last_error, "Too many events before response", sizeof(client->last_error) - 1);
+        return BB_TIMEOUT;
+    }
+
+    // Parse response
+    uint8_t status = response_data[0];
+    free(response_data);
+
+    return (status == STATUS_OK) ? BB_OK : BB_ERROR;
 }
 
 BBResult bb_set_message_callback(BBClient* client, BBMessageCallback callback, void* userdata) {
