@@ -83,14 +83,11 @@ class WebSocket:
         if not self._ws or not self._connected:
             raise ConnectionError("Not connected to server")
 
-        # Use select to implement timeout (outside try block so TimeoutError isn't caught)
-        if select_available:
-            sock = self._ws.sock
-            if sock:
-                # Wait for data to be available or timeout
-                readable, _, _ = select.select([sock], [], [], self.request_timeout)
-                if not readable:
-                    raise TimeoutError(f"Operation timeout after {self.request_timeout}s")
+        # Set timeout on the underlying socket for this receive operation
+        # The websocket-client library will handle the timeout properly
+        sock = self._ws.sock
+        if sock:
+            sock.settimeout(self.request_timeout)
 
         try:
             result = self._ws.recv()
