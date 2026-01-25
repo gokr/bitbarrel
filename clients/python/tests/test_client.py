@@ -3,7 +3,7 @@
 import pytest
 import time
 import threading
-from bitbarrel import Client
+from bitbarrel import Client, PubSubMessageType
 from bitbarrel.errors import (
     ConnectionError, NotFoundError, NoBarrelError,
     BarrelExistsError, BarrelNotFoundError
@@ -533,29 +533,27 @@ class TestKeyWatching:
         """Test basic watch functionality."""
         client.use_barrel(temp_barrel)
 
-        # Set up message handler
+        # Set up message handler to collect events
         events = []
         def handler(event):
             if event.message_type == PubSubMessageType.mtKvChange:
                 events.append(event)
 
         client.set_message_handler(handler)
-        # Start event receiver to process incoming pub/sub events
-        client.start_event_receiver()
 
-        # Watch for key changes (creates subscription internally with enableKvEvents=True)
+        # Watch for key changes - this internally subscribes to kv:{barrel}:user:*
         pattern = "user:*"
         watch_result = client.watch(pattern, include_values=False)
         assert watch_result  # Ensure watch was successful
 
-        # Give some time for subscription to register
-        time.sleep(1.0)
+        # Give some time for watch to register
+        time.sleep(0.5)
 
         # Set a matching key
         client.set("user:1", "Alice")
 
-        # Wait for event
-        time.sleep(2.0)
+        # Receive any pending events that arrived after the set response
+        client.receive_pending_events(timeout=1.0)
 
         # Should have received an event
         assert len(events) >= 1, f"Expected key change events but got none. Events: {events}"
@@ -563,7 +561,7 @@ class TestKeyWatching:
         # Topic format: kv:{barrelName}:user:1
         assert "user:1" in event.topic
         assert event.message_type == PubSubMessageType.mtKvChange
-        assert event.payload == ""  # No values included
+        assert event.payload == ""  # No values included when include_values=False
 
         client.unwatch(pattern)
 
@@ -577,19 +575,19 @@ class TestKeyWatching:
                 events.append(event)
 
         client.set_message_handler(handler)
-        client.start_event_receiver()
 
         # Watch with values
         pattern = "cache:*"
         watch_result = client.watch(pattern, include_values=True)
         assert watch_result
 
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         # Set a matching key
         client.set("cache:item1", "value1")
 
-        time.sleep(2.0)
+        # Receive any pending events that arrived after the set response
+        client.receive_pending_events(timeout=1.0)
 
         # Check event received with value
         assert len(events) >= 1, f"Expected key change events but got none. Events: {events}"
@@ -609,21 +607,20 @@ class TestKeyWatching:
                 events.append(event)
 
         client.set_message_handler(handler)
-        client.start_event_receiver()
 
         # Set up watch
         pattern = "temp:*"
         watch_result = client.watch(pattern, include_values=False)
         assert watch_result
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         # Now unwatch
         client.unwatch(pattern)
-        time.sleep(1.0)
+        time.sleep(0.5)
 
         # Set a key that would match
         client.set("temp:1", "value1")
-        time.sleep(2.0)
+        time.sleep(0.5)
 
         # Should not have received any events
         assert len(events) == 0, f"Expected no events after unwatch but got: {events}"
