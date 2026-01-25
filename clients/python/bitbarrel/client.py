@@ -1157,6 +1157,52 @@ class Client:
             self._event_receiver_stop.set()
             self._event_receiver_thread.join(timeout=0.1)  # Short timeout for faster tests
 
+    def receive_pending_events(self, timeout: float = 0.5) -> None:
+        """Receive any pending PubSub events without blocking.
+
+        This checks for events that may have arrived after a response was received.
+        Should be called after operations that might trigger events.
+
+        Args:
+            timeout: Maximum time to wait for events in seconds
+        """
+        if not self._on_message:
+            return  # No handler, nothing to do
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            with self._lock:
+                if not self._ws:
+                    break
+
+                # Set short timeout to check for pending events
+                self._ws.set_timeout(0.05)  # 50ms
+                try:
+                    data = self._ws.recv_binary()
+                    self._ws.reset_timeout()
+                except TimeoutError:
+                    # No events pending
+                    break
+                except ConnectionError:
+                    self._connected = False
+                    break
+                except Exception:
+                    # Other errors, continue checking
+                    continue
+
+            # Check if this is a PubSub event
+            if is_pubsub_event(data):
+                try:
+                    event = decode_pubsub_event(data)
+                    self._on_message(event)
+                except Exception:
+                    # Skip malformed events
+                    pass
+            else:
+                # Not a PubSub event, put it back or ignore
+                # For now, just ignore - this shouldn't happen in normal operation
+                pass
+
     def _receive_pubsub_events(self) -> None:
         """Background thread function to receive PubSub events."""
         while not self._event_receiver_stop.is_set():
