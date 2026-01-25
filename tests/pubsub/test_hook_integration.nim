@@ -174,7 +174,9 @@ suite "Barrel Hook Integration Tests":
       discard barrel.set("key", "value")
 
       check received.barrelName.len > 0
-      check received.barrelName.contains("test.data")
+      # Note: barrel.name is set using splitFile(path).name which removes the extension
+      # So "test.data" becomes just "test"
+      check received.barrelName == "test"
 
   test "hook receives correct key and value":
     withTestDir("hook_key_value_test"):
