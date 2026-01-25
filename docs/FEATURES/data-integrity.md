@@ -46,7 +46,9 @@ The bottleneck is always I/O, not checksumming.
 
 ## Configuration
 
-```nim
+```nim.compilable
+import bitbarrel
+
 var config = defaultBarrelConfig()
 config.validateCrc = false  # Disable for ZFS users
 let barrel = openBarrel("mydata", config)
