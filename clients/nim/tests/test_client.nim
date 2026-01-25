@@ -473,7 +473,7 @@ suite "Integration: Connection":
           let value = fmt"value_{i}"
           check client.get(key) == value
 
-      except CatchableError as e:
+      except CatchableError:
         skip()  # Server not available
 
     test "concurrent operations":
@@ -517,7 +517,7 @@ suite "Integration: Connection":
         check client.set("key1", "value1")
         check client.get("key1") == "value1"
 
-      except CatchableError as e:
+      except CatchableError:
         skip()  # Server not available
 
     test "client creation with token":
@@ -567,7 +567,7 @@ suite "Integration: Batch Operations":
       check client.get("key2") == "value2"
       check client.get("key3") == "value3"
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "batchGet retrieves multiple items":
@@ -598,7 +598,7 @@ suite "Integration: Batch Operations":
       check ("key2", "value2") in results
       check ("key3", "value3") in results
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "batchDelete removes multiple items":
@@ -631,7 +631,7 @@ suite "Integration: Batch Operations":
       check not client.exists("key2")
       check client.exists("key3")  # This one remains
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "batch operations with large batch (100 items)":
@@ -669,7 +669,7 @@ suite "Integration: Batch Operations":
       for (key, value) in results:
         check client.get(key) == value
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "batchSet requires barrel selection":
@@ -684,7 +684,7 @@ suite "Integration: Batch Operations":
       expect ClientError:
         discard client.setMany(pairs)
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "batchGet requires barrel selection":
@@ -699,7 +699,7 @@ suite "Integration: Batch Operations":
       expect ClientError:
         discard client.getMany(keys)
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "batchDelete requires barrel selection":
@@ -714,7 +714,7 @@ suite "Integration: Batch Operations":
       expect ClientError:
         discard client.deleteMany(keys)
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
 suite "Key Watching":
@@ -727,9 +727,9 @@ suite "Key Watching":
 
       # Try watch without selecting a barrel
       expect ClientError:
-        client.watch("user:*", includeValues=false)
+        discard client.watch("user:*", includeValues=false)
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "watch basic functionality":
@@ -757,7 +757,7 @@ suite "Key Watching":
       defer: discard client.unsubscribe(subId)
 
       # Watch pattern
-      client.watch("user:*", includeValues=false)
+      discard client.watch("user:*", includeValues=false)
 
       # Wait for subscription
       sleep(100)
@@ -775,7 +775,7 @@ suite "Key Watching":
       check event.messageType == mtKvChange
       check event.payload == ""
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "watch with values":
@@ -803,7 +803,7 @@ suite "Key Watching":
       defer: discard client.unsubscribe(subId)
 
       # Watch with values
-      client.watch("cache:*", includeValues=true)
+      discard client.watch("cache:*", includeValues=true)
 
       # Wait for subscription
       sleep(100)
@@ -820,7 +820,7 @@ suite "Key Watching":
       check event.topic.contains("cache:item1")
       check event.payload == "value1"
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available
 
   test "unwatch stops events":
@@ -848,7 +848,7 @@ suite "Key Watching":
       defer: discard client.unsubscribe(subId)
 
       # Set up watch
-      client.watch("temp:*", includeValues=false)
+      discard client.watch("temp:*", includeValues=false)
       sleep(100)
 
       # Now unwatch
@@ -864,5 +864,5 @@ suite "Key Watching":
       # Should not have received any events
       check events.len == 0
 
-    except CatchableError as e:
+    except CatchableError:
       skip()  # Server not available

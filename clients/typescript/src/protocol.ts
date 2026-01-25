@@ -991,7 +991,9 @@ export class Protocol {
    */
   static encodeBatchSet(items: Array<[string, string]>): Buffer {
     if (items.length === 0) {
-      return Buffer.allocUnsafe(4);
+      const buffer = Buffer.allocUnsafe(4);
+      buffer.writeUInt32BE(0, 0);
+      return buffer;
     }
 
     // Calculate total size first
@@ -1039,7 +1041,9 @@ export class Protocol {
    */
   static encodeBatchGet(keys: string[]): Buffer {
     if (keys.length === 0) {
-      return Buffer.allocUnsafe(4);
+      const buffer = Buffer.allocUnsafe(4);
+      buffer.writeUInt32BE(0, 0);
+      return buffer;
     }
 
     let totalSize = 4; // count (4 bytes)

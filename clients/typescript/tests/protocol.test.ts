@@ -1057,6 +1057,7 @@ describe('Protocol', () => {
         keyLen = encoded.readUInt16BE(offset);
         offset += 2;
         key = encoded.toString('utf8', offset, offset + keyLen);
+        offset += keyLen;
         expect(key).toBe('key2');
 
         // Verify third key

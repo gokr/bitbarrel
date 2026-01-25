@@ -673,14 +673,12 @@ void main() {
 
         await client.useBarrel(barrelName);
 
-        // Subscribe to key events
-        await client.subscribe('kv:');
-        addTearDown(() => client.unsubscribe('kv:'));
+        // Watch pattern - returns watch ID
+        final watchId = await client.watch('user:*', includeValues: false);
+        expect(watchId, isNotEmpty);
+        addTearDown(() => client.unwatchById(watchId));
 
-        // Watch pattern
-        await client.watch('user:*', includeValues: false);
-
-        // Wait for subscription
+        // Wait for watch to register
         await Future.delayed(Duration(milliseconds: 100));
 
         // Set a matching key
@@ -714,14 +712,12 @@ void main() {
 
         await client.useBarrel(barrelName);
 
-        // Subscribe to key events
-        await client.subscribe('kv:');
-        addTearDown(() => client.unsubscribe('kv:'));
+        // Watch with values - returns watch ID
+        final watchId = await client.watch('cache:*', includeValues: true);
+        expect(watchId, isNotEmpty);
+        addTearDown(() => client.unwatchById(watchId));
 
-        // Watch with values
-        await client.watch('cache:*', includeValues: true);
-
-        // Wait for subscription
+        // Wait for watch to register
         await Future.delayed(Duration(milliseconds: 100));
 
         // Set a matching key
@@ -754,16 +750,13 @@ void main() {
 
         await client.useBarrel(barrelName);
 
-        // Subscribe to key events
-        await client.subscribe('kv:');
-        addTearDown(() => client.unsubscribe('kv:'));
-
-        // Set up watch
-        await client.watch('temp:*', includeValues: false);
+        // Set up watch - returns watch ID
+        final watchId = await client.watch('temp:*', includeValues: false);
+        expect(watchId, isNotEmpty);
         await Future.delayed(Duration(milliseconds: 100));
 
-        // Now unwatch
-        await client.unwatch('temp:*');
+        // Now unwatch using the watch ID
+        await client.unwatchById(watchId);
         await Future.delayed(Duration(milliseconds: 100));
 
         // Set a key that would match the old pattern

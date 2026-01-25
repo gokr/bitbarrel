@@ -1499,26 +1499,43 @@ proc newKeysPrefixIterator*(client: var BitBarrelClient, prefix: string,
 
 ## Key watching
 
-proc watch*(client: var BitBarrelClient, pattern: string, includeValues = false) =
+proc watch*(client: var BitBarrelClient, pattern: string, includeValues = false): string =
   ## Watch for changes to keys matching a pattern via Pub/Sub.
   ##
   ## When keys matching the pattern change (set or delete), you'll receive
   ## PubSub events via the message handler with message_type mtKvChange.
   ##
   ## Patterns use * as wildcard (e.g., "user:*" or "cache:*")
+  ##
+  ## Returns the watch ID which can be used with unwatchById for efficient unwatch.
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected")
 
   let watchData = encodeWatchRequest("", pattern, includeValues)
   let req = Request(command: cmdWatchKey, key: "", value: watchData)
-  discard client.sendAndWait(req)
+  let resp = client.sendAndWait(req)
+  result = resp.value  # Response value is the watch ID
 
 proc unwatch*(client: var BitBarrelClient, pattern: string) =
   ## Stop watching a previously registered pattern.
+  ##
+  ## This sends the pattern to unwatch. For more efficient unwatching
+  ## using a watch ID, use unwatchById instead.
   if client.currentBarrel.len == 0:
     raise newException(ClientError, "No barrel selected")
 
   let watchData = encodeWatchRequest("", pattern, false)
   let req = Request(command: cmdUnwatchKey, key: "", value: watchData)
+  discard client.sendAndWait(req)
+
+proc unwatchById*(client: var BitBarrelClient, watchId: string) =
+  ## Stop watching using a watch ID for efficient unwatch.
+  ##
+  ## This is more efficient than unwatch as it uses the watch ID directly
+  ## instead of sending the pattern again.
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected")
+
+  let req = Request(command: cmdUnwatchKey, key: watchId, value: "")
   discard client.sendAndWait(req)
 

@@ -917,9 +917,11 @@ class BitBarrelClient {
   ///
   /// Patterns use * as wildcard (e.g., "user:*" or "cache:*")
   ///
+  /// Returns the watch ID which can be used with [unwatchById] for efficient unwatch.
+  ///
   /// Throws [NoBarrelError] if no barrel is selected
   /// Throws [ServerError] if the server reports an error
-  Future<void> watch(String pattern, {bool includeValues = false}) async {
+  Future<String> watch(String pattern, {bool includeValues = false}) async {
     _ensureBarrel();
 
     final encodedParams = ProtocolEncoder.encodeWatchRequest(
@@ -928,14 +930,20 @@ class BitBarrelClient {
       includeValues: includeValues,
     );
 
-    await _sendRequest(
+    final response = await _sendRequest(
       command: Command.watchKey,
       key: '',
       binaryValue: encodedParams,
     );
+
+    // Response value is the watch ID
+    return response;
   }
 
   /// Stop watching a previously registered pattern.
+  ///
+  /// This method sends the pattern to unwatch. For more efficient unwatching
+  /// using a watch ID, use [unwatchById] instead.
   ///
   /// Throws [NoBarrelError] if no barrel is selected
   /// Throws [ServerError] if the server reports an error
@@ -952,6 +960,23 @@ class BitBarrelClient {
       command: Command.unwatchKey,
       key: '',
       binaryValue: encodedParams,
+    );
+  }
+
+  /// Stop watching using a watch ID for efficient unwatch.
+  ///
+  /// This is more efficient than [unwatch] as it uses the watch ID directly
+  /// instead of sending the pattern again.
+  ///
+  /// Throws [NoBarrelError] if no barrel is selected
+  /// Throws [ServerError] if the server reports an error
+  Future<void> unwatchById(String watchId) async {
+    _ensureBarrel();
+
+    await _sendRequest(
+      command: Command.unwatchKey,
+      key: watchId,
+      value: '',
     );
   }
 }

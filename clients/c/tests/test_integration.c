@@ -1,9 +1,11 @@
+#define _DEFAULT_SOURCE
 #include <bitbarrel.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <assert.h>
+#include <unistd.h>
 
 // Test counters
 static int tests_passed = 0;
@@ -240,12 +242,14 @@ static int watch_event_received = 0;
 static char watch_event_topic[256] = {0};
 
 // Handler for key watch events
-static void watch_event_handler(const char* topic, const char* message, void* userdata) {
+static void watch_message_handler(const BBMessage* msg, void* userdata) {
     (void)userdata; // unused
-    watch_event_received = 1;
-    strncpy(watch_event_topic, topic, sizeof(watch_event_topic) - 1);
-    printf("      [Event] Topic: %s\n", topic);
-    fflush(stdout);
+    if (msg && msg->topic) {
+        watch_event_received = 1;
+        strncpy(watch_event_topic, msg->topic, sizeof(watch_event_topic) - 1);
+        printf("      [Event] Topic: %s\n", msg->topic);
+        fflush(stdout);
+    }
 }
 
 // Test suite: Key Watching
@@ -276,7 +280,7 @@ static void test_key_watching(BBClient* client) {
 
     // Set up Pub/Sub subscription for key events
     TEST_START("subscribe to key events");
-    if (bb_subscribe(client, "kv:", "", 0) == BB_OK) {
+    if (bb_subscribe(client, "kv:") == BB_OK) {
         TEST_PASS();
     } else {
         TEST_FAIL(bb_get_last_error(client));
@@ -284,8 +288,8 @@ static void test_key_watching(BBClient* client) {
         return;
     }
 
-    // Set up event handler
-    bb_set_event_handler(client, watch_event_handler, NULL);
+    // Set up message callback
+    bb_set_message_callback(client, watch_message_handler, NULL);
 
     // Test 1: Basic watch without values
     TEST_START("watch pattern without values");
@@ -354,7 +358,7 @@ static void test_key_watching(BBClient* client) {
     }
 
     // Clean up
-    bb_set_event_handler(client, NULL, NULL);
+    bb_set_message_callback(client, NULL, NULL);
     bb_unsubscribe(client, "kv:");
     bb_drop_barrel(client, barrel_name);
 

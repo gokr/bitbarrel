@@ -1,8 +1,10 @@
+#define _DEFAULT_SOURCE
 #include <bitbarrel.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 // Helper to print current time
 static void print_time(void) {

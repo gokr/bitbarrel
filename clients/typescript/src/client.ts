@@ -1013,9 +1013,9 @@ export class BitBarrelClient extends EventEmitter {
    *
    * @param pattern - Pattern with * as wildcard (e.g., "user:*" or "cache:*")
    * @param includeValues - Whether to include values in change events (default: false)
-   * @returns Promise that resolves when watch is registered
+   * @returns Promise that resolves to the watch ID
    */
-  async watch(pattern: string, includeValues = false): Promise<void> {
+  async watch(pattern: string, includeValues = false): Promise<string> {
     this.checkBarrelSelected();
 
     const watchData = Protocol.encodeWatchRequest({
@@ -1029,6 +1029,9 @@ export class BitBarrelClient extends EventEmitter {
     if (resp.status !== Resp.Ok) {
       throw new BitBarrelError(`Watch failed: ${resp.status}`);
     }
+
+    // Response value is the watch ID
+    return resp.value;
   }
 
   /**
@@ -1050,6 +1053,26 @@ export class BitBarrelClient extends EventEmitter {
 
     if (resp.status !== Resp.Ok) {
       throw new BitBarrelError(`Unwatch failed: ${resp.status}`);
+    }
+  }
+
+  /**
+   * Stop watching using a watch ID for efficient unwatch.
+   *
+   * This is more efficient than unwatch as it uses the watch ID directly
+   * instead of sending the pattern again.
+   *
+   * @param watchId - The watch ID to unwatch
+   * @returns Promise that resolves when unwatch is registered
+   */
+  async unwatchById(watchId: string): Promise<void> {
+    this.checkBarrelSelected();
+
+    const req = Protocol.newRequest(Cmd.UnwatchKey, watchId, '');
+    const resp = await this.sendAndWait(req);
+
+    if (resp.status !== Resp.Ok) {
+      throw new BitBarrelError(`Unwatch by ID failed: ${resp.status}`);
     }
   }
 }
