@@ -55,6 +55,7 @@ type
     enableKvEvents*: bool             ## Receive k/v change events
     enablePresence*: bool             ## Receive presence events
     replayHistory*: bool              ## Replay history on subscribe
+    includeValues*: bool              ## Include values in k/v change events (only applies if enableKvEvents=true)
 
   ## Represents a pub/sub message
   Message* = ref MessageObj
@@ -141,6 +142,7 @@ proc defaultSubscriptionOptions*(): SubscriptionOptions =
   result.enableKvEvents = false
   result.enablePresence = false
   result.replayHistory = false
+  result.includeValues = true  ## Include values by default (backward compatible)
 
 proc defaultTopicConfig*(): TopicConfig =
   ## Returns default topic configuration
