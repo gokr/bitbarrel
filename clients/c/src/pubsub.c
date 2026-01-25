@@ -113,21 +113,51 @@ static BBMessage* dequeue_message(void) {
 BBResult bb_subscribe(BBClient* client, const char* topic) {
     if (!client || !topic) return BB_ERROR;
 
-    // Encode subscribe request
+    // Build request v1.1: [cmd:1][seq:4][flags:1][keyLen:2][key:0][valueLen:4][payload:N]
+    // Payload format: [options:1][topicLen:2][topic:N][patternLen:2][pattern:0]
+    size_t topic_len = strlen(topic);
+    size_t payload_len = 1 + 2 + topic_len + 2;  // options + topicLen + topic + patternLen
+
     uint8_t buffer[BUFFER_SIZE];
     size_t offset = 0;
+    uint32_t seq = client->next_seq++;
 
-    // Subscribe command
+    // Command
     buffer[offset++] = CMD_SUBSCRIBE;
 
-    // Mode (exact match)
-    buffer[offset++] = 0;  // SUB_MODE_EXACT
+    // Sequence (4 bytes, big-endian)
+    buffer[offset++] = (seq >> 24) & 0xFF;
+    buffer[offset++] = (seq >> 16) & 0xFF;
+    buffer[offset++] = (seq >> 8) & 0xFF;
+    buffer[offset++] = seq & 0xFF;
 
-    // Topic
-    size_t topic_len = strlen(topic);
+    // Flags (1 byte) - no TTL
+    buffer[offset++] = 0;
+
+    // Key length (2 bytes) - empty key
+    buffer[offset++] = 0;
+    buffer[offset++] = 0;
+
+    // Value length (4 bytes, big-endian)
+    buffer[offset++] = (payload_len >> 24) & 0xFF;
+    buffer[offset++] = (payload_len >> 16) & 0xFF;
+    buffer[offset++] = (payload_len >> 8) & 0xFF;
+    buffer[offset++] = payload_len & 0xFF;
+
+    // Payload: options byte (0 = default)
+    buffer[offset++] = 0;
+
+    // Payload: topic length (2 bytes, big-endian)
+    buffer[offset++] = (topic_len >> 8) & 0xFF;
+    buffer[offset++] = topic_len & 0xFF;
+
+    // Payload: topic
     memcpy(buffer + offset, topic, topic_len);
     offset += topic_len;
-    buffer[offset++] = 0;  // Null terminator
+
+    // Payload: pattern length (2 bytes) - empty pattern
+    buffer[offset++] = 0;
+    buffer[offset++] = 0;
 
     // Send as binary frame
     if (ws_send_binary(client->ws, buffer, offset) < 0) {
@@ -143,16 +173,31 @@ BBResult bb_subscribe(BBClient* client, const char* topic) {
         return BB_TIMEOUT;
     }
 
-    // Parse response
+    // Parse response - format: [status:1][seq:4][valueLen:4][value:N]
     uint8_t status = response_data[0];
-    free(response_data);
 
     if (status == STATUS_OK) {
+        free(response_data);
         return BB_OK;
-    } else if (status == STATUS_ERROR) {
-        return BB_ERROR;
     } else {
-        return BB_PROTOCOL_ERROR;
+        // Extract error message from response if available
+        if (response_len > 9) {
+            uint32_t value_len = ((uint32_t)response_data[5] << 24) |
+                                 ((uint32_t)response_data[6] << 16) |
+                                 ((uint32_t)response_data[7] << 8) |
+                                 ((uint32_t)response_data[8]);
+            if (value_len > 0 && (size_t)(9 + value_len) <= (size_t)response_len) {
+                size_t copy_len = value_len < sizeof(client->last_error) - 1 ? value_len : sizeof(client->last_error) - 1;
+                memcpy(client->last_error, response_data + 9, copy_len);
+                client->last_error[copy_len] = '\0';
+            }
+        }
+        free(response_data);
+        if (status == STATUS_ERROR) {
+            return BB_ERROR;
+        } else {
+            return BB_PROTOCOL_ERROR;
+        }
     }
 }
 
