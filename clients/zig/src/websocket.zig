@@ -78,6 +78,7 @@ pub const WebSocket = struct {
     // Send queue
     send_queue: std.ArrayListUnmanaged([]u8) = .empty,
     send_mutex: std.Thread.Mutex = .{},
+    shutting_down: bool = false,
 
     // Receive buffer
     recv_buffer: std.ArrayListUnmanaged(u8) = .empty,
@@ -115,6 +116,9 @@ pub const WebSocket = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        // Set shutdown flag to prevent callbacks from running
+        self.shutting_down = true;
+
         self.disconnect();
 
         // Free any remaining send queue items (check capacity to avoid double-free)
@@ -277,6 +281,9 @@ pub const WebSocket = struct {
 
     // Internal: handle writing queued data
     fn handleWriteable(self: *Self) void {
+        // Return early if shutting down to prevent use-after-free
+        if (self.shutting_down) return;
+
         self.send_mutex.lock();
         defer self.send_mutex.unlock();
 
@@ -351,6 +358,9 @@ pub const WebSocket = struct {
         }
 
         const s = self.?;
+
+        // Return early if shutting down to prevent use-after-free
+        if (s.shutting_down) return 0;
 
         switch (@as(CallbackReason, @enumFromInt(reason))) {
             .client_established => {
