@@ -8,7 +8,7 @@
 ## - `bmCritBit`: O(k) lookups where k=key length, keys sorted, supports range/prefix queries
 ## - `bmHugeCritBit`: Two-tier architecture for massive datasets with range queries
 
-import std/[times, options, os, strformat, strutils, endians, tables, typedthreads, sequtils]
+import std/[times, options, os, strformat, strutils, endians, tables, typedthreads, sequtils, hashes, locks]
 import types
 import config_yaml
 import ../storage
@@ -34,6 +34,11 @@ type
     newFileId*: uint32
     compactionStart*: int64
 
+  CasResult* = enum
+    crSuccess = 0       ## CAS operation succeeded
+    crKeyNotFound = 1   ## Key does not exist
+    crValueMismatch = 2 ## Current value does not match expected value
+
   BarrelObj {.acyclic.} = object
     ## Note: Marked {.acyclic.} to prevent ORC cycle detection crashes
     ## when using threaded compaction. CompactController also marked acyclic.
@@ -55,6 +60,12 @@ type
     compactionThreadPtr: pointer           # Pointer to compaction thread (for joining)
 
   Barrel* = ref BarrelObj
+
+export CasResult  ## Export CAS result type
+
+## Forward declarations for procs used in other procs
+proc exists*(barrel: Barrel, key: string): bool
+proc performCas(barrel: Barrel, key: string, expectedValue: string, newValue: string, ttl: int = -1): CasResult
 
 proc `=destroy`*(barrel: var BarrelObj) =
   ## Destructor for Barrel - break circular reference to help ORC
@@ -458,62 +469,6 @@ proc indexLen(barrel: Barrel): int =
     # TODO: HugeBarrel len (Phase 3)
     raise newException(ValueError, "bmHugeCritBit not yet implemented")
 
-proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1): bool =
-  ## Set a key-value pair with optional TTL
-  ##
-  ## ttl: TTL in seconds, -1 uses defaultTtl from config, 0 = no expiration
-  ##
-  ## **Example:**
-  ## ```nim
-  ## let barrel = openBarrel("mydata.db")
-  ##
-  ## # Basic set
-  ## barrel.set("user:1", "Alice")
-  ##
-  ## # Set with TTL (expires in 1 hour)
-  ## barrel.set("session:xyz", "data", ttl=3600)
-  ##
-  ## # Set with default TTL from config
-  ## barrel.set("cache:key", "value")  # Uses ttl=-1 (default)
-  ##
-  ## barrel.close()
-  ## ```
-  if barrel.closed:
-    return false
-
-  let nowTsMs = getTime().toUnix() * 1000  # Convert to milliseconds
-  # Use configured TTL if not specified (-1), or explicit TTL
-  let ttlToUse = if ttl == -1: barrel.config.defaultTtl else: ttl
-  # Encode timestamp with TTL
-  let encodedTimestamp = encodeTimestamp(nowTsMs, ttlToUse)
-
-  try:
-    # Route writes to new file during compaction
-    let targetFileId = if barrel.compactionState.inProgress:
-      barrel.compactionState.newFileId
-    else:
-      barrel.fileId
-
-    let info = if barrel.compactionState.inProgress:
-      barrel.dataFiles[barrel.compactionState.newFileId].appendRecord(key, value, encodedTimestamp)
-    else:
-      barrel.dataFile.appendRecord(key, value, encodedTimestamp)
-
-    let entry = KeyDirEntry(
-      recordPos: info.recordPos,
-      fileId: targetFileId,
-      valueSize: info.valueSize,
-      recordSize: info.recordSize,
-      keyLen: info.keyLen
-    )
-    if barrel.indexAdd(key, entry):
-      # Trigger pub/sub k/v change event
-      triggerBarrelHooks(barrel.name, key, pubsub_types.kvSet, value)
-      return true
-    return false
-  except:
-    return false
-
 proc get*(barrel: Barrel, key: string): string =
   ## Get a value by key (returns empty string if not found)
   ##
@@ -640,6 +595,217 @@ proc exists*(barrel: Barrel, key: string): bool =
   if found.isSome():
     return not found.get().isDeleted
   return false
+
+proc compareAndSwap*(barrel: Barrel, key: string, expectedValue: string, newValue: string, ttl: int = -1): CasResult =
+  ## Atomically compare and swap a value
+  ##
+  ## Returns ``crSuccess`` if the swap succeeded (current value matched expected),
+  ## ``crKeyNotFound`` if the key doesn't exist, or ``crValueMismatch`` if the
+  ## current value doesn't match the expected value.
+  ##
+  ## **Atomicity guarantee:** The operation is atomic - the key's value cannot be
+  ## modified by another operation between the read and write.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## # Initialize counter
+  ## barrel.set("counter", "0")
+  ##
+  ## # Atomic increment using CAS
+  ## var current = barrel.get("counter").parseInt()
+  ## while true:
+  ##   let newValue = $(current + 1)
+  ##   let casResult = barrel.compareAndSwap("counter", $(current), newValue)
+  ##   if casResult == crSuccess:
+  ##     break  # Success!
+  ##   elif casResult == crKeyNotFound:
+  ##     echo "Key disappeared!"
+  ##     break
+  ##   else:
+  ##     # Value changed, retry with new value
+  ##     current = barrel.get("counter").parseInt()
+  ##
+  ## barrel.close()
+  ## ```
+  if barrel.closed:
+    return crKeyNotFound
+
+  # Mode-specific locking
+  case barrel.mode
+  of bmHash:
+    const NumKeyDirPartitions = 16
+    let partition = (hash(key) and 0x7FFFFFFF) mod NumKeyDirPartitions
+    withLock barrel.keyDir.partitions[partition].lock:
+      return performCas(barrel, key, expectedValue, newValue, ttl)
+  of bmCritBit:
+    withLock barrel.critBit.lock:
+      return performCas(barrel, key, expectedValue, newValue, ttl)
+  of bmHugeCritBit:
+    # TODO: HugeBarrel CAS support (Phase 3)
+    raise newException(ValueError, "bmHugeCritBit CAS not yet implemented")
+
+proc performCas(barrel: Barrel, key: string, expectedValue: string, newValue: string, ttl: int = -1): CasResult =
+  ## Internal: Perform CAS operation (must be called with appropriate lock held)
+  ## Read current value, compare, and swap if match
+  var currentValue: string
+  let found = barrel.indexGet(key)
+
+  if found.isNone():
+    # Key doesn't exist
+    return crKeyNotFound
+
+  let entry = found.get()
+  if entry.isDeleted:
+    # Key is deleted (tombstone)
+    return crKeyNotFound
+
+  # Read actual value from disk
+  let recordInfo = RecordInfo(
+    recordPos: entry.recordPos,
+    valueSize: entry.valueSize,
+    recordSize: entry.recordSize,
+    keyLen: entry.keyLen
+  )
+
+  try:
+    # Read current value
+    var timestamp: int64
+    if barrel.dataFiles.hasKey(entry.fileId):
+      var df = barrel.dataFiles[entry.fileId]
+      (_, currentValue, timestamp) = df.readRecord(recordInfo)
+    else:
+      (_, currentValue, timestamp) = barrel.dataFile.readRecord(recordInfo)
+
+    # Check expiration
+    if barrel.config.checkExpirationOnRead and isExpired(timestamp):
+      return crKeyNotFound
+
+    # Compare values
+    if currentValue != expectedValue:
+      return crValueMismatch
+
+    # Values match - perform swap
+    let nowTsMs = getTime().toUnix() * 1000
+    let ttlToUse = if ttl == -1: barrel.config.defaultTtl else: ttl
+    let encodedTimestamp = encodeTimestamp(nowTsMs, ttlToUse)
+
+    # Route writes to new file during compaction
+    let targetFileId = if barrel.compactionState.inProgress:
+      barrel.compactionState.newFileId
+    else:
+      barrel.fileId
+
+    let info = if barrel.compactionState.inProgress:
+      barrel.dataFiles[barrel.compactionState.newFileId].appendRecord(key, newValue, encodedTimestamp)
+    else:
+      barrel.dataFile.appendRecord(key, newValue, encodedTimestamp)
+
+    let newEntry = KeyDirEntry(
+      recordPos: info.recordPos,
+      fileId: targetFileId,
+      valueSize: info.valueSize,
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
+    )
+
+    if barrel.indexAdd(key, newEntry):
+      # Success!
+      result = crSuccess
+    else:
+      result = crValueMismatch  # Shouldn't happen, but be safe
+  except:
+    result = crValueMismatch
+
+  # Trigger hooks outside the mode-specific lock
+  if result == crSuccess:
+    # Create hook data with CAS details
+    let hookData = fmt("""{{"expected": "{expectedValue}", "new": "{newValue}", "success": true}}""")
+    triggerBarrelHooks(barrel.name, key, pubsub_types.kvCas, hookData)
+
+  return result
+
+proc set*(barrel: Barrel, key: string, value: string, ttl: int = -1, flags: RequestFlags = rfNone): bool =
+  ## Set a key-value pair with optional TTL and conditional flags
+  ##
+  ## ttl: TTL in seconds, -1 uses defaultTtl from config, 0 = no expiration
+  ## flags: Optional flags to control conditional behavior
+  ## - rfSetIfNotExists (NX): Set only if key does not exist
+  ## - rfSetIfExists (XX): Set only if key exists
+  ##
+  ## Returns true if the set operation was performed, false otherwise
+  ##
+  ## **Example:**
+  ## ```nim
+  ## let barrel = openBarrel("mydata.db")
+  ##
+  ## # Basic set
+  ## barrel.set("user:1", "Alice")
+  ##
+  ## # Set only if key does not exist (NX)
+  ## let set1 = barrel.set("user:1", "Bob", flags=rfSetIfNotExists)  # Returns false
+  ## let set2 = barrel.set("user:2", "Charlie", flags=rfSetIfNotExists)  # Returns true
+  ##
+  ## # Set only if key exists (XX)
+  ## let set3 = barrel.set("user:3", "David", flags=rfSetIfExists)  # Returns false
+  ## let set4 = barrel.set("user:1", "Alice", flags=rfSetIfExists)  # Returns true
+  ##
+  ## # Set with TTL (expires in 1 hour)
+  ## barrel.set("session:xyz", "data", ttl=3600)
+  ##
+  ## barrel.close()
+  ## ```
+  if barrel.closed:
+    return false
+
+  # Handle conditional flags
+  let hasNxFlag = (ord(flags) and ord(rfSetIfNotExists)) != 0
+  let hasXxFlag = (ord(flags) and ord(rfSetIfExists)) != 0
+
+  if hasNxFlag or hasXxFlag:
+    # Check current existence
+    let keyExists = barrel.exists(key)
+
+    if hasNxFlag and keyExists:
+      # NX: Key exists, don't set
+      return false
+    elif hasXxFlag and not keyExists:
+      # XX: Key doesn't exist, don't set
+      return false
+
+  let nowTsMs = getTime().toUnix() * 1000  # Convert to milliseconds
+  # Use configured TTL if not specified (-1), or explicit TTL
+  let ttlToUse = if ttl == -1: barrel.config.defaultTtl else: ttl
+  # Encode timestamp with TTL
+  let encodedTimestamp = encodeTimestamp(nowTsMs, ttlToUse)
+
+  try:
+    # Route writes to new file during compaction
+    let targetFileId = if barrel.compactionState.inProgress:
+      barrel.compactionState.newFileId
+    else:
+      barrel.fileId
+
+    let info = if barrel.compactionState.inProgress:
+      barrel.dataFiles[barrel.compactionState.newFileId].appendRecord(key, value, encodedTimestamp)
+    else:
+      barrel.dataFile.appendRecord(key, value, encodedTimestamp)
+
+    let entry = KeyDirEntry(
+      recordPos: info.recordPos,
+      fileId: targetFileId,
+      valueSize: info.valueSize,
+      recordSize: info.recordSize,
+      keyLen: info.keyLen
+    )
+    if barrel.indexAdd(key, entry):
+      # Trigger pub/sub k/v change event
+      triggerBarrelHooks(barrel.name, key, pubsub_types.kvSet, value)
+      return true
+    return false
+  except:
+    return false
 
 proc count*(barrel: Barrel): int =
   ## Get number of non-deleted keys in store
