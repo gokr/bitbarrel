@@ -186,7 +186,7 @@ BBResult bb_items_in_range(BBClient* client, const char* start_key, const char* 
     pthread_mutex_unlock(&client->request_lock);
 
     // Parse response with binary value
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     uint8_t* value_data = NULL;
     size_t value_len = 0;
     int decode_ret = decode_range_response_binary(response_data, response_len, &resp, &value_data, &value_len);
@@ -282,7 +282,7 @@ BBResult bb_items_with_prefix(BBClient* client, const char* prefix,
     pthread_mutex_unlock(&client->request_lock);
 
     // Parse response with binary value
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     uint8_t* value_data = NULL;
     size_t value_len = 0;
     int decode_ret = decode_range_response_binary(response_data, response_len, &resp, &value_data, &value_len);

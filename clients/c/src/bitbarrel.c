@@ -236,7 +236,7 @@ BBResult bb_connect(BBClient* client) {
         return BB_CONNECTION_ERROR;
     }
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     if (decode_response(response_data, response_len, &resp) < 0) {
         strncpy(client->last_error, "Failed to decode response", sizeof(client->last_error) - 1);
         free(response_data);
@@ -320,7 +320,7 @@ static BBResult send_request(BBClient* client, const ProtocolRequest* req,
         break;
     }
 
-    if (max_attempts == 0) {
+    if (max_attempts < 0) {
         if (response_data) free(response_data);
         strncpy(client->last_error, "Too many events before response", sizeof(client->last_error) - 1);
         pthread_mutex_unlock(&client->request_lock);
@@ -394,7 +394,7 @@ BBResult bb_open_barrel(BBClient* client, const char* name) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -421,7 +421,7 @@ BBResult bb_use_barrel(BBClient* client, const char* name) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -451,7 +451,7 @@ BBResult bb_close_barrel(BBClient* client) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -580,7 +580,7 @@ BBResult bb_set(BBClient* client, const char* key, const char* value, int ttl) {
         .value = value
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -607,7 +607,7 @@ char* bb_get(BBClient* client, const char* key) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -636,7 +636,7 @@ BBResult bb_delete(BBClient* client, const char* key) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
@@ -663,12 +663,12 @@ bool bb_exists(BBClient* client, const char* key) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     bool exists = false;
     if (result == BB_OK) {
-        exists = (resp.status == STATUS_OK && strcmp(resp.value, "true") == 0);
+        exists = (resp.status == STATUS_OK && resp.value && strcmp(resp.value, "true") == 0);
     }
 
     free(resp.value);
@@ -685,12 +685,12 @@ BBResult bb_count(BBClient* client, int64_t* count) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {
         if (resp.status == STATUS_OK) {
-            *count = atoll(resp.value);
+            *count = resp.value ? atoll(resp.value) : 0;
             result = BB_OK;
         } else {
             *count = 0;
@@ -714,7 +714,7 @@ BBResult bb_list_keys(BBClient* client, char*** keys, size_t* count) {
         .value = ""
     };
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     BBResult result = send_request(client, &req, &resp, client->config.timeout_ms);
 
     if (result == BB_OK) {

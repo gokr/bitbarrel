@@ -229,7 +229,7 @@ BBResult bb_unsubscribe(BBClient* client, const char* topic) {
         return BB_TIMEOUT;
     }
 
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     int decode_ret = decode_response(response_data, response_len, &resp);
     free(response_data);
 
@@ -640,7 +640,7 @@ BBResult bb_watch_key(BBClient* client, const char* pattern) {
         break;
     }
 
-    if (max_attempts == 0 || !response_data) {
+    if (max_attempts < 0 || !response_data) {
         if (response_data) free(response_data);
         strncpy(client->last_error, "Too many events before response", sizeof(client->last_error) - 1);
         return BB_TIMEOUT;
@@ -829,7 +829,7 @@ BBResult bb_list_subscribers(BBClient* client, const char* topic, char*** subscr
     }
 
     // Parse response
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     if (decode_response(response_data, response_len, &resp) < 0) {
         free(response_data);
         return BB_PROTOCOL_ERROR;
@@ -895,7 +895,7 @@ BBResult bb_list_topics(BBClient* client, char*** topics, size_t* count) {
     }
 
     // Parse response
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     if (decode_response(response_data, response_len, &resp) < 0) {
         free(response_data);
         return BB_PROTOCOL_ERROR;
@@ -964,7 +964,7 @@ BBResult bb_get_history(BBClient* client, const char* topic, int limit, int sinc
     }
 
     // Parse response
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     if (decode_response(response_data, response_len, &resp) < 0) {
         free(response_data);
         return BB_PROTOCOL_ERROR;
@@ -1054,7 +1054,7 @@ BBResult bb_get_presence(BBClient* client, const char* topic, char** presence_js
     }
 
     // Parse response
-    ProtocolResponse resp;
+    ProtocolResponse resp = {0};
     if (decode_response(response_data, response_len, &resp) < 0) {
         free(response_data);
         return BB_PROTOCOL_ERROR;
