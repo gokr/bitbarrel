@@ -40,8 +40,10 @@ struct BBWebSocket {
     size_t recv_capacity;      // Current buffer capacity
     bool recv_complete;        // Current message complete flag
 
-    uint8_t* queue_head;       // Queued messages (linked list)
+    uint8_t* queue_buffer;     // Queued complete message buffer
     size_t queue_len;          // Length of queued data
+    size_t queue_capacity;     // Queued buffer capacity
+    bool queue_complete;       // Queued message complete flag
 };
 
 // Forward declarations for libwebsockets event handler
@@ -65,10 +67,9 @@ static int ws_event_callback(struct lws* wsi, enum lws_callback_reasons reason,
     switch (reason) {
         case LWS_CALLBACK_CLIENT_RECEIVE:
             if (ws) {
-                // Only receive if not currently queuing a message
-                // (prevents accumulation of multiple messages)
-                if (!ws->recv_complete && !ws->queue_head) {
-                    // Append received data
+                // If we have space for a new message (either current buffer free or queue free)
+                if (!ws->recv_complete && !ws->queue_complete) {
+                    // Append received data to current buffer
                     size_t needed = ws->recv_len + len;
                     if (needed > ws->recv_capacity) {
                         size_t new_cap = ws->recv_capacity ? ws->recv_capacity * 2 : 4096;
@@ -85,8 +86,25 @@ static int ws_event_callback(struct lws* wsi, enum lws_callback_reasons reason,
                     if (lws_is_final_fragment(wsi)) {
                         ws->recv_complete = true;
                     }
+                } else if (ws->recv_complete && !ws->queue_complete) {
+                    // Current message is complete but not consumed yet, queue the new message
+                    size_t needed = ws->queue_len + len;
+                    if (needed > ws->queue_capacity) {
+                        size_t new_cap = ws->queue_capacity ? ws->queue_capacity * 2 : 4096;
+                        while (new_cap < needed) new_cap *= 2;
+                        uint8_t* new_buf = realloc(ws->queue_buffer, new_cap);
+                        if (!new_buf) return -1;
+                        ws->queue_buffer = new_buf;
+                        ws->queue_capacity = new_cap;
+                    }
+                    memcpy(ws->queue_buffer + ws->queue_len, in, len);
+                    ws->queue_len += len;
+
+                    if (lws_is_final_fragment(wsi)) {
+                        ws->queue_complete = true;
+                    }
                 }
-                // If we already have a queued message, ignore additional data
+                // If both recv_complete and queue_complete are true, ignore additional data
                 // until the queue is consumed
             }
             break;
@@ -280,11 +298,53 @@ ssize_t ws_recv_binary(BBWebSocket* ws, uint8_t** data, int timeout_ms) {
         return -1;
     }
 
+    // Check if we already have a complete message waiting
+    if (ws->recv_complete && ws->recv_len > 0) {
+        *data = malloc(ws->recv_len);
+        if (!*data) {
+            snprintf(ws->error_msg, sizeof(ws->error_msg), "Memory allocation failed");
+            return -1;
+        }
+        memcpy(*data, ws->recv_buffer, ws->recv_len);
+        size_t result_len = ws->recv_len;
+
+        // Reset buffer after consuming data
+        ws->recv_len = 0;
+        ws->recv_complete = false;
+
+        // If we have a queued complete message, move it to recv buffer
+        if (ws->queue_complete && ws->queue_len > 0) {
+            // Move queue to recv buffer
+            if (ws->queue_len > ws->recv_capacity) {
+                uint8_t* new_buf = realloc(ws->recv_buffer, ws->queue_len);
+                if (new_buf) {
+                    ws->recv_buffer = new_buf;
+                    ws->recv_capacity = ws->queue_len;
+                } else {
+                    // Keep old buffer, will be replaced later
+                }
+            }
+            memcpy(ws->recv_buffer, ws->queue_buffer, ws->queue_len);
+            ws->recv_len = ws->queue_len;
+            ws->recv_complete = true;
+            // Free queue buffer
+            free(ws->queue_buffer);
+            ws->queue_buffer = NULL;
+            ws->queue_len = 0;
+            ws->queue_capacity = 0;
+            ws->queue_complete = false;
+        }
+
+        return (ssize_t)result_len;
+    }
+
     // Drain any pending data before starting new receive
     if (ws->recv_complete) {
-        free(ws->queue_head);
-        ws->queue_head = NULL;
+        free(ws->queue_buffer);
+        ws->queue_buffer = NULL;
         ws->queue_len = 0;
+        ws->queue_capacity = 0;
+        ws->queue_complete = false;
     }
 
     // Reset receive state for new message
@@ -323,6 +383,29 @@ ssize_t ws_recv_binary(BBWebSocket* ws, uint8_t** data, int timeout_ms) {
     // Reset buffer after consuming data
     ws->recv_len = 0;
     ws->recv_complete = false;
+
+    // If we have a queued complete message, move it to recv buffer
+    if (ws->queue_complete && ws->queue_len > 0) {
+        // Move queue to recv buffer
+        if (ws->queue_len > ws->recv_capacity) {
+            uint8_t* new_buf = realloc(ws->recv_buffer, ws->queue_len);
+            if (new_buf) {
+                ws->recv_buffer = new_buf;
+                ws->recv_capacity = ws->queue_len;
+            } else {
+                // Keep old buffer, will be replaced later
+            }
+        }
+        memcpy(ws->recv_buffer, ws->queue_buffer, ws->queue_len);
+        ws->recv_len = ws->queue_len;
+        ws->recv_complete = true;
+        // Free queue buffer
+        free(ws->queue_buffer);
+        ws->queue_buffer = NULL;
+        ws->queue_len = 0;
+        ws->queue_capacity = 0;
+        ws->queue_complete = false;
+    }
 
     return (ssize_t)result_len;
 }
