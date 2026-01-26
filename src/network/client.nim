@@ -400,6 +400,98 @@ proc setWithTtl*(client: var BitBarrelClient, key, value: string, ttlSeconds: in
   let resp = client.sendAndWait(req)
   return resp.status == statusOk
 
+proc set*(client: var BitBarrelClient, key, value: string, flags: RequestFlags): bool =
+  ## Set key-value pair with conditional flags (NX/XX)
+  ##
+  ## flags: RequestFlags to control conditional behavior
+  ## - rfSetIfNotExists (NX): Set only if key does not exist
+  ## - rfSetIfExists (XX): Set only if key exists
+  ##
+  ## Returns true if the set operation was performed
+  ##
+  ## Raises `ClientError` if no barrel is selected
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## # Set only if key does not exist (NX)
+  ## let set1 = client.set("user:1", "Bob", rfSetIfNotExists)  # Returns false if exists
+  ## let set2 = client.set("user:2", "Charlie", rfSetIfNotExists)  # Returns true
+  ##
+  ## # Set only if key exists (XX)
+  ## let set3 = client.set("user:3", "David", rfSetIfExists)  # Returns false
+  ## let set4 = client.set("user:1", "Alice", rfSetIfExists)  # Returns true
+  ## ```
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  client.connect()
+
+  # Use protocol v1.1 format with flags
+  let req = Request(command: protocol.cmdSet, key: key, value: value,
+                    flags: flags, ttl: -1.int32)
+  let resp = client.sendAndWait(req)
+  return resp.status == statusOk
+
+proc cas*(client: var BitBarrelClient, key, expectedValue, newValue: string, ttl: int = -1): CasResult =
+  ## Atomically compare and swap a value
+  ##
+  ## Returns ``crSuccess`` if the swap succeeded, ``crKeyNotFound`` if the key
+  ## doesn't exist, or ``crValueMismatch`` if the current value doesn't match
+  ## the expected value.
+  ##
+  ## **Example:**
+  ## ```nim
+  ## var client = newClient()
+  ## client.createBarrel("mydb")
+  ## client.useBarrel("mydb")
+  ##
+  ## # Initialize counter
+  ## client.set("counter", "0")
+  ##
+  ## # Atomic increment using CAS
+  ## var current = client.get("counter").parseInt()
+  ## while true:
+  ##   let newValue = $(current + 1)
+  ##   let casResult = client.cas("counter", $(current), newValue)
+  ##   if casResult == crSuccess:
+  ##     echo "Incremented!"
+  ##     break
+  ##   elif casResult == crKeyNotFound:
+  ##     echo "Key disappeared!"
+  ##     break
+  ##   else:
+  ##     # Value changed, retry with new value
+  ##     current = client.get("counter").parseInt()
+  ## ```
+  if client.currentBarrel.len == 0:
+    raise newException(ClientError, "No barrel selected. Call useBarrel() first.")
+
+  client.connect()
+
+  # Encode CAS request value
+  let casValue = encodeCasRequest(key, expectedValue, newValue, int32(ttl))
+
+  # Send CAS command
+  let req = Request(command: protocol.cmdCas, key: key, value: casValue,
+                    flags: rfNone, ttl: -1.int32)
+  let resp = client.sendAndWait(req)
+
+  # Map response status to CasResult
+  case resp.status
+  of statusOk:
+    result = crSuccess
+  of statusNotFound:
+    result = crKeyNotFound
+  of statusMismatch:
+    result = crValueMismatch
+  else:
+    # Unexpected status
+    raise newException(ClientError, fmt("Unexpected CAS response status: {resp.status}"))
+
 proc watchKeys*(client: var BitBarrelClient, pattern: string): string =
   ## Watch keys matching pattern for changes
   ##
