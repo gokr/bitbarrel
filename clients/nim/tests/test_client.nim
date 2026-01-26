@@ -722,17 +722,11 @@ suite "Key Watching":
     var client = newClient(TestServerHost, TestServerPort)
     defer: client.close()
 
-    try:
-      client.connect()
+    client.connect()
 
-      # Try watch without selecting a barrel
-      expect ClientError:
-        discard client.watch("user:*", includeValues=false)
-
-    except AssertionError, AssertionDefect:
-      raise  # Test assertion failure, not a server issue
-    except CatchableError:
-      skip()  # Server not available
+    # Try watch without selecting a barrel
+    expect ClientError:
+      discard client.watch("user:*", includeValues=false)
 
   test "watch basic functionality":
     var client = newClient(TestServerHost, TestServerPort)
@@ -740,47 +734,45 @@ suite "Key Watching":
 
     var events: seq[PubSubEvent] = @[]
 
-    try:
-      client.connect()
+    client.connect()
 
-      let barrelName = uniqueBarrelName("watch_test")
-      discard client.createBarrel(barrelName, bmHash)
-      defer: discard client.dropBarrel(barrelName)
+    let barrelName = uniqueBarrelName("watch_test")
+    discard client.createBarrel(barrelName, bmHash)
+    defer: discard client.dropBarrel(barrelName)
 
-      discard client.useBarrel(barrelName)
+    discard client.useBarrel(barrelName)
 
-      # Set up message handler
-      client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
-        {.gcsafe.}:
-          events.add(event)
+    # Set up message handler to collect events
+    client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+      {.gcsafe.}:
+        events.add(event)
 
-      # Subscribe to key events
-      let subId = client.subscribe("kv:")
-      defer: discard client.unsubscribe(subId)
+    # Subscribe to barrel's topic pattern without enableKvEvents - watch handles KV delivery
+    let barrelTopic = fmt"kv:{barrelName}:*"
+    let kvOptions = SubscriptionOptions(enableKvEvents: false, enablePresence: false, replayHistory: false)
+    let subId = client.subscribe(barrelTopic, kvOptions)
+    defer: discard client.unsubscribe(subId)
 
-      # Watch pattern
-      discard client.watch("user:*", includeValues=false)
+    # Watch pattern
+    discard client.watch("user:*", includeValues=false)
 
-      # Wait for subscription
-      sleep(100)
+    # Wait for subscription and watch to register
+    sleep(200)
 
-      # Set a matching key
-      discard client.set("user:1", "Alice")
+    # Set a matching key
+    discard client.set("user:1", "Alice")
 
-      # Wait for event
-      sleep(500)
+    # Process pending messages (events arrive asynchronously)
+    let startTime = epochTime()
+    while events.len == 0 and (epochTime() - startTime) < 2.0:
+      client.receiveMessages(200)
 
-      # Verify event received
-      check events.len >= 1
-      let event = events[^1]  # last event
-      check event.topic.contains("user:1")
-      check event.messageType == mtKvChange
-      check event.payload == ""
-
-    except AssertionError, AssertionDefect:
-      raise  # Test assertion failure, not a server issue
-    except CatchableError:
-      skip()  # Server not available
+    # Verify event received
+    check events.len >= 1
+    let event = events[^1]
+    check event.topic.contains("user:1")
+    check event.messageType == mtKvChange
+    check event.payload == ""
 
   test "watch with values":
     var client = newClient(TestServerHost, TestServerPort)
@@ -788,46 +780,44 @@ suite "Key Watching":
 
     var events: seq[PubSubEvent] = @[]
 
-    try:
-      client.connect()
+    client.connect()
 
-      let barrelName = uniqueBarrelName("watch_values_test")
-      discard client.createBarrel(barrelName, bmHash)
-      defer: discard client.dropBarrel(barrelName)
+    let barrelName = uniqueBarrelName("watch_values_test")
+    discard client.createBarrel(barrelName, bmHash)
+    defer: discard client.dropBarrel(barrelName)
 
-      discard client.useBarrel(barrelName)
+    discard client.useBarrel(barrelName)
 
-      # Set up message handler
-      client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
-        {.gcsafe.}:
-          events.add(event)
+    # Set up message handler
+    client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+      {.gcsafe.}:
+        events.add(event)
 
-      # Subscribe to key events
-      let subId = client.subscribe("kv:")
-      defer: discard client.unsubscribe(subId)
+    # Subscribe to barrel's topic pattern - watch creates its own subscription for KV events
+    let barrelTopic = fmt"kv:{barrelName}:*"
+    let kvOptions = SubscriptionOptions(enableKvEvents: false, enablePresence: false, replayHistory: false)
+    let subId = client.subscribe(barrelTopic, kvOptions)
+    defer: discard client.unsubscribe(subId)
 
-      # Watch with values
-      discard client.watch("cache:*", includeValues=true)
+    # Watch with values
+    discard client.watch("cache:*", includeValues=true)
 
-      # Wait for subscription
-      sleep(100)
+    # Wait for subscription and watch to register
+    sleep(200)
 
-      # Set a matching key
-      discard client.set("cache:item1", "value1")
+    # Set a matching key
+    discard client.set("cache:item1", "value1")
 
-      # Wait for event
-      sleep(500)
+    # Process pending messages
+    let startTime = epochTime()
+    while events.len == 0 and (epochTime() - startTime) < 2.0:
+      client.receiveMessages(200)
 
-      # Verify event received with value
-      check events.len >= 1
-      let event = events[^1]
-      check event.topic.contains("cache:item1")
-      check event.payload == "value1"
-
-    except AssertionError, AssertionDefect:
-      raise  # Test assertion failure, not a server issue
-    except CatchableError:
-      skip()  # Server not available
+    # Verify event received with value
+    check events.len >= 1
+    let event = events[^1]
+    check event.topic.contains("cache:item1")
+    check event.payload == "value1"
 
   test "unwatch stops events":
     var client = newClient(TestServerHost, TestServerPort)
@@ -835,42 +825,47 @@ suite "Key Watching":
 
     var events: seq[PubSubEvent] = @[]
 
-    try:
-      client.connect()
+    client.connect()
 
-      let barrelName = uniqueBarrelName("unwatch_test")
-      discard client.createBarrel(barrelName, bmHash)
-      defer: discard client.dropBarrel(barrelName)
+    let barrelName = uniqueBarrelName("unwatch_test")
+    discard client.createBarrel(barrelName, bmHash)
+    defer: discard client.dropBarrel(barrelName)
 
-      discard client.useBarrel(barrelName)
+    discard client.useBarrel(barrelName)
 
-      # Set up message handler
-      client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
-        {.gcsafe.}:
-          events.add(event)
+    # Set up message handler
+    client.onMessage = proc(event: PubSubEvent) {.closure, gcsafe.} =
+      {.gcsafe.}:
+        events.add(event)
 
-      # Subscribe to key events
-      let subId = client.subscribe("kv:")
-      defer: discard client.unsubscribe(subId)
+    # Set up watch (watch creates its own pub/sub subscription internally)
+    discard client.watch("temp:*", includeValues=false)
+    sleep(100)
 
-      # Set up watch
-      discard client.watch("temp:*", includeValues=false)
-      sleep(100)
+    # Set a matching key first - should receive event
+    discard client.set("temp:1", "value1")
 
-      # Now unwatch
-      client.unwatch("temp:*")
-      sleep(100)
+    # Process pending messages - expect 1 event
+    let startTime = epochTime()
+    while events.len == 0 and (epochTime() - startTime) < 2.0:
+      client.receiveMessages(200)
 
-      # Set a key that would match the old pattern
-      discard client.set("temp:1", "value1")
+    check events.len == 1
 
-      # Wait to ensure no event comes
-      sleep(500)
+    # Now unwatch
+    client.unwatch("temp:*")
+    sleep(100)
 
-      # Should not have received any events
-      check events.len == 0
+    # Clear events
+    events.setLen(0)
 
-    except AssertionError, AssertionDefect:
-      raise  # Test assertion failure, not a server issue
-    except CatchableError:
-      skip()  # Server not available
+    # Set a key that would match the old pattern
+    discard client.set("temp:2", "value2")
+
+    # Process pending messages but expect no events (unwatch removes subscription)
+    let startTime2 = epochTime()
+    while (epochTime() - startTime2) < 1.0:
+      client.receiveMessages(100)
+
+    # Should not have received any events
+    check events.len == 0
