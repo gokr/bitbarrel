@@ -102,15 +102,21 @@ export class Protocol {
     const value = data.toString('utf8', offset, offset + valLen);
     offset += valLen;
 
-    let ttl: number | undefined = undefined;
+    const result: { command: Command; seq: number; key: string; value: string; ttl?: number } = {
+      command,
+      seq,
+      key,
+      value
+    };
+
     if (hasTtl) {
       if (offset + 4 > data.length) {
         throw new ProtocolError('Truncated request: missing TTL');
       }
-      ttl = data.readUInt32BE(offset);
+      result.ttl = data.readUInt32BE(offset);
     }
 
-    return { command, seq, key, value, ttl };
+    return result;
   }
 
   /**
