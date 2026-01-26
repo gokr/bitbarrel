@@ -350,8 +350,8 @@ proc createBarrel*(client: var BitBarrelClient, name: string, mode: BarrelMode):
   ## discard client.createBarrel("ordered", bmCritBit)
   ## ```
   let config = case mode
-    of bmHash: """{"mode": "bmHash"}"""
-    of bmCritBit: """{"mode": "bmCritBit"}"""
+    of bmHash: """{"mode": "hash"}"""
+    of bmCritBit: """{"mode": "critbit"}"""
   client.createBarrel(name, config)
 
 proc openBarrel*(client: var BitBarrelClient, name: string): bool =
