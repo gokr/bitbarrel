@@ -36,6 +36,7 @@ type
     opGet = "get"
     opSet = "set"
     opDelete = "delete"
+    opCas = "cas"
 
   StatusType* = enum
     stSuccess = "success"

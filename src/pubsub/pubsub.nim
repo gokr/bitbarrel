@@ -129,6 +129,7 @@ type
   KvChangeType* = enum
     kvSet = 0                         ## Key was set
     kvDelete = 0x01                   ## Key was deleted
+    kvCas = 0x02                      ## Key was updated via CAS operation
 
   PresenceEventType* = enum
     peJoin = 0                        ## Client joined
