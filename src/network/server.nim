@@ -35,10 +35,10 @@ proc wrapperGet(wrapper: BarrelWrapper, key: string): string =
   of bkHuge:
     wrapper.hugeBarrel.get(key)
 
-proc wrapperSet(wrapper: var BarrelWrapper, key: string, value: string, ttl: int = -1): bool =
+proc wrapperSet(wrapper: var BarrelWrapper, key: string, value: string, ttl: int = -1, flags: RequestFlags = rfNone): bool =
   case wrapper.kind
   of bkRegular:
-    wrapper.regularBarrel.set(key, value, ttl)
+    wrapper.regularBarrel.set(key, value, ttl, flags)
   of bkHuge:
     wrapper.hugeBarrel.set(key, value)
 
@@ -143,6 +143,15 @@ proc wrapperKeysWithPrefix(wrapper: BarrelWrapper, prefix: string,
   of bkHuge:
     # HugeBarrel doesn't support keysByPrefix - return empty
     (@[], "", false)
+
+proc wrapperCompareAndSwap(wrapper: var BarrelWrapper, key: string, expectedValue: string, newValue: string, ttl: int = -1): CasResult =
+  case wrapper.kind
+  of bkRegular:
+    wrapper.regularBarrel.compareAndSwap(key, expectedValue, newValue, ttl)
+  of bkHuge:
+    # HugeBarrel doesn't support CAS - this is a limitation
+    # Could potentially be added in the future
+    crValueMismatch
 
 type
   BitBarrelServerObj* = object
@@ -494,7 +503,7 @@ proc handleWebSocketMessage*(
         resp.status = statusError
         resp.value = e.msg
 
-  of cmdGet, cmdSet, cmdDelete, cmdExists, cmdCount, cmdListKeys:
+  of cmdGet, cmdSet, cmdDelete, cmdExists, cmdCount, cmdListKeys, cmdCas:
     # These require a current barrel
     # Extract session info while holding lock, then release before operations
     # This prevents deadlock when KV hooks try to acquire sessionsLock
@@ -543,12 +552,12 @@ proc handleWebSocketMessage*(
           else:
             # Extract TTL from v1.1 request (via flags byte)
             let ttl = if (ord(req.flags) and ord(rfHasTtl)) != 0: req.ttl else: -1
-            if wrapperSet(wrapper, req.key, req.value, ttl):
+            if wrapperSet(wrapper, req.key, req.value, ttl, req.flags):
               server.metrics.recordOperation(opSet, stSuccess, (epochTime() - start) * 1000.0)
               resp.status = statusOk
             else:
               server.metrics.recordOperation(opSet, stFailure, (epochTime() - start) * 1000.0)
-              resp.status = statusError
+              resp.status = statusOk  # Conditional SET (NX/XX) returns OK, just didn't set
 
         of cmdDelete:
           let start = epochTime()
@@ -561,6 +570,35 @@ proc handleWebSocketMessage*(
           else:
             server.metrics.recordOperation(opDelete, stFailure, (epochTime() - start) * 1000.0)
             resp.status = statusError
+
+        of cmdCas:
+          let start = epochTime()
+          if not authSess.canWriteData():
+            resp.status = statusUnauthorized
+            resp.value = "Unauthorized: write access required"
+          else:
+            try:
+              # Decode CAS request
+              let (expectedValue, newValue, ttl) = decodeCasRequest(req.value)
+
+              # Execute CAS operation
+              let casResult = wrapperCompareAndSwap(wrapper, req.key, expectedValue, newValue, ttl)
+
+              # Set response status based on result
+              case casResult:
+              of crSuccess:
+                server.metrics.recordOperation(opCas, stSuccess, (epochTime() - start) * 1000.0)
+                resp.status = statusOk
+              of crKeyNotFound:
+                server.metrics.recordOperation(opCas, stFailure, (epochTime() - start) * 1000.0)
+                resp.status = statusNotFound
+              of crValueMismatch:
+                server.metrics.recordOperation(opCas, stFailure, (epochTime() - start) * 1000.0)
+                resp.status = statusMismatch
+            except:
+              server.metrics.recordOperation(opCas, stFailure, (epochTime() - start) * 1000.0)
+              resp.status = statusError
+              resp.value = "Invalid CAS request format"
 
         of cmdExists:
           if wrapperExists(wrapper, req.key):
