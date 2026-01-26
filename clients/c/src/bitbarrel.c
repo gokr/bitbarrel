@@ -311,6 +311,8 @@ static BBResult send_request(BBClient* client, const ProtocolRequest* req,
 
         // Skip pub/sub events (command byte 0xFF)
         if (is_pubsub_event(response_data, response_len)) {
+            // Process the event before discarding
+            process_pubsub_event(client, response_data, response_len);
             free(response_data);
             response_data = NULL;
             continue;

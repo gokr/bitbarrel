@@ -6,6 +6,7 @@
 #include "../include/bitbarrel.h"
 #include "websocket.h"
 #include <pthread.h>
+#include <sys/types.h>
 
 // Server information from handshake
 typedef struct {
@@ -38,5 +39,21 @@ struct BitBarrelClient {
     pthread_mutex_t error_lock;
     pthread_mutex_t request_lock;
 };
+
+// Buffered event structure for pub/sub events
+typedef struct BufferedEvent {
+    char* topic;
+    char* data;
+    struct BufferedEvent* next;
+} BufferedEvent;
+
+// Pub/Sub internal functions
+void queue_message(BBMessage* msg);
+BBMessage* dequeue_message(void);
+BBResult process_pubsub_event(BBClient* client, const uint8_t* buffer, size_t len);
+BBResult recv_response_and_buffer_events(BBClient* client, uint8_t** response_data,
+                                         ssize_t* response_len, BufferedEvent** events);
+void process_buffered_events(BBClient* client, BufferedEvent* events);
+void free_buffered_events(BufferedEvent* events);
 
 #endif // BITBARREL_INTERNAL_H

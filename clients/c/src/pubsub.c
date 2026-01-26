@@ -72,7 +72,7 @@ typedef struct {
 static MessageQueue g_message_queue = {NULL, NULL, PTHREAD_MUTEX_INITIALIZER};
 
 // Add message to queue
-static void queue_message(BBMessage* msg) {
+void queue_message(BBMessage* msg) {
     pthread_mutex_lock(&g_message_queue.lock);
 
     struct MessageNode* node = malloc(sizeof(struct MessageNode));
@@ -92,7 +92,7 @@ static void queue_message(BBMessage* msg) {
 }
 
 // Remove message from queue
-static BBMessage* dequeue_message(void) {
+BBMessage* dequeue_message(void) {
     pthread_mutex_lock(&g_message_queue.lock);
 
     BBMessage* msg = NULL;
@@ -108,6 +108,91 @@ static BBMessage* dequeue_message(void) {
 
     pthread_mutex_unlock(&g_message_queue.lock);
     return msg;
+}
+
+BBResult process_pubsub_event(BBClient* client, const uint8_t* buffer, size_t len) {
+    if (!client || !buffer || len < 1) return BB_ERROR;
+
+    // Check if it's a pub/sub event
+    if (buffer[0] != CMD_PUBSUB_EVENT) return BB_ERROR;
+
+    // Pub/Sub event format:
+    // [cmd:1=0xFF][seq:4][topicLen:2][topic:N][msgType:1][seq:8][ts:8][headersLen:4][headers:M][payloadLen:4][payload:P]
+
+    size_t offset = 1;  // Skip command byte 0xFF
+    offset += 4;  // Skip 4-byte sequence placeholder
+
+    // Parse topic length (2 bytes, big-endian)
+    if (offset + 2 > len) return BB_ERROR;
+    uint16_t topic_len = (buffer[offset] << 8) | buffer[offset + 1];
+    offset += 2;
+
+    // Parse topic
+    if (offset + topic_len > len) return BB_ERROR;
+    char* topic_buf = malloc(topic_len + 1);
+    if (!topic_buf) return BB_ERROR;
+    memcpy(topic_buf, buffer + offset, topic_len);
+    topic_buf[topic_len] = '\0';
+    offset += topic_len;
+
+    // Skip msgType (1), seq (8), ts (8)
+    offset += 1 + 8 + 8;
+
+    // Parse headers length (4 bytes, big-endian)
+    if (offset + 4 > len) {
+        free(topic_buf);
+        return BB_ERROR;
+    }
+    uint32_t headers_len = ((uint32_t)buffer[offset] << 24) |
+                           ((uint32_t)buffer[offset + 1] << 16) |
+                           ((uint32_t)buffer[offset + 2] << 8) |
+                           buffer[offset + 3];
+    offset += 4;
+    offset += headers_len;
+
+    // Parse payload length (4 bytes, big-endian)
+    if (offset + 4 > len) {
+        free(topic_buf);
+        return BB_ERROR;
+    }
+    uint32_t payload_len = ((uint32_t)buffer[offset] << 24) |
+                           ((uint32_t)buffer[offset + 1] << 16) |
+                           ((uint32_t)buffer[offset + 2] << 8) |
+                           buffer[offset + 3];
+    offset += 4;
+
+    // Parse payload
+    char* payload_buf = NULL;
+    if (offset + payload_len <= len && payload_len > 0) {
+        payload_buf = malloc(payload_len + 1);
+        if (payload_buf) {
+            memcpy(payload_buf, buffer + offset, payload_len);
+            payload_buf[payload_len] = '\0';
+        }
+    }
+
+    // Create message
+    BBMessage* msg = calloc(1, sizeof(BBMessage));
+    if (!msg) {
+        free(topic_buf);
+        if (payload_buf) free(payload_buf);
+        return BB_ERROR;
+    }
+    msg->topic = topic_buf;
+    msg->data = payload_buf ? payload_buf : strdup("");
+    msg->timestamp = 0;
+
+    // Call callback or queue message
+    pthread_mutex_lock(&client->callback_lock);
+    if (client->message_callback) {
+        client->message_callback(msg, client->callback_userdata);
+        bb_free_message(msg);
+    } else {
+        queue_message(msg);
+    }
+    pthread_mutex_unlock(&client->callback_lock);
+
+    return BB_OK;
 }
 
 BBResult bb_subscribe(BBClient* client, const char* topic) {
@@ -381,16 +466,10 @@ void bb_free_message(BBMessage* msg) {
     free(msg);
 }
 
-// Buffered event structure (must match the one in bitbarrel.c)
-typedef struct BufferedEvent {
-    char* topic;
-    char* data;
-    struct BufferedEvent* next;
-} BufferedEvent;
 
 // Helper to receive response, buffering any pub/sub events that arrive first.
 // Callback is called after response is received with buffered events.
-static BBResult recv_response_and_buffer_events(BBClient* client, uint8_t** response_data,
+BBResult recv_response_and_buffer_events(BBClient* client, uint8_t** response_data,
                                                   ssize_t* response_len, BufferedEvent** events) {
     *events = NULL;
     *response_data = NULL;
@@ -528,7 +607,7 @@ static BBResult recv_response_and_buffer_events(BBClient* client, uint8_t** resp
 }
 
 // Helper to process buffered events
-static void process_buffered_events(BBClient* client, BufferedEvent* events) {
+void process_buffered_events(BBClient* client, BufferedEvent* events) {
     if (!events || !client->message_callback) return;
 
     pthread_mutex_lock(&client->callback_lock);
@@ -547,7 +626,7 @@ static void process_buffered_events(BBClient* client, BufferedEvent* events) {
 }
 
 // Helper to free buffered events
-static void free_buffered_events(BufferedEvent* events) {
+void free_buffered_events(BufferedEvent* events) {
     while (events) {
         BufferedEvent* ev = events;
         events = ev->next;
