@@ -55,6 +55,8 @@ type
     ## Key watch commands (0x60-0x61)
     cmdWatchKey = 0x60
     cmdUnwatchKey = 0x61
+    ## Atomic operations (0x62)
+    cmdCas = 0x62  ## Compare-and-swap operation
 
   PubSubMessageType* = enum
     mtData = 0
@@ -69,10 +71,13 @@ type
   KvChangeType* = enum
     kvSet = 0
     kvDelete = 0x01
+    kvCas = 0x02  ## Compare-and-swap operation
 
   RequestFlags* = enum
     rfNone = 0
     rfHasTtl = 0x01  ## TTL field present after value
+    rfSetIfNotExists = 0x02  ## Set only if key does not exist (NX)
+    rfSetIfExists = 0x04     ## Set only if key exists (XX)
 
   ResponseStatus* = enum
     statusOk = 0x00
@@ -83,6 +88,7 @@ type
     statusBarrelExists = 0x05
     statusBarrelNotFound = 0x06
     statusUnauthorized = 0x07
+    statusMismatch = 0x08  ## CAS: value mismatch
 
   Request* = object
     command*: Command
@@ -272,7 +278,8 @@ proc decodeRequest*(data: string): Request =
                      0x21, 0x22, 0x23, 0x24, 0x25,              # Range queries
                      0x26, 0x27, 0x28,                          # Batch operations
                      0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46,  # Pub/Sub commands
-                     0x60, 0x61}:                                # Key watch commands
+                     0x60, 0x61,                                # Key watch commands
+                     0x62}:                                     # CAS command
     raise newException(ProtocolError, "Invalid command: 0x" & cmdByte.toHex)
 
   result.command = cast[Command](cmdByte)
@@ -312,7 +319,7 @@ proc decodeResponse*(data: string): Response =
   var pos = 0
 
   let statusByte = readByte(data, pos)
-  if statusByte > byte(0x07):
+  if statusByte > byte(0x08):
     raise newException(ProtocolError, "Invalid status: 0x" & statusByte.toHex)
 
   result.status = ResponseStatus(statusByte)
@@ -615,6 +622,50 @@ proc decodeBatchDeleteResponse*(data: string): BatchDeleteResponse =
   result.statuses = newSeq[uint8](int(count))
   for i in 0..<count:
     result.statuses[i] = readByte(data, pos)
+
+
+## CAS request/response helpers
+
+proc encodeCasRequest*(key, expectedValue, newValue: string, ttl: int32 = -1): string =
+  ## Encode a CAS request value field.
+  ## Format: ``[expectedValueLen:4][expectedValue:M][newValueLen:4][newValue:N][ttl:4|0]``
+  if expectedValue.len > MaxValueSize:
+    raise newException(ProtocolError, "Expected value too large: " & $expectedValue.len)
+  if newValue.len > MaxValueSize:
+    raise newException(ProtocolError, "New value too large: " & $newValue.len)
+
+  result = newStringOfCap(4 + expectedValue.len + 4 + newValue.len + 4)
+  result.writeUint32BE(uint32(expectedValue.len))
+  result.add(expectedValue)
+  result.writeUint32BE(uint32(newValue.len))
+  result.add(newValue)
+
+  # Add TTL if provided
+  if ttl >= 0:
+    result.writeUint32BE(uint32(ttl))
+  else:
+    result.writeUint32BE(0'u32)  # No TTL
+
+proc decodeCasRequest*(data: string): tuple[expectedValue: string, newValue: string, ttl: int32] =
+  ## Decode a CAS request value field.
+  ## Format: ``[expectedValueLen:4][expectedValue:M][newValueLen:4][newValue:N][ttl:4|0]``
+  var pos = 0
+
+  let expectedLen = readUint32BE(data, pos)
+  if expectedLen > MaxValueSize:
+    raise newException(ProtocolError, "Expected value too large: " & $expectedLen)
+  result.expectedValue = readString(data, pos, int(expectedLen))
+
+  let newLen = readUint32BE(data, pos)
+  if newLen > MaxValueSize:
+    raise newException(ProtocolError, "New value too large: " & $newLen)
+  result.newValue = readString(data, pos, int(newLen))
+
+  # Read TTL if present
+  if pos + 4 <= data.len:
+    result.ttl = int32(readUint32BE(data, pos))
+  else:
+    result.ttl = -1
 
 
 ## Traversal request/response extensions
@@ -1007,6 +1058,7 @@ proc `$`*(cmd: Command): string =
   of cmdPresence: "PRESENCE"
   of cmdWatchKey: "WATCH_KEY"
   of cmdUnwatchKey: "UNWATCH_KEY"
+  of cmdCas: "CAS"
 
 proc `$`*(status: ResponseStatus): string =
   ## String representation of status.
@@ -1019,6 +1071,7 @@ proc `$`*(status: ResponseStatus): string =
   of statusBarrelExists: "BARREL_EXISTS"
   of statusBarrelNotFound: "BARREL_NOT_FOUND"
   of statusUnauthorized: "UNAUTHORIZED"
+  of statusMismatch: "MISMATCH"
 
 proc `$`*(req: Request): string =
   ## String representation of request.
