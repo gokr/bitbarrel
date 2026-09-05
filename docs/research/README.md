@@ -4,6 +4,24 @@ This directory contains documentation for **historic**, **experimental**, and **
 
 ## Files in This Directory
 
+### NIFFLER-STORE-BENCHMARK.md
+**Status:** Measured Result (2026-07)
+**Purpose:** Benchmark report from Niffler's multi-engine store work — end-to-end
+(NATS bus) and in-process (`bench/niffler_store_ops.nim`) numbers for BitBarrel
+(bmCritBit) vs SQLite, attributing Niffler's ~2 ms/request floor to the harness
+stack (~99.7 %) rather than the engine.
+
+**Context:** Niffler uses BitBarrel as its default store engine and wanted an
+honest attribution of a uniform ~2 ms per-request cost. The in-process bench
+shows BitBarrel performing the same operations in 2–7 µs — the fastest engine
+per point op measured — so the floor is the Nim SDK/NATS request path. Also
+documents where SQL engines genuinely win (atomic multi-key writes, one-statement
+range scans, fast reopen, WAL disk hygiene).
+
+**Implementation Status:** Bench committed as `bench/niffler_store_ops.nim`
+
+---
+
 ### HUGECRITBIT.md
 **Status:** Future Design (Proposed)
 **Purpose:** Design document for `bmHugeCritBit` mode - a two-barrel approach for scaling to billions of keys while maintaining range query support.
